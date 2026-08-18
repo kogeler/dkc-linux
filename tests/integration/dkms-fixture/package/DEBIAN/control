@@ -1,0 +1,10 @@
+Package: dkc-dkms-fixture
+Version: 1.0
+Architecture: all
+Maintainer: DKC Build Service <build@dkc.invalid>
+Depends: dkms (>= 3.0)
+Section: kernel
+Priority: optional
+Description: controlled external-module fixture for DKC validation
+ This package exists only inside an ephemeral package-client test.  It proves
+ the real Debian DKMS hook lifecycle against installed DKC headers.

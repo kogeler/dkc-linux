@@ -1,0 +1,2 @@
+# Unified diffs require a leading context marker before blank and tab-indented lines.
+debian-overlay/patches/*.patch whitespace=-blank-at-eol,-space-before-tab

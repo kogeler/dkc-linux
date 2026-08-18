@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/transaction-1.json",
+  "title": "Immutable publication transaction record",
+  "description": "Written before any origin mutation and never rewritten. It binds the intended publication and InRelease for audit and exact-plan recovery.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transaction_id", "publication_id", "expected_generation", "intended_inrelease_sha256", "phases", "started_utc"],
+  "properties": {
+    "schema": { "const": "dkc.transaction.v1" },
+    "transaction_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+    "publication_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+    "expected_generation": { "type": "integer", "minimum": 0 },
+    "intended_inrelease_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "owner": {
+      "description": "The non-secret ownership tuple. A credential is never a lease token.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "run_id", "run_attempt", "nonce"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" },
+        "run_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "run_attempt": { "type": "string", "pattern": "^[0-9]+$" },
+        "nonce": { "type": "string", "pattern": "^[0-9a-f]{32,}$" }
+      }
+    },
+    "phases": {
+      "description": "The numbered commit sequence. Recovery guarantees differ before and after the InRelease write, so the record states which phases completed rather than a single done flag.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "state"],
+        "properties": {
+          "phase": { "type": "integer", "minimum": 1, "maximum": 14 },
+          "name": { "type": "string" },
+          "state": { "enum": ["pending", "committed", "failed"] },
+          "utc": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "mutable_preconditions": {
+      "description": "Per-key expectations captured before mutation. An absent key is created with If-None-Match, an existing one updated with its captured ETag; never an unconditional overwrite.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "precondition"],
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "precondition": { "enum": ["if-none-match", "if-match"] },
+          "etag": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "started_utc": { "type": "string", "format": "date-time" }
+  }
+}

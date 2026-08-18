@@ -1,0 +1,67 @@
+# DKC toolbox image.
+#
+# Purpose: run linting, formatting, schema checks, and fast tests inside an
+# ephemeral container so the host stays untouched.
+#
+# This image is NOT a release build input. The release build container is a
+# separate definition with a complete package/version/.deb-hash lock, as
+# required for a release build. Nothing built here reaches a
+# published artifact.
+#
+# The base is pinned by digest, resolved from config/base-image.lock and passed
+# in as a build argument so the digest lives in exactly one place.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# One layer, no recommends, no apt lists left behind.
+RUN set -eux; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		apt-utils \
+		bash \
+		build-essential \
+		ca-certificates \
+		curl \
+		dpkg-dev \
+		debhelper \
+		e2fsprogs \
+		file \
+		git \
+		gnupg \
+		gpgv \
+		jq \
+		make \
+		mypy \
+		python3 \
+		python3-jsonschema \
+		python3-pytest \
+		python3-yaml \
+		shellcheck \
+		shfmt \
+		xorriso \
+		xz-utils; \
+	rm -rf /var/lib/apt/lists/*
+
+# The official Debian image ships APT hooks that rm absolute paths under
+# /var/cache/apt. Everything here runs unprivileged against a private APT tree,
+# so those hooks cannot succeed and only emit "Permission denied" noise into
+# build logs. They are a packaging artifact of the container image, not Debian
+# policy, and APT_CONFIG cannot clear them because it is read before
+# apt.conf.d, so they are removed here.
+RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+# dpkg is present in the base image and is used as the reference implementation
+# the version comparator is tested against, so record that it must stay.
+RUN command -v dpkg >/dev/null
+
+# Deterministic, locale-stable environment.
+ENV LC_ALL=C.UTF-8 \
+	LANG=C.UTF-8 \
+	TZ=UTC \
+	PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONHASHSEED=0
+
+WORKDIR /work

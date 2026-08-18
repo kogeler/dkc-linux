@@ -1,0 +1,40 @@
+# Debian build profiles used for the DKC kernel build.
+#
+# One set, version-controlled, passed identically to dependency resolution and
+# to the actual build. Passing different sets to the two is how a build ends up
+# resolving dependencies it will not use, or using dependencies it did not
+# resolve.
+#
+# Measured against linux 7.1.7-1 on 2026-08-11: this set takes the declared
+# amd64 build dependencies from 65 packages to 24.
+#
+# Each profile is listed with why it is active. Never copy this set to a new
+# Debian source revision without re-running: make release-preflight
+#
+#   nodoc                 Documentation is not part of a DKC deliverable, and it
+#                         pulls asciidoctor and the Ruby stack behind it.
+#   pkg.linux.notools     perf, cpupower and friends are not DKC packages. This
+#                         is the profile that drops most of the closure:
+#                         libaudit, libbabeltrace, libdw, libnewt, libnuma,
+#                         libopencsd, libperl, libpython3, libtraceevent,
+#                         libtracefs, libunwind, python3-dev, python3-docutils,
+#                         python3-setuptools, gcc-multilib.
+#   pkg.linux.nosource    The linux-source tarball package is not published;
+#                         DKC publishes its own complete source package.
+#   noudeb                Excludes Debian-installer binary package stanzas.
+#   pkg.linux.noudeb      Excludes their architecture build dependencies.
+#                         Debian 7.1.7 uses both names, so both are required.
+#   pkg.linux.nokerneldbg Debian's kernel debug binary package is not a DKC
+#                         deliverable. This does not disable build-time debug
+#                         information or BTF; nokerneldbginfo would do that.
+#
+# Deliberately NOT set:
+#
+#   pkg.linux.norust      Rust is enabled in Debian's amd64 configuration.
+#                         Disabling it to simplify the build is forbidden.
+#   pkg.linux.nokerneldbginfo
+#                         Disables debug information and BTF, so it is never an
+#                         acceptable disk-space optimization for DKC.
+#   pkg.linux.mintools    Overlaps with notools; one mechanism is enough.
+#
+DKC_BUILD_PROFILES="nodoc noudeb pkg.linux.notools pkg.linux.nosource pkg.linux.noudeb pkg.linux.nokerneldbg"

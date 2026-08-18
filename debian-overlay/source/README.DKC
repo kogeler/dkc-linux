@@ -1,0 +1,29 @@
+DKC downstream source
+=====================
+
+This source package contains one common source tree for the v2, v3, and v4
+binary package sets. The complete policy and dependency identity is recorded
+under `debian/dkc/`.
+
+To reconstruct the source archives without compiling binaries, keep the
+downloaded `dkc-linux_*.orig.tar.xz` beside the extracted directory and run
+from its parent:
+
+    dpkg-source --build dkc-linux-*
+
+To rebuild one flavor after installing the exact build dependencies recorded
+under `debian/dkc/`, run inside a fresh extraction:
+
+    debian/dkc/rebuild-flavor v2
+
+Replace `v2` with `v3` or `v4` as needed. Run each flavor from a fresh
+`dpkg-source -x` extraction because flavor selection intentionally narrows the
+generated Debian control graph in place.
+
+The project is an independent downstream work. It is not produced, sponsored,
+endorsed, or affiliated with the Debian Project, Linus Torvalds, or the Linux
+Foundation.
+
+Linux is a registered trademark of Linus Torvalds in the United States and
+other countries. Debian is a registered trademark owned by Software in the
+Public Interest, Inc.

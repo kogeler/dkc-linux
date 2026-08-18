@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+if ! dkms status -m dkc-fixture -v 1.0 2>/dev/null | grep -q '^dkc-fixture/1.0'; then
+	dkms add -m dkc-fixture -v 1.0
+fi

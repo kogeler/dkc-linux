@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Recover cleanup for one recorded disposable storage prefix.
+
+# shellcheck source=scripts/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=scripts/lib/storage-connection.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/storage-connection.sh"
+
+dkc::refuse_root
+dkc::require_cmd podman python3 realpath tar
+dkc::install_cleanup_trap
+
+[ "$#" -eq 3 ] || dkc::die \
+	"usage: storage-disposable-cleanup.sh <toolbox-image> <result> <connection-file>"
+toolbox="$1"
+result="$(realpath "$2")"
+provided_connection="$3"
+[ -d "$result" ] || dkc::die "disposable result is not a directory: $result"
+[ -f "$result/cleanup.json" ] ||
+	dkc::die "disposable result has no cleanup journal"
+podman image exists "$toolbox" || dkc::die "toolbox image is missing; run: make image"
+[ "$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null)" = true ] ||
+	dkc::die "rootless podman is required"
+
+stage="$DKC_RUN_DIR/storage-disposable-cleanup"
+dkc::register_resource path "$stage"
+connection_file=""
+dkc::prepare_storage_connection "$stage" "$provided_connection" connection_file
+
+output_root="$DKC_ROOT/out/storage-cleanup"
+output="$output_root/$DKC_RUN_ID"
+mkdir -p "$output_root"
+[ ! -e "$output" ] || dkc::die "refusing to replace cleanup evidence: $output"
+
+container_name="dkc-storage-cleanup-${DKC_RUN_ID}"
+dkc::register_resource container "$container_name"
+network_flags=()
+if [ -n "${DKC_PODMAN_NETWORK:-}" ]; then
+	network_flags+=(--network="$DKC_PODMAN_NETWORK")
+fi
+
+dkc::info "removing only the recorded disposable storage prefix"
+if dkc::archive_worktree |
+	podman run --rm --interactive --read-only --read-only-tmpfs=false \
+		--userns=keep-id --name "$container_name" \
+		--label "${DKC_LABEL_NS}=${DKC_RUN_ID}" \
+		--label "${DKC_LABEL_OWNER}=${DKC_OWNER_ID}" \
+		--cap-drop=ALL --security-opt=no-new-privileges \
+		--no-hosts --ipc=private --pid=private --uts=private --cgroupns=private \
+		--pids-limit=1024 --umask=077 --log-driver=none \
+		--env HOME=/tmp/home --env LC_ALL=C.UTF-8 --env LANG=C.UTF-8 --env TZ=UTC \
+		--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777 \
+		--tmpfs=/work:rw,exec,nosuid,nodev,size=512m,mode=1777 \
+		--volume "$result:/input/result:ro" \
+		--volume "$connection_file:/run/secrets/storage.json:ro" \
+		--volume "$output_root:/output:rw" \
+		"${network_flags[@]}" \
+		--workdir /work "$toolbox" sh -ceu '
+		test "$(id -u)" -ne 0
+		grep -Eq "^CapEff:[[:space:]]+0+$" /proc/self/status
+		grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
+		mkdir -p /work/repo "$HOME"
+		tar --extract --file=- --directory=/work/repo
+		cd /work/repo
+		export PYTHONPATH=/work/repo
+		exec python3 scripts/in-container/storage-disposable-cleanup.py \
+			--result /input/result \
+			--connection /run/secrets/storage.json \
+			--output "/output/$1"
+	' sh "$DKC_RUN_ID"; then
+	rc=0
+else
+	rc=$?
+fi
+
+[ -f "$output/evidence.sha256" ] ||
+	dkc::die "disposable cleanup produced no evidence: $output"
+(
+	cd "$output"
+	sha256sum --check evidence.sha256 >/dev/null
+)
+case "$rc" in
+0)
+	ln -sfn "$DKC_RUN_ID" "$output_root/latest"
+	dkc::ok "disposable storage prefix is empty"
+	;;
+2)
+	ln -sfn "$DKC_RUN_ID" "$output_root/latest-blocked"
+	dkc::warn "disposable storage cleanup blocked before mutation"
+	;;
+*)
+	ln -sfn "$DKC_RUN_ID" "$output_root/latest-failed"
+	dkc::warn "disposable storage cleanup failed"
+	;;
+esac
+trap - ERR
+exit "$rc"

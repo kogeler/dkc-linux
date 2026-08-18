@@ -1,0 +1,37 @@
+# Per-run scratch
+/.dkc-run/
+/.dkc-base/
+/tmp/
+
+# Locally generated evidence records. Durable release evidence is published
+# through the publication protocol, not through Git.
+/evidence/
+
+# Build trees, downloaded source, release output: never committed
+/build/
+/out/
+/downloads/
+*.deb
+*.dsc
+*.buildinfo
+*.changes
+*.tar.xz
+*.tar.gz
+*.qcow2
+*.img
+*.iso
+
+# Private configuration and any key material
+/config/*.local
+*.key
+*.pem
+secring.*
+/keys/private/
+
+# Editor and OS noise
+*.swp
+*~
+.DS_Store
+
+# Python
+__pycache__

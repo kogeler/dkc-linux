@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/source-inventory-1.json",
+  "title": "Verified Debian source inventory",
+  "description": "Every flavor build consumes this exact inventory. Independent downloads are allowed; differing bytes are not.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source_package", "source_version", "dsc", "members", "release", "discovered_utc"],
+  "properties": {
+    "schema": { "const": "dkc.source-inventory.v1" },
+    "source_package": { "type": "string", "minLength": 1 },
+    "source_version": { "type": "string", "minLength": 1 },
+    "upstream_release": { "type": "string", "minLength": 1 },
+    "dsc": { "$ref": "#/$defs/member" },
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/member" }
+    },
+    "release": {
+      "description": "The authenticated Release the version was resolved from. A version without its signed metadata is not evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "suite", "codename", "date"],
+      "properties": {
+        "origin": { "type": "string" },
+        "label": { "type": "string" },
+        "suite": { "type": "string" },
+        "codename": { "type": "string" },
+        "date": { "type": "string" },
+        "valid_until": { "type": "string" },
+        "acquire_by_hash": { "type": "boolean" }
+      }
+    },
+    "snapshot_locator": {
+      "description": "Immutable fallback locator where the archive offers one.",
+      "type": ["string", "null"]
+    },
+    "maintainer_signature": {
+      "description": "Defence in depth over apt-secure, never a substitute for it.",
+      "enum": ["verified", "unavailable", "absent", "invalid"]
+    },
+    "discovered_utc": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "size", "sha256"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+~-]*$" },
+        "size": { "type": "integer", "exclusiveMinimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "uri": { "type": "string" }
+      }
+    }
+  }
+}

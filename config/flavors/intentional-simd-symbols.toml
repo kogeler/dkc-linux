@@ -1,0 +1,1177 @@
+schema_version = 1
+source_version = "7.1.7-1"
+
+# Exact final-artifact symbols reviewed from the accepted Linux 7.1.7 reference build
+# machine code. AMD display symbols are derived separately from the 66
+# exact CC_FLAGS_FPU objects and therefore are not duplicated here.
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_ad"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_dec"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_dec_tail"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_enc_tail"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_final"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aegis128-aesni.ko"
+symbol = "aegis128_aesni_init"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_dec1"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_dec4"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_enc1"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_enc4"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_inc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_aesni_inc_init"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_key_expansion_192a"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_key_expansion_192b"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_key_expansion_256a"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "_key_expansion_256b"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_ctr64_crypt_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_ctr64_crypt_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_ctr64_crypt_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_aad_update_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_aad_update_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_aad_update_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_aad_update_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_final_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_final_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_final_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_final_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_update_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_update_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_update_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_dec_update_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_final_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_final_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_final_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_final_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_update_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_update_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_update_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_enc_update_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_precompute_aesni"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_precompute_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_precompute_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_gcm_precompute_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xctr_crypt_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xctr_crypt_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xctr_crypt_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_decrypt_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_decrypt_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_decrypt_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_encrypt_aesni_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_encrypt_iv"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_encrypt_vaes_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aes_xts_encrypt_vaes_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_cbc_dec"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_cbc_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_ctr_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_cts_cbc_dec"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_cts_cbc_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_ecb_dec"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_ecb_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_set_key"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_xts_dec"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/aesni-intel.ko"
+symbol = "aesni_xts_enc"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "__camellia_dec_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "__camellia_enc_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "camellia_cbc_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "camellia_ecb_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "camellia_ecb_enc_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "roundsm16_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx-x86_64.ko"
+symbol = "roundsm16_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "__camellia_dec_blk32"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "__camellia_enc_blk32"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "camellia_cbc_dec_32way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "camellia_ecb_dec_32way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "camellia_ecb_enc_32way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "roundsm32_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/camellia-aesni-avx2.ko"
+symbol = "roundsm32_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast5-avx-x86_64.ko"
+symbol = "__cast5_dec_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast5-avx-x86_64.ko"
+symbol = "__cast5_enc_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast5-avx-x86_64.ko"
+symbol = "cast5_cbc_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast5-avx-x86_64.ko"
+symbol = "cast5_ecb_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast5-avx-x86_64.ko"
+symbol = "cast5_ecb_enc_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast6-avx-x86_64.ko"
+symbol = "__cast6_dec_blk8"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast6-avx-x86_64.ko"
+symbol = "__cast6_enc_blk8"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast6-avx-x86_64.ko"
+symbol = "cast6_cbc_dec_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast6-avx-x86_64.ko"
+symbol = "cast6_ecb_dec_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/cast6-avx-x86_64.ko"
+symbol = "cast6_ecb_enc_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx-x86_64.ko"
+symbol = "__serpent_dec_blk8_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx-x86_64.ko"
+symbol = "__serpent_enc_blk8_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx-x86_64.ko"
+symbol = "serpent_cbc_dec_8way_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx-x86_64.ko"
+symbol = "serpent_ecb_dec_8way_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx-x86_64.ko"
+symbol = "serpent_ecb_enc_8way_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx2.ko"
+symbol = "__serpent_dec_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx2.ko"
+symbol = "__serpent_enc_blk16"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx2.ko"
+symbol = "serpent_cbc_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx2.ko"
+symbol = "serpent_ecb_dec_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-avx2.ko"
+symbol = "serpent_ecb_enc_16way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-sse2-x86_64.ko"
+symbol = "__serpent_enc_blk_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/serpent-sse2-x86_64.ko"
+symbol = "serpent_dec_blk_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/twofish-avx-x86_64.ko"
+symbol = "__twofish_dec_blk8"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/twofish-avx-x86_64.ko"
+symbol = "__twofish_enc_blk8"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/twofish-avx-x86_64.ko"
+symbol = "twofish_cbc_dec_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/twofish-avx-x86_64.ko"
+symbol = "twofish_ecb_dec_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/crypto/twofish-avx-x86_64.ko"
+symbol = "twofish_ecb_enc_8way"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "__decode_register_operand"
+reason = "reviewed guest FPU register access bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "em_fninit"
+reason = "reviewed KVM guest FPU instruction emulation"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "em_fnstcw"
+reason = "reviewed KVM guest x87 control-word emulation bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "em_fnstsw"
+reason = "reviewed KVM guest x87 status-word emulation bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "em_fxrstor"
+reason = "reviewed KVM guest FPU instruction emulation"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "em_fxsave"
+reason = "reviewed KVM guest FPU instruction emulation"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "fetch_possible_mmx_operand"
+reason = "reviewed guest FPU register access bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "flush_pending_x87_faults"
+reason = "reviewed guest x87 fault delivery bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "fxregs_fixup"
+reason = "reviewed KVM guest FPU instruction emulation"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "kvm_hv_hypercall"
+reason = "reviewed guest FPU register access bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/arch/x86/kvm/kvm.ko"
+symbol = "writeback"
+reason = "reviewed guest FPU register access bracketed by the KVM FPU state API"
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/drm.ko"
+symbol = "drm_memcpy_from_wc"
+reason = "reviewed write-combining copy inline assembly bracketed by kernel_fpu_begin/end"
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/i915/i915.ko"
+symbol = "guc_log_copy_debuglogs_for_relay"
+reason = "reviewed Full LTO inlining of the write-combining copy path bracketed by kernel_fpu_begin/end"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/i915/i915.ko"
+symbol = "i915_gem_object_read_from_page"
+reason = "reviewed Full LTO inlining of the write-combining copy path bracketed by kernel_fpu_begin/end"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/i915/i915.ko"
+symbol = "i915_memcpy_from_wc"
+reason = "reviewed write-combining copy inline assembly bracketed by kernel_fpu_begin/end"
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/i915/i915.ko"
+symbol = "i915_unaligned_memcpy_from_wc"
+reason = "reviewed write-combining copy inline assembly bracketed by kernel_fpu_begin/end"
+
+[[entry]]
+artifact = "kernel/drivers/gpu/drm/i915/i915.ko"
+symbol = "intel_guc_log_dump"
+reason = "reviewed Full LTO inlining of the write-combining copy path bracketed by kernel_fpu_begin/end"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_2block_xor_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_2block_xor_avx512vl"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_4block_xor_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_4block_xor_avx512vl"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_4block_xor_ssse3"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_8block_xor_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_8block_xor_avx512vl"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_block_xor_ssse3"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "chacha_permute"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libchacha.ko"
+symbol = "hchacha_block_ssse3"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libnh.ko"
+symbol = "nh_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libnh.ko"
+symbol = "nh_sse2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libpoly1305.ko"
+symbol = "poly1305_blocks_avx"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libpoly1305.ko"
+symbol = "poly1305_blocks_avx2"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/crypto/libpoly1305.ko"
+symbol = "poly1305_blocks_avx512"
+reason = "reviewed dedicated x86 SIMD crypto implementation"
+
+[[entry]]
+artifact = "kernel/lib/raid/xor/xor.ko"
+symbol = "xor_gen_avx"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid/xor/xor.ko"
+symbol = "xor_gen_sse"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid/xor/xor.ko"
+symbol = "xor_gen_sse_pf64"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_2data_recov_avx2"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_2data_recov_avx512"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_2data_recov_ssse3"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx21_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx21_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx22_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx22_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx24_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx24_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5121_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5121_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5122_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5122_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5124_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_avx5124_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_datap_recov_avx2"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_datap_recov_avx512"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_datap_recov_ssse3"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse21_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse21_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse22_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse22_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse24_gen_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/lib/raid6/raid6_pq.ko"
+symbol = "raid6_sse24_xor_syndrome"
+reason = "reviewed RAID SIMD implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "nft_pipapo_avx2_lookup_4b_12"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "nft_pipapo_avx2_lookup_4b_2"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "nft_pipapo_avx2_lookup_4b_32"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "nft_pipapo_avx2_lookup_4b_4"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "nft_pipapo_avx2_lookup_4b_8"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "kernel/net/netfilter/nf_tables.ko"
+symbol = "pipapo_get_avx2"
+reason = "reviewed AVX2 pipapo implementation with kernel FPU and CPU-feature guards"
+
+[[entry]]
+artifact = "vmlinux"
+section = ".altinstr_replacement"
+reason = "reviewed x86 alternatives containing only XSAVE/XRSTOR state-management variants"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "__clmul_gf128mul_ble"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "aes128_expandkey_aesni"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "aes256_expandkey_aesni"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "aes_decrypt_aesni"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "aes_encrypt_aesni"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "blake2s_compress_avx512"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "blake2s_compress_ssse3"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "copy_fpstate_to_sigframe"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc16_msb_pclmul_sse"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc16_msb_vpclmul_avx2"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc16_msb_vpclmul_avx512"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc32_lsb_pclmul_sse"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc32_lsb_vpclmul_avx2"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc32_lsb_vpclmul_avx512"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc32c_x86_3way"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_lsb_pclmul_sse"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_lsb_vpclmul_avx2"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_lsb_vpclmul_avx512"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_msb_pclmul_sse"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_msb_vpclmul_avx2"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "crc64_msb_vpclmul_avx512"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpregs_restore_userregs"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__clear_user_states"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__drop"
+reason = "reviewed x87 pending-exception drain in the x86 FPU state-management path"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__init_check_bugs"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__init_cpu"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__init_system_generic"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu__restore_sig"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu_clone"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu_idle_fpregs"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu_reset_from_exception_fixup"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu_swap_kvm_fpstate"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "fpu_sync_fpstate"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "ghash_blocks_pclmul"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "intel_pmu_arch_lbr_read_xsave"
+reason = "reviewed XSAVES instruction in the architectural LBR state path"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "intel_pmu_arch_lbr_xrstors"
+reason = "reviewed XRSTORS instruction in the architectural LBR state path"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "intel_pmu_arch_lbr_xsaves"
+reason = "reviewed XSAVES instruction in the architectural LBR state path"
+lto_modes = ["full"]
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "kernel_fpu_begin_mask"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "os_xrstor_booting"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "os_xrstor_safe"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "os_xsave"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "polyval_blocks_pclmul_avx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "polyval_mul_pclmul"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "polyval_mul_pclmul_avx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "restore_fpregs_from_fpstate"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "save_fpregs_to_fpstate"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "setup_init_fpu_buf"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha1_ni_transform"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha1_transform_avx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha1_transform_avx2"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha1_transform_ssse3"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha256_ni_finup2x"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha256_ni_transform"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha256_transform_avx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha256_transform_rorx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha256_transform_ssse3"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha512_transform_avx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha512_transform_rorx"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "sha512_transform_ssse3"
+reason = "reviewed built-in x86 SIMD crypto or checksum implementation"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "xrstors"
+reason = "reviewed x86 FPU state-management instruction"
+
+[[entry]]
+artifact = "vmlinux"
+symbol = "xsaves"
+reason = "reviewed x86 FPU state-management instruction"

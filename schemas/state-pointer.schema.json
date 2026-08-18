@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/state-pointer-1.json",
+  "title": "Automation state pointer",
+  "description": "The payload of state/current.asc. Clearsigned, so payload and signature change in one conditional PutObject. This is the automation commit point; dists/trixie/InRelease is the separate APT-client commit point.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generation", "publication_id", "manifest_key", "manifest_sha256", "committed_utc"],
+  "properties": {
+    "schema": { "const": "dkc.state-pointer.v1" },
+    "generation": {
+      "description": "Monotonically increasing. A pointer whose generation is not exactly the expected one aborts the transaction rather than being overwritten.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "publication_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+    "manifest_key": { "type": "string", "pattern": "^state/publications/[0-9a-z-]{8,64}/manifest\\.json$" },
+    "manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "previous_generation": { "type": ["integer", "null"], "minimum": 0 },
+    "committed_utc": { "type": "string", "format": "date-time" }
+  }
+}

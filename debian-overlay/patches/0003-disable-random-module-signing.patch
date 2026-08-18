@@ -1,0 +1,152 @@
+--- a/debian/config/amd64/defines.toml
++++ b/debian/config/amd64/defines.toml
+@@ -42,7 +42,10 @@
+ 
+ [build]
+ enable_rust = true
+-enable_signed = true
++# DKC's initial product has no Secure Boot trust chain. Build the
++# directly installable image package instead of Debian's separate
++# official signing stage.
++enable_signed = false
+ kernel_file = 'arch/x86/boot/bzImage'
+ kernel_stem = 'vmlinuz'
+ 
+--- a/debian/config/config
++++ b/debian/config/config
+@@ -6361,7 +6361,9 @@
+ CONFIG_MODULE_FORCE_UNLOAD=y
+ # CONFIG_MODVERSIONS is not set
+ # CONFIG_MODULE_SRCVERSION_ALL is not set
+-CONFIG_MODULE_SIG=y
++# DKC deliberately disables random per-build module signing. Archive,
++# module and UEFI signing are separate trust domains.
++# CONFIG_MODULE_SIG is not set
+ #. Signature validation is a run-time option
+ # CONFIG_MODULE_SIG_FORCE is not set
+ CONFIG_MODULE_SIG_ALL=y
+@@ -7629,11 +7631,11 @@
+ ##
+ ## file: security/lockdown/Kconfig
+ ##
+-CONFIG_SECURITY_LOCKDOWN_LSM=y
+-## choice: Kernel default lockdown mode
+-CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
+-## end choice
+-CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT=y
++# SECURITY_LOCKDOWN_LSM selects MODULE_SIG whenever modules are enabled.
++# The initial unsigned product cannot truthfully retain EFI-triggered
++# lockdown without also designing the module/UEFI trust chain.
++# CONFIG_SECURITY_LOCKDOWN_LSM is not set
++# CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT is not set
+ 
+ ##
+ ## file: security/selinux/Kconfig
+--- a/debian/rules.real
++++ b/debian/rules.real
+@@ -81,7 +81,7 @@
+ $(BUILD_DIR)/config.$(ARCH)_$(FEATURESET)_$(FLAVOUR): $(KCONFIG)
+ 	mkdir -p '$(dir $@)'
+ 	debian/bin/kconfig.py '$@' $(KCONFIG) $(KCONFIG_OPTIONS) \
+-		-o MODULE_SIG_KEY=\"output/signing_key.pem\" \
++		-o MODULE_SIG=n \
+ 		$(call if_profile, pkg.linux.nokerneldbginfo pkg.linux.quick,-o DEBUG_INFO_NONE=y -o DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=n) \
+ 		$(call if_profile, pkg.linux.norust,-o RUST=n)
+ 
+@@ -183,37 +183,34 @@
+ $(STAMPS_DIR)/build_$(ARCH)_$(FEATURESET)_$(FLAVOUR): OUTPUT_DIR=$(DIR)/output/image
+ $(STAMPS_DIR)/build_$(ARCH)_$(FEATURESET)_$(FLAVOUR): OUTPUT_DIR_DBG=$(DIR)/output/image-dbg
+ $(STAMPS_DIR)/build_$(ARCH)_$(FEATURESET)_$(FLAVOUR): OUTPUT_DIR_DBG_LIB=$(OUTPUT_DIR_DBG)/lib/modules/$(REAL_VERSION)
+-$(STAMPS_DIR)/build_$(ARCH)_$(FEATURESET)_$(FLAVOUR): export KBUILD_SIGN_PIN = $(shell dd if=/dev/random bs=16 count=1 status=none | base64)
+ $(STAMPS_DIR)/build_$(ARCH)_$(FEATURESET)_$(FLAVOUR): $(STAMPS_DIR)/setup_$(ARCH)_$(FEATURESET)_$(FLAVOUR)
+ 	rm -rf '$(DIR)/output'
+ 	install -d '$(DIR)/output'
+ 
+-# Make sure the support for the used key type is built-in, CRYPTO_ECDSA for ecdsa keys.
+-	openssl req -new -utf8 -sha256 -days 36500 \
+-		-batch -x509 -config certs/default_x509.genkey \
+-		-passout env:KBUILD_SIGN_PIN \
+-		-outform PEM -out $(DIR)/output/signing_key.pem \
+-		-keyout $(DIR)/output/signing_key.pem \
+-		-newkey ec -pkeyopt ec_paramgen_curve:secp384r1 2>&1
+-
+ 	+$(MAKE_CLEAN) -C '$(DIR)'
+ 	debian/bin/buildcheck.py $(DIR) $(ARCH) $(FEATURESET) $(FLAVOUR) build
+ 
+ 	install -D -m644 '$(DIR)/$(IMAGE_FILE)' $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)
+ ifeq ($(IMAGE_FILE),vmlinux)
+ # This is the unprocessed ELF image, so we need to strip debug symbols
+-	$(CROSS_COMPILE)strip --strip-debug $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)
++	$(if $(LLVM_MAJOR),llvm-strip-$(LLVM_MAJOR),$(CROSS_COMPILE)strip) --strip-debug $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)
+ endif
+ 
+ 	sed '/CONFIG_\(MODULE_SIG_\(ALL\|KEY\)\|SYSTEM_TRUSTED_KEYS\|BUILD_SALT\)[ =]/d' $(DIR)/.config \
+ 		> $(OUTPUT_DIR)/boot/config-$(REAL_VERSION)
++ifneq (,$(filter pkg.linux.nokerneldbg,$(DEB_BUILD_PROFILES)))
++	install -D -m644 $(DIR)/System.map $(OUTPUT_DIR)/boot/System.map-$(REAL_VERSION)
++else
+ 	echo "ffffffffffffffff B The real System.map is in the linux-image-$(REAL_VERSION)-dbg package" \
+ 		> $(OUTPUT_DIR)/boot/System.map-$(REAL_VERSION)
++endif
+ 
+ 	install -D -m644 $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION) $(OUTPUT_DIR)/lib/modules/$(REAL_VERSION)/vmlinuz.unsigned
+ 
++ifeq (,$(filter pkg.linux.nokerneldbg,$(DEB_BUILD_PROFILES)))
+ 	install -D -m644 $(DIR)/vmlinux $(OUTPUT_DIR_DBG_LIB)/vmlinux
+ 	install -D -m644 $(DIR)/System.map $(OUTPUT_DIR_DBG_LIB)/System.map
++endif
+ 
+ # cmd_depmod=: Don't run depmod to generate dependency files
+ 	+$(MAKE_CLEAN) -C $(DIR) modules_install \
+@@ -221,8 +218,7 @@
+ 		INSTALL_MOD_PATH='$(CURDIR)/$(OUTPUT_DIR)' \
+ 		INSTALL_MOD_STRIP=1
+ 
+-	rm $(DIR)/output/signing_key.pem
+-
++ifeq (,$(filter pkg.linux.nokerneldbg,$(DEB_BUILD_PROFILES)))
+ # cmd_depmod=: Don't run depmod to generate dependency files
+ # cmd_sign=: Don't sign modules
+ # suffix-y=: Don't compress modules
+@@ -231,6 +227,7 @@
+ 		cmd_sign= \
+ 		suffix-y= \
+ 		INSTALL_MOD_PATH='$(CURDIR)/$(OUTPUT_DIR_DBG)'
++endif
+ 
+ ifeq ($(ENABLE_DTB),True)
+ 	+$(MAKE_CLEAN) -C $(DIR) dtbs
+@@ -239,13 +236,17 @@
+ 
+ 	rm -f $(OUTPUT_DIR)/lib/modules/$(REAL_VERSION)/build
+ 	rm -f $(OUTPUT_DIR)/lib/modules/$(REAL_VERSION)/source
++ifeq (,$(filter pkg.linux.nokerneldbg,$(DEB_BUILD_PROFILES)))
+ 	rm -f $(OUTPUT_DIR_DBG)/lib/modules/$(REAL_VERSION)/build
+ 	rm -f $(OUTPUT_DIR_DBG)/lib/modules/$(REAL_VERSION)/source
+-
++endif
++
++ifeq (,$(filter pkg.linux.nokerneldbg,$(DEB_BUILD_PROFILES)))
+ 	install -d $(CURDIR)/$(OUTPUT_DIR_DBG)/lib/modules/$(REAL_VERSION)/vdso
+ 	+$(MAKE_CLEAN) -C $(DIR) vdso_install \
+ 		cmd_symlink= \
+ 		INSTALL_MOD_PATH='$(CURDIR)/$(OUTPUT_DIR_DBG)'
++endif
+ 
+ 	@$(stamp)
+ 
+@@ -377,8 +378,12 @@
+ 	$(dh_binary_pre)
+ 
+ 	dh_installdirs $(BASE_DIR)
+-	$(CROSS_COMPILE)objcopy -j .BTF -j .BTF_ids $(SOURCE_DIR)/vmlinux $(DIR)/vmlinux
+-	chmod 644 $(DIR)/vmlinux
++	if grep -qx 'CONFIG_DEBUG_INFO_BTF=y' $(SOURCE_DIR)/.config; then \
++		$(if $(LLVM_MAJOR),llvm-objcopy-$(LLVM_MAJOR),$(CROSS_COMPILE)objcopy) -j .BTF -j .BTF_ids $(SOURCE_DIR)/vmlinux $(DIR)/vmlinux; \
++		chmod 644 $(DIR)/vmlinux; \
++	else \
++		rm -f $(DIR)/vmlinux; \
++	fi
+ 
+ 	@echo 'KBUILD_OUTPUT=$(BASE_DIR)' >> $(DIR)/Makefile
+ 	@echo 'include $(BASE_DIR_COMMON)/Makefile' >> $(DIR)/Makefile

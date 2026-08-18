@@ -1,0 +1,128 @@
+--- a/debian/lib/python/debian_linux/config_v2.py
++++ b/debian/lib/python/debian_linux/config_v2.py
+@@ -43,6 +43,8 @@
+ class ConfigBuild:
+     cflags: Optional[str] = None
+     c_compiler: Optional[str] = None
++    llvm_major: Optional[int] = None
++    abi_name: Optional[str] = None
+     compiler_gnutype: Optional[str] = None
+     compiler_gnutype_compat: Optional[str] = None
+     rust_build_depends: list[PackageRelationGroup] = dataclasses.field(default_factory=list)
+--- a/debian/config/defines.toml
++++ b/debian/config/defines.toml
+@@ -165,6 +165,7 @@
+ 
+ [build]
+ c_compiler = 'gcc-15'
++llvm_major = 21
+ rust_build_depends = [
+   'rustc:native (>= 1.78.0)',
+   'bindgen:native (>= 0.65.1)',
+--- a/debian/bin/gencontrol.py
++++ b/debian/bin/gencontrol.py
+@@ -275,6 +275,8 @@
+         if t := config.build.cflags:
+             makeflags['KCFLAGS'] = t
+         makeflags['C_COMPILER'] = config.build.c_compiler
++        if llvm_major := config.build.llvm_major:
++            makeflags['LLVM_MAJOR'] = str(llvm_major)
+         if t := config.build.compiler_gnutype:
+             makeflags['KERNEL_GNU_TYPE'] = t
+         if t := config.build.compiler_gnutype_compat:
+@@ -301,20 +303,44 @@
+ 
+         do_meta = config.packages.meta
+ 
++        llvm_major = config.build.llvm_major
+         relation_c_compiler = PackageRelationEntry(cast(str, config.build.c_compiler))
+-        relation_c_compiler_host = PackageRelationEntry(
+-            relation_c_compiler,
+-            name=f'{relation_c_compiler.name}-for-host',
+-        )
++        if llvm_major:
++            # LLVM ships no -for-host meta-package, so depend on the real
++            # versioned package. Fabricating clang-N-for-host would generate a
++            # dependency that can never be satisfied.
++            relation_c_compiler_host = PackageRelationEntry(f'clang-{llvm_major}')
++            relation_llvm_tools = [
++                PackageRelationEntry(f'{tool}-{llvm_major}')
++                for tool in ('clang', 'lld', 'llvm')
++            ]
++        else:
++            relation_c_compiler_host = PackageRelationEntry(
++                relation_c_compiler,
++                name=f'{relation_c_compiler.name}-for-host',
++            )
+ 
+         # Generate compiler build-depends:
+-        self.bundle.source.build_depends_arch.merge([
+-            PackageRelationEntry(
+-                relation_c_compiler_host,
+-                arches={arch},
+-                restrictions='<!pkg.linux.nokernel>',
+-            )
+-        ])
++        if llvm_major:
++            # One merge per package: merging a list would make them
++            # alternatives, and apt would satisfy the whole group by installing
++            # clang alone, leaving the build without a linker.
++            for relation_llvm_tool in relation_llvm_tools:
++                self.bundle.source.build_depends_arch.merge([
++                    PackageRelationEntry(
++                        relation_llvm_tool,
++                        arches={arch},
++                        restrictions='<!pkg.linux.nokernel>',
++                    )
++                ])
++        else:
++            self.bundle.source.build_depends_arch.merge([
++                PackageRelationEntry(
++                    relation_c_compiler_host,
++                    arches={arch},
++                    restrictions='<!pkg.linux.nokernel>',
++                )
++            ])
+         if config.build.enable_rust:
+             for group in config.build.rust_build_depends:
+                 self.bundle.source.build_depends_arch.merge(
+@@ -327,7 +353,9 @@
+ 
+         # Generate compiler build-depends for kernel:
+         # gcc-N-hppa64-linux-gnu [hppa] <!pkg.linux.nokernel>
+-        if gnutype := config.build.compiler_gnutype:
++        # A cross toolchain is named by GNU triplet; clang is never invoked
++        # through a triplet prefix, so no such dependency is synthesised for it.
++        if (gnutype := config.build.compiler_gnutype) and not llvm_major:
+             if gnutype != config.defs_debianarch.gnutype:
+                 self.bundle.source.build_depends_arch.merge([
+                     PackageRelationEntry(
+@@ -426,7 +454,15 @@
+                     desc.append(config.description.long[part])
+                     desc.append_short(config.description.short[part])
+ 
+-        packages_headers[0].depends.merge([relation_c_compiler_host])
++        if llvm_major:
++            # A plain external-module build consumes every tool named in
++            # .kernelvariables.  clang alone does not install lld or the
++            # versioned llvm-ar/nm/objcopy tools, so the headers package
++            # must make the complete client-side closure installable.
++            for relation_llvm_tool in relation_llvm_tools:
++                packages_headers[0].depends.merge([relation_llvm_tool])
++        else:
++            packages_headers[0].depends.merge([relation_c_compiler_host])
+         packages_own.extend(packages_binary)
+         packages_own.extend(packages_image)
+         packages_own.extend(packages_headers)
+@@ -583,6 +619,11 @@
+         else:
+             self.abiname = version.linux_version + self.debianrelease.abi_suffix
+ 
++        if configured_abiname := self.config.build.abi_name:
++            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.+~-]*', configured_abiname):
++                raise RuntimeError(f'Invalid configured ABI name: {configured_abiname!r}')
++            self.abiname = configured_abiname
++
+         self.vars = {
+             'upstreamversion': self.version.linux_version_full,
+             'version': self.version.linux_version,

@@ -1,0 +1,12 @@
+# kind     repository-relative path
+trigger    .github/workflows/container-images.yml
+content    config/base-image.lock
+trigger    config/container-images.inputs
+content    container/Containerfile.apt-client
+content    container/Containerfile.build
+content    container/Containerfile.toolbox
+content    mk/container.mk
+trigger    mk/preflight.mk
+trigger    scripts/check-current-main.sh
+content    scripts/container-images.sh
+content    scripts/lib/common.sh

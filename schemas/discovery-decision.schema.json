@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/discovery-decision-1.json",
+  "title": "Typed discovery decision",
+  "description": "The small, validated output of the discovery graph. Larger state travels as a hashed artifact, never as a job output, so this stays deliberately narrow.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "decision", "source_version", "source_dsc_sha256",
+    "dkc_revision", "build_policy_sha256", "lto_mode", "retention_mode",
+    "build_required", "maintenance_required", "publish_allowed",
+    "authoritative_state_read", "utc"
+  ],
+  "properties": {
+    "schema": { "const": "dkc.discovery-decision.v1" },
+    "decision": {
+      "description": "no_op and blocked are not the same: blocked means an invariant would be violated, and must never be relaxed into no_op.",
+      "enum": ["no_op", "build", "maintenance", "blocked"]
+    },
+    "reason": { "type": "string", "maxLength": 500 },
+    "source_version": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "source_dsc_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dkc_revision": { "type": "integer", "minimum": 1 },
+    "build_policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "lto_mode": { "enum": ["none", "thin", "full"] },
+    "retention_mode": { "enum": ["series", "series-size"] },
+    "retention_max_bytes": { "type": "integer", "minimum": 1 },
+    "state_generation": {
+      "description": "Absent when no signed state could be read; that is a distinct case from generation zero.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "state_publication_id": {
+      "type": "string",
+      "pattern": "^[0-9a-z-]{8,64}$"
+    },
+    "build_required": { "type": "boolean" },
+    "maintenance_required": { "type": "boolean" },
+    "publish_allowed": {
+      "description": "False whenever authoritative state was unavailable. A public hint can never set this true.",
+      "type": "boolean"
+    },
+    "authoritative_state_read": {
+      "description": "Whether state came from an authenticated source query rather than a replayable public copy.",
+      "type": "boolean"
+    },
+    "utc": { "type": "string", "format": "date-time" }
+  },
+  "dependentRequired": {
+    "state_generation": ["state_publication_id"],
+    "state_publication_id": ["state_generation"]
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "retention_mode": { "const": "series-size" } } },
+      "then": { "required": ["retention_max_bytes"] },
+      "else": { "not": { "required": ["retention_max_bytes"] } }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "no_op" } } },
+      "then": {
+        "required": ["state_generation", "state_publication_id"],
+        "properties": {
+          "build_required": { "const": false },
+          "maintenance_required": { "const": false },
+          "publish_allowed": { "const": false },
+          "authoritative_state_read": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "build" } } },
+      "then": {
+        "properties": {
+          "build_required": { "const": true },
+          "maintenance_required": { "const": false },
+          "publish_allowed": { "const": true },
+          "authoritative_state_read": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "maintenance" } } },
+      "then": {
+        "required": ["state_generation", "state_publication_id"],
+        "properties": {
+          "build_required": { "const": false },
+          "maintenance_required": { "const": true },
+          "publish_allowed": { "const": true },
+          "authoritative_state_read": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "blocked" } } },
+      "then": {
+        "properties": {
+          "build_required": { "const": false },
+          "maintenance_required": { "const": false },
+          "publish_allowed": { "const": false }
+        }
+      }
+    }
+  ]
+}

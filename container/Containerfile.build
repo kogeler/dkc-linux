@@ -1,0 +1,230 @@
+# DKC kernel build container.
+#
+# Unlike the toolbox, this image IS a release build input: its digest, its
+# package versions, and its toolchain hashes are part of the publication
+# identity. Nothing here may be nondeterministic or unpinned.
+#
+# Toolchain sourcing is deliberate and user-facing. The generated headers
+# package carries a runtime dependency on the compiler the kernel was built
+# with, so whatever is chosen here is what every DKMS user must be able to
+# install. That is why the compiler comes from Debian itself and not from a
+# third-party repository:
+#
+#   * clang-21 lives in trixie-backports, which is official Debian on
+#     deb.debian.org, signed by the archive key already trusted on every Debian
+#     13 system. No new key, no third-party service.
+#   * clang-22 exists only on apt.llvm.org, whose own maintainers describe the
+#     packages as best-effort. Depending on it would force every headers user to
+#     add a rolling third-party repository, and would leave them unable to
+#     install headers if those packages were ever dropped.
+#
+# Two more deliberate choices:
+#
+#   * No `update-alternatives` redirecting cc/c++/ld to Clang, and no CC/CXX/LD
+#     in the environment. The kernel selects its toolchain with `LLVM=-<major>`
+#     and Debian's packaging helpers may legitimately need GCC on the host side.
+#     A global redirect would hide which compiler actually ran.
+#   * No Rust target beyond the host. Rust is a build-time input only; it never
+#     appears in a package's runtime dependencies.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG DEBIAN_SUITE=trixie
+
+# clang-21 comes from trixie-backports. Kernel 7.1.7 requires LLVM >= 15, so
+# this clears the minimum with room, and it keeps CC_HAS_COUNTED_BY and
+# LD_CAN_USE_KEEP_IN_OVERLAY enabled, matching the hardening of Debian's own
+# gcc-15 build.
+ARG LLVM_MAJOR=21
+
+# Trixie backports supplies rustc/rust-src and Trixie supplies bindgen. Kernel
+# LTO requires rustc and Clang to use the same LLVM major, and the backported
+# compiler matches the selected Debian clang-21 toolchain. This is the single
+# toolchain for LTO and non-LTO builds alike.
+
+ENV LC_ALL=C.UTF-8 \
+	LANG=C.UTF-8 \
+	TZ=UTC \
+	SOURCE_DATE_EPOCH=0 \
+	PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONHASHSEED=0
+
+# --------------------------------------------------------------------------
+# LLVM from Debian
+# --------------------------------------------------------------------------
+
+RUN set -eux; \
+	# The base image ships APT hooks that rm absolute paths under
+	# /var/cache/apt. Audits run unprivileged against a read-only root, where
+	# those hooks can only fail noisily; they are an image artifact, not policy.
+	rm -f /etc/apt/apt.conf.d/docker-clean; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends ca-certificates; \
+	\
+	printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: %s-backports\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+		"${DEBIAN_SUITE}" >/etc/apt/sources.list.d/backports.sources; \
+	apt-get update; \
+	# Bring every package inherited from the digest-pinned base to a version in
+	# the same authenticated indices used below. Staging resolves and hashes the
+	# exact .deb for every installed version; a stale base-only version that is no
+	# longer index-addressable must fail that lock instead of becoming an
+	# unpreservable hidden input.
+	apt-get upgrade -y; \
+	\
+	apt-get install -y --no-install-recommends \
+		"clang-${LLVM_MAJOR}" \
+		"lld-${LLVM_MAJOR}" \
+		"llvm-${LLVM_MAJOR}" \
+		"libclang1-${LLVM_MAJOR}" \
+		"libclang-${LLVM_MAJOR}-dev" \
+		"libclang-common-${LLVM_MAJOR}-dev"; \
+	\
+	# Every LLVM package must come from Debian. A stray third-party origin here
+	# would end up as a runtime dependency of the published headers package.
+	for pkg in "clang-${LLVM_MAJOR}" "lld-${LLVM_MAJOR}" "llvm-${LLVM_MAJOR}"; do \
+		origin="$(apt-cache policy "$pkg" | awk '/\*\*\*/{getline; print $2}')"; \
+		echo "${pkg} installed from ${origin}"; \
+		case "$origin" in \
+		http://deb.debian.org/debian) ;; \
+		*) echo "refusing a non-Debian origin for ${pkg}: ${origin}" >&2; exit 1 ;; \
+		esac; \
+	done; \
+	\
+	"/usr/bin/clang-${LLVM_MAJOR}" --version; \
+	"/usr/bin/ld.lld-${LLVM_MAJOR}" --version; \
+	# bindgen searches LIBCLANG_PATH for libclang.so; assert it is there and
+	# that it really resolves to the selected major rather than to Trixie's.
+	test -e "/usr/lib/llvm-${LLVM_MAJOR}/lib/libclang.so"; \
+	resolved="$(readlink -f "/usr/lib/llvm-${LLVM_MAJOR}/lib/libclang.so")"; \
+	echo "libclang.so resolves to ${resolved}"; \
+	case "${resolved}" in \
+	*libclang-${LLVM_MAJOR}.so*) ;; \
+	*) echo "libclang.so does not resolve to major ${LLVM_MAJOR}" >&2; exit 1 ;; \
+	esac
+
+# --------------------------------------------------------------------------
+# Debian build dependencies for the kernel packaging
+# --------------------------------------------------------------------------
+#
+# The kernel-package portion of this list is derived from the source's own
+# Build-Depends filtered for amd64 under config/build-profiles, not hand-picked.
+# `make release-preflight` checks it against the real control file and fails on
+# drift. libcap-dev, libcap-ng-dev, and the selected compiler-rt development
+# package are additional exact-source kselftest build inputs; they are recorded
+# and byte-locked with every other installed build-image package.
+#
+# build-essential is a real dependency, not a convenience: dpkg-checkbuilddeps
+# requires the package itself. rsync is declared unconditionally in
+# Build-Depends-Indep and is needed for the architecture-independent
+# headers-common package.
+
+RUN set -eux; \
+	apt-get install -y --no-install-recommends \
+		bc \
+		bison \
+		build-essential \
+		cpio \
+		debian-keyring \
+		debhelper \
+		dh-python \
+		fakeroot \
+		flex \
+		gpgv \
+		kmod \
+		libelf-dev \
+		libcap-dev \
+		libcap-ng-dev \
+		"libclang-rt-${LLVM_MAJOR}-dev" \
+		libssl-dev \
+		lz4 \
+		make \
+		openssl \
+		pahole \
+		python3 \
+		python3-dacite \
+		python3-jinja2 \
+		quilt \
+		rsync \
+		time \
+		xz-utils \
+		zstd
+
+# Evidence readers are build inputs too. diffoscope-minimal is sufficient for
+# the byte-rebuild gate and avoids the large desktop/toolchain recommendation
+# closure of the full metapackage. Lintian audits the packages that this image
+# produces; neither tool is shipped to users.
+RUN set -eux; \
+	apt-get install -y --no-install-recommends \
+		diffoscope-minimal \
+		lintian
+
+# --------------------------------------------------------------------------
+# Rust: a build input only, never a published dependency
+# --------------------------------------------------------------------------
+
+RUN set -eux; \
+	apt-get install -y --no-install-recommends \
+		-t "${DEBIAN_SUITE}-backports" rustc rust-src; \
+	apt-get install -y --no-install-recommends bindgen; \
+	rustc_llvm_major="$(rustc -vV | sed -n 's/^LLVM version: \([0-9][0-9]*\).*/\1/p')"; \
+	test "${rustc_llvm_major}" = "${LLVM_MAJOR}" || { \
+		echo "rustc LLVM ${rustc_llvm_major} does not match Clang ${LLVM_MAJOR}" >&2; \
+		exit 1; \
+	}
+
+# --------------------------------------------------------------------------
+# Record what was actually installed, for the toolchain lock
+# --------------------------------------------------------------------------
+
+RUN set -eux; \
+	mkdir -p /usr/share/dkc; \
+	dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\n' \
+		| sort >/usr/share/dkc/packages.tsv; \
+	# Record every authenticated package index used for this image. The package
+	# and .deb lock is emitted by the networked staging target from these exact installed
+	# versions, before compilation begins.
+	find /var/lib/apt/lists -maxdepth 1 -type f -name '*InRelease' -print0 \
+		| sort -z | xargs -0 sha256sum >/usr/share/dkc/apt-indexes.sha256; \
+	{ \
+		echo "llvm_major=${LLVM_MAJOR}"; \
+		echo "clang=$("/usr/bin/clang-${LLVM_MAJOR}" --version | head -1)"; \
+		echo "lld=$("/usr/bin/ld.lld-${LLVM_MAJOR}" --version | head -1)"; \
+		echo "clang_package=$(dpkg-query -W -f='${Version}' "clang-${LLVM_MAJOR}")"; \
+		echo "rust_source=debian"; \
+		echo "rustc=$(rustc --version)"; \
+		echo "rustc_llvm_version=$(rustc -vV | sed -n 's/^LLVM version: //p')"; \
+		echo "bindgen=$(bindgen --version)"; \
+		echo "libclang_path=/usr/lib/llvm-${LLVM_MAJOR}/lib"; \
+		echo "libclang=$(dpkg-query -W -f='${Version}' "libclang1-${LLVM_MAJOR}")"; \
+	} >/usr/share/dkc/toolchain.env; \
+	cat /usr/share/dkc/toolchain.env; \
+	rm -rf /var/lib/apt/lists/*; \
+	! command -v curl
+
+# Debian's bindgen depends on the unversioned libclang-dev, which on Trixie is
+# libclang 19, so both 19 and the selected major end up installed. bindgen
+# resolves libclang with dlopen at runtime and would happily load the older one,
+# producing Rust bindings from a different compiler than the kernel is built
+# with. LIBCLANG_PATH pins it to the selected major.
+#
+# No CC, CXX, or LD is exported on purpose: the kernel picks its toolchain with
+# LLVM=-<major>, and a stray CC in the environment would silently override it.
+ENV LIBCLANG_PATH=/usr/lib/llvm-${LLVM_MAJOR}/lib \
+	DKC_LLVM_MAJOR=${LLVM_MAJOR} \
+	PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# A symlink check alone does not prove what bindgen dlopens.  Exercise its real
+# dynamic-loading path and reject the Trixie libclang 19 dependency that is
+# necessarily co-installed with Debian's bindgen package.
+RUN set -eux; \
+	printf 'struct dkc_bindgen_probe { int value; };\n' >/tmp/dkc-bindgen.h; \
+	LD_DEBUG=libs bindgen /tmp/dkc-bindgen.h --no-layout-tests -- -x c \
+		>/tmp/dkc-bindgen.rs 2>/tmp/dkc-bindgen.ld; \
+	test -s /tmp/dkc-bindgen.rs; \
+	grep -Eq "calling init: .*/libclang-${LLVM_MAJOR}([.][0-9]+)*[.]so([.][0-9]+)*" /tmp/dkc-bindgen.ld; \
+	! grep -Eq 'calling init: .*/libclang-19([.][0-9]+)*[.]so([.][0-9]+)*' /tmp/dkc-bindgen.ld; \
+	rm -f /tmp/dkc-bindgen.h /tmp/dkc-bindgen.rs /tmp/dkc-bindgen.ld
+
+WORKDIR /work

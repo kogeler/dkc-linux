@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/provenance-1.json",
+  "title": "Build provenance record",
+  "description": "Emitted per publication and covered by a signature. It records what was built, from what, by what, and on what. It does not claim a SLSA level.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "repository_commit", "worktree", "source", "identity",
+    "toolchain", "container", "build_commands", "artifacts", "built_utc"
+  ],
+  "properties": {
+    "schema": { "const": "dkc.provenance.v1" },
+    "repository_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "worktree": { "enum": ["clean", "dirty"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "version", "dsc_sha256"],
+      "properties": {
+        "package": { "type": "string" },
+        "version": { "type": "string" },
+        "dsc_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "members": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dkc_version", "dkc_revision", "build_id", "abi"],
+      "properties": {
+        "dkc_version": { "type": "string" },
+        "dkc_revision": { "type": "integer", "minimum": 1 },
+        "build_id": { "type": "string", "pattern": "^[0-9a-f]{12,}$" },
+        "abi": { "type": "string" },
+        "kernel_releases": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "build_input_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "toolchain": {
+      "description": "Four distinct compiler inputs: the C compiler, rustc, rustc's bundled backend, and bindgen. LLVM=-N does not control Rust code generation, so they are never collapsed into one field.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["llvm_major", "clang_package_version", "rustc_version", "bindgen_version"],
+      "properties": {
+        "llvm_major": { "type": "integer", "minimum": 1 },
+        "clang_package_version": { "type": "string" },
+        "clang_origin": { "type": "string" },
+        "lld_package_version": { "type": "string" },
+        "rustc_version": { "type": "string" },
+        "rustc_source": { "enum": ["debian", "pinned"] },
+        "rustc_backend_version": { "type": "string" },
+        "rust_src_version": { "type": "string" },
+        "bindgen_version": { "type": "string" },
+        "package_versions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_image_digest", "image_id"],
+      "properties": {
+        "base_image_digest": { "type": "string" },
+        "image_id": { "type": "string" },
+        "definition_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "build_commands": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "cpus": { "type": "integer" },
+        "memory_gib": { "type": "integer" },
+        "peak_disk_gib": { "type": "integer" },
+        "elapsed_seconds": { "type": "integer" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256", "size"],
+        "properties": {
+          "name": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reproducibility": {
+      "type": "object",
+      "additionalProperties": { "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"] }
+    },
+    "built_utc": { "type": "string", "format": "date-time" }
+  }
+}

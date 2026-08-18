@@ -1,0 +1,171 @@
+# Real linux stanzas from the Debian sid Sources index.
+# Captured 2026-08-10T18:09:12Z by: make fixtures
+# Only the parsed fields are kept; Binary and Build-Depends are omitted for size.
+# The commented release header records the authenticated metadata they came from.
+# release: Origin: Debian
+# release: Label: Debian
+# release: Suite: unstable
+# release: Codename: sid
+# release: Date: Mon, 10 Aug 2026 14:10:18 UTC
+# release: Valid-Until: Mon, 17 Aug 2026 14:10:18 UTC
+# release: Acquire-By-Hash: yes
+Package: linux
+Version: 6.12.94-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 985a33d437c11f73f672b808b62589a0db3e97c6c286f315dbe14d1fc43f1191 288306 linux_6.12.94-1.dsc
+ 3eea3dd18f67a103f6f8312e314075f695a27eaddd839e7b6c4641e6616dabba 151297764 linux_6.12.94.orig.tar.xz
+ 8c5130fd9dee8d6efcc594dc3357809ad8e0d0234357139f85f5ed39b37922b4 1838436 linux_6.12.94-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 6.18.5-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 18c0802958cbe1980d2d18020c35de6c0d91affc7a7075fd4e3d83ece128a156 182011 linux_6.18.5-1.dsc
+ 69ac99a397e2e1d9e97f6ade0c01e4ab704ba999667932b6b35fec032700cb19 157376312 linux_6.18.5.orig.tar.xz
+ dd72ec2c668d4a35059327d4bfbdd1982e1b17c84374b664231bff49a7a70c40 1451116 linux_6.18.5-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 6.18.9-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 1b97f4cf6cb03eb56f41af97a37c18384ef21ca224ad6244c6617cb50f8ccc1c 182005 linux_6.18.9-1.dsc
+ 06e8db6f7b1a66add593fb92b688bcef0419bdfbd30fe26d82b9692d57a74ff2 157413204 linux_6.18.9.orig.tar.xz
+ 430fb93e1f7809da48d82fe6d3815562f66e60c8dce798be5146b97f77bbf41f 1460872 linux_6.18.9-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.4-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 06bb17b08da1146900c3fcc6d7e4f95f73e48cf9fc81efa8e6faa57aae866363 194732 linux_7.0.4-1.dsc
+ 29ceb7e9f72884a184d34d3c31fc61dfe8873c01d55feb85d0ea6372bf9063bc 160349212 linux_7.0.4.orig.tar.xz
+ d6aa903b5c90d015a168ab10c479775f48611dd0ca83b979b662965b51a7191a 1464868 linux_7.0.4-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.7-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 3dd61ac38ee7357e5e2c010d85f88c1916f7c5d31a99d359e0b85b0f0e91cb1c 194732 linux_7.0.7-1.dsc
+ a14109ce964b753c72ef0d5aef3653686957a491925deea3467c73faaa11ff1d 160366364 linux_7.0.7.orig.tar.xz
+ c50b09443af3d2a06bbf91a1ae8a7f11931065e941e5c0f20ff5ee3c7fa179e2 1468968 linux_7.0.7-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.9-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 1db5045f666f8d3e4db76c27162046a492e95616a56a71463cee2df4576d45ed 194732 linux_7.0.9-1.dsc
+ dc9060fa8fd6ae9b09c208c73f80d4222962c2c43270a71b9f553558d3b9f715 160367628 linux_7.0.9.orig.tar.xz
+ 8de95cee2fe2839d79f2a5c9465b51b59f773ced36a1abab403e9791e17b49f4 1474420 linux_7.0.9-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.10-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ ec0c0441463114199c96d16e629d9aca1f5c79c0446841d4e242f83eb943c4f6 196174 linux_7.0.10-1.dsc
+ 321a5c3a1f4ab8ba4fb4bc1962a00f3a3b067ef5c7d0a70f3201e3d7b510f65e 160368156 linux_7.0.10.orig.tar.xz
+ 3c49b23164f3a8fc2a1de13cbd9cbb53bb0d3ebe178f9d7246e16e08f2c7458c 1489884 linux_7.0.10-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.12-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 660c82edb07c382146a50cbeecd916533d8002b3e29f0a39c7c7a63c4899d9cc 196174 linux_7.0.12-1.dsc
+ 261d9a82461c6350f8722633fa3df3f64340dd47430ef188653def6ea6ca0bf7 160420472 linux_7.0.12.orig.tar.xz
+ 21949e9b9dfa368e4d1f092d6ec27f3380d6f80e022a34803c288f7c2b62749a 1501020 linux_7.0.12-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.12-2
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ f8935f688d5107a7266bd89f91e34d390909e641b0211b55dde403291f774ef5 199043 linux_7.0.12-2.dsc
+ 261d9a82461c6350f8722633fa3df3f64340dd47430ef188653def6ea6ca0bf7 160420472 linux_7.0.12.orig.tar.xz
+ c0bb74bf41d510f3463d48d9354457d95940e4e26da8ffe9f004b701a1a5761b 1503132 linux_7.0.12-2.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.13-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ d0b0c17915b7dc4f1a14f195885cfb910e680be57c015c52940c2e4cf0abadf6 196174 linux_7.0.13-1.dsc
+ a4bc45a075f9857bcfba83879d56cae0f6f0a9c50411b3a15297682ff0c1be10 160427680 linux_7.0.13.orig.tar.xz
+ 5b64df2822f9f7fc75189c7623bc5b309779c50a6ad8d32e6ac1325a1456908a 1507272 linux_7.0.13-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.0.14-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ bcf30ddea7172ea24ef1e8afab018e4d2991744b30ca817cf908d2ffdbcc3535 196174 linux_7.0.14-1.dsc
+ 366e8be6649c243760428184eeb9dae846c92c69cd63a630480ed71e24d0973f 160429680 linux_7.0.14.orig.tar.xz
+ f22bf7282f5a209197bbe03cbfcef9911691ec0e27964ef95d2325092e7a6090 1507740 linux_7.0.14-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.1.3-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 5ce6d1419d7dc69ff782c3a0b5173159ebb29cffa7003fec9fba59c2707ada82 194732 linux_7.1.3-1.dsc
+ 61cdf2ccda33d046aa9fcd40a130bfddd03a3c8b2379fc08925f0efe7f69a32c 161574724 linux_7.1.3.orig.tar.xz
+ 05580592ecefe9c138f2d550bc7111d43bba4996580e16339ca6cc34489c6a49 1469968 linux_7.1.3-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.1.4-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 1d25ee83fb970abc44fa10ea655b18f9e0d593ad0b10072a6183af6c39cb719d 194732 linux_7.1.4-1.dsc
+ 84e8078152beed6d36014612d61e5cbcd776e673cd9529c88ce448c550359163 161588364 linux_7.1.4.orig.tar.xz
+ e321659ab31b32304e226832f4f68873c1e5d9c61ba443aff0f080b9304300b1 1478612 linux_7.1.4-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.1.5-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 76d9b60dcfa734acded0c7d379231d4b98d5e8a235009d62867b6cedf61f6e72 194732 linux_7.1.5-1.dsc
+ d5199d8a391a54f60069c9d3ae4781532c1b73799779db4c873cdd5975ebc2b9 161650220 linux_7.1.5.orig.tar.xz
+ e17b351b2d7878c9a556a114838c1c5fb3b614414e6a790024990f9a35055f05 1511508 linux_7.1.5-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.1.6-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 9459649197acafb6ca69006139cf56928f32f64d55099d68bea9fd236ac112df 194732 linux_7.1.6-1.dsc
+ 62fe1b6e94e158ff037cb41006acf4222201d1f984000103feb1c5e108fdee75 161677668 linux_7.1.6.orig.tar.xz
+ 5d6717df7b6497c9427be6cd5b9d07355ff303cd70cac8c8062ca15e7f183550 1523680 linux_7.1.6-1.debian.tar.xz
+Directory: pool/main/l/linux
+
+Package: linux
+Version: 7.1.7-1
+Architecture: linux-any all
+Format: 3.0 (quilt)
+Checksums-Sha256:
+ 6bee02071d610626e055dd54130669f29d9de574cc0cacce8c065e07a87afa99 194732 linux_7.1.7-1.dsc
+ cb552bf2695d7080602f829a2911fa21fe62064b96298ce684c62a172277fd87 161674496 linux_7.1.7.orig.tar.xz
+ a871a770847084a29af3e4d51a16b1529f01617e09715365c186b9d1ab2d2b02 1523532 linux_7.1.7-1.debian.tar.xz
+Directory: pool/main/l/linux
+

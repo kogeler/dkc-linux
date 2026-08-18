@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+case "$1" in
+remove | deconfigure)
+	dkms remove -m dkc-fixture -v 1.0 --all
+	;;
+esac

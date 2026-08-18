@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/production-lease-1.json",
+  "title": "Production mutation lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "updated_utc"],
+  "properties": {
+    "schema": { "const": "dkc.production-lease.v1" },
+    "status": { "enum": ["held", "free"] },
+    "updated_utc": { "type": "string", "format": "date-time" },
+    "acquired_utc": { "type": "string", "format": "date-time" },
+    "expires_utc": { "type": "string", "format": "date-time" },
+    "released_utc": { "type": "string", "format": "date-time" },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflow_run_id", "run_attempt", "operation", "nonce"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" },
+        "workflow_run_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "run_attempt": { "type": "string", "pattern": "^[0-9]+$" },
+        "operation": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,31}$" },
+        "nonce": { "type": "string", "pattern": "^[0-9a-f]{32,128}$" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "held" } } },
+      "then": {
+        "required": ["owner", "acquired_utc", "expires_utc"],
+        "not": { "required": ["released_utc"] }
+      },
+      "else": {
+        "required": ["released_utc"],
+        "not": {
+          "anyOf": [
+            { "required": ["owner"] },
+            { "required": ["acquired_utc"] },
+            { "required": ["expires_utc"] }
+          ]
+        }
+      }
+    }
+  ]
+}

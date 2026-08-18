@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/authoritative-state-read-1.json",
+  "title": "Authoritative repository state read",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "authoritative", "status", "storage_object_count", "storage_size"
+  ],
+  "properties": {
+    "schema": { "const": "dkc.authoritative-state-read.v1" },
+    "authoritative": { "const": true },
+    "status": { "enum": ["EMPTY", "PRESENT"] },
+    "storage_object_count": { "type": "integer", "minimum": 0 },
+    "storage_size": { "type": "integer", "minimum": 0 },
+    "state_etag": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "manifest_etag": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "status": { "const": "EMPTY" }
+      },
+      "not": { "anyOf": [
+        { "required": ["state_etag"] },
+        { "required": ["manifest_etag"] }
+      ] }
+    },
+    {
+      "properties": { "status": { "const": "PRESENT" } },
+      "required": ["state_etag", "manifest_etag"]
+    }
+  ]
+}

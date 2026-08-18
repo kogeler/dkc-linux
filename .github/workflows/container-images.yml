@@ -1,0 +1,150 @@
+# Build and publish the complete container-image bundle used by CI.
+#
+# Pull requests exercise the same three-image build with read-only permissions.
+# Only the canonical main branch may authenticate and move the latest tags.
+
+name: container images
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/container-images.yml
+      - config/base-image.lock
+      - config/container-images.inputs
+      - container/Containerfile.apt-client
+      - container/Containerfile.build
+      - container/Containerfile.toolbox
+      - mk/container.mk
+      - mk/preflight.mk
+      - scripts/check-current-main.sh
+      - scripts/container-images.sh
+      - scripts/lib/common.sh
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/container-images.yml
+      - config/base-image.lock
+      - config/container-images.inputs
+      - container/Containerfile.apt-client
+      - container/Containerfile.build
+      - container/Containerfile.toolbox
+      - mk/container.mk
+      - mk/preflight.mk
+      - scripts/check-current-main.sh
+      - scripts/container-images.sh
+      - scripts/lib/common.sh
+  schedule:
+    - cron: "0 9 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pull-request:
+    name: verify complete image bundle
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      DKC_IMAGE_BUNDLE_GENERATION: pr-${{ github.run_id }}-${{ github.run_attempt }}
+      DKC_IMAGE_SOURCE_REVISION: ${{ github.sha }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Record the container toolchain
+        run: |
+          podman --version
+          podman info --format 'rootless={{.Host.Security.Rootless}} driver={{.Store.GraphDriverName}}'
+
+      - name: Build and verify all three images
+        run: make container-images
+
+  publish-main:
+    name: publish complete image bundle
+    if: >-
+      github.repository == 'kogeler/dkc-linux' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    # The first publication creates private packages. Keep the anonymous
+    # resolver alive long enough for the one-time operator visibility change,
+    # so bootstrap does not require a second workflow run.
+    timeout-minutes: 120
+    concurrency:
+      group: dkc-container-image-publisher
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DKC_IMAGE_BUNDLE_GENERATION: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      DKC_IMAGE_SOURCE_REVISION: ${{ github.sha }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require the current canonical main commit
+        run: >-
+          make current-main
+          CANONICAL_REPOSITORY='kogeler/dkc-linux'
+          EXPECTED_COMMIT='${{ github.sha }}'
+
+      - name: Record the container toolchain
+        run: |
+          podman --version
+          podman info --format 'rootless={{.Host.Security.Rootless}} driver={{.Store.GraphDriverName}}'
+
+      - name: Build and verify all three images
+        run: make container-images
+
+      - name: Repeat the current-main check before publication
+        run: >-
+          make current-main
+          CANONICAL_REPOSITORY='kogeler/dkc-linux'
+          EXPECTED_COMMIT='${{ github.sha }}'
+
+      - name: Publish and resolve all three latest tags
+        id: publish
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cleanup_registry_auth() {
+            podman logout ghcr.io >/dev/null 2>&1 || true
+          }
+          trap cleanup_registry_auth EXIT
+          printf '%s' "$GHCR_TOKEN" | podman login ghcr.io \
+            --username '${{ github.actor }}' --password-stdin
+          make container-images-push
+          podman logout ghcr.io
+          unset GHCR_TOKEN
+          make container-images-resolve \
+            DKC_IMAGE_EXPECTED_GENERATION="$DKC_IMAGE_BUNDLE_GENERATION" \
+            DKC_IMAGE_RESOLVE_TIMEOUT=3600 \
+            DKC_IMAGE_RESOLVE_INTERVAL=10 \
+            DKC_IMAGE_RESOLVE_OUTPUT="$GITHUB_OUTPUT"
+
+      - name: Summarize the published bundle
+        env:
+          BUNDLE_INPUT: ${{ steps.publish.outputs.bundle_input_sha256 }}
+          BUNDLE_GENERATION: ${{ steps.publish.outputs.bundle_generation }}
+          TOOLBOX_IMAGE: ${{ steps.publish.outputs.toolbox_image }}
+          BUILD_IMAGE: ${{ steps.publish.outputs.build_image }}
+          APT_CLIENT_IMAGE: ${{ steps.publish.outputs.apt_client_image }}
+        run: |
+          {
+            echo '### Published container image bundle'
+            echo
+            printf -- '- Input fingerprint: `%s`\n' "$BUNDLE_INPUT"
+            printf -- '- Publication generation: `%s`\n' "$BUNDLE_GENERATION"
+            printf -- '- Toolbox: `%s`\n' "$TOOLBOX_IMAGE"
+            printf -- '- Kernel build: `%s`\n' "$BUILD_IMAGE"
+            printf -- '- APT client: `%s`\n' "$APT_CLIENT_IMAGE"
+          } >>"$GITHUB_STEP_SUMMARY"

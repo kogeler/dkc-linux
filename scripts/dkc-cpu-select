@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Recommend the highest DKC kernel flavor usable by every online x86 CPU.
+
+set -Eeuo pipefail
+
+cpuinfo=/proc/cpuinfo
+requested=""
+json=0
+requirements=""
+
+usage() {
+	cat <<'EOF'
+Usage: dkc-cpu-select [--cpuinfo FILE] [--require v2|v3|v4] [--json]
+       dkc-cpu-select --requirements v2|v3|v4
+
+The default output is the highest compatible flavor.  --require exits
+nonzero when the requested flavor cannot run on every processor represented
+by FILE.  FILE must use the Linux /proc/cpuinfo flags format.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--cpuinfo)
+		[ "$#" -ge 2 ] || {
+			usage >&2
+			exit 2
+		}
+		cpuinfo="$2"
+		shift 2
+		;;
+	--require)
+		[ "$#" -ge 2 ] || {
+			usage >&2
+			exit 2
+		}
+		requested="$2"
+		shift 2
+		;;
+	--json)
+		json=1
+		shift
+		;;
+	--requirements)
+		[ "$#" -ge 2 ] || {
+			usage >&2
+			exit 2
+		}
+		requirements="$2"
+		shift 2
+		;;
+	--help | -h)
+		usage
+		exit 0
+		;;
+	*)
+		printf 'unknown argument: %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
+case "${requested:-v2}" in
+v2 | v3 | v4) ;;
+*)
+	printf 'invalid requested flavor: %s\n' "$requested" >&2
+	exit 2
+	;;
+esac
+case "${requirements:-v2}" in
+v2 | v3 | v4) ;;
+*)
+	printf 'invalid requirements flavor: %s\n' "$requirements" >&2
+	exit 2
+	;;
+esac
+if [ -n "$requirements" ] && { [ -n "$requested" ] || [ "$json" -eq 1 ] || [ "$cpuinfo" != /proc/cpuinfo ]; }; then
+	printf '%s\n' '--requirements cannot be combined with detection options' >&2
+	exit 2
+fi
+
+# These are the cumulative x86-64 psABI feature levels.  Linux exposes SSE3
+# as pni and does not print a separate OSXSAVE token.  Its avx/avx512 flags are
+# usable-feature flags: Linux clears them unless the required XCR0 state is
+# enabled, while xsave records the remaining v3 OSXSAVE requirement.
+v2_flags=(cx16 lahf_lm popcnt sse3 sse4_1 sse4_2 ssse3)
+v3_flags=(abm avx avx2 bmi1 bmi2 cx16 f16c fma lahf_lm movbe popcnt sse3 sse4_1 sse4_2 ssse3 xsave)
+v4_flags=(abm avx avx2 avx512bw avx512cd avx512dq avx512f avx512vl bmi1 bmi2 cx16 f16c fma lahf_lm movbe popcnt sse3 sse4_1 sse4_2 ssse3 xsave)
+
+flags_for() {
+	case "$1" in
+	v2) printf '%s\n' "${v2_flags[@]}" ;;
+	v3) printf '%s\n' "${v3_flags[@]}" ;;
+	v4) printf '%s\n' "${v4_flags[@]}" ;;
+	esac
+}
+
+if [ -n "$requirements" ]; then
+	flags_for "$requirements"
+	exit 0
+fi
+
+[ -r "$cpuinfo" ] || {
+	printf 'cannot read CPU information: %s\n' "$cpuinfo" >&2
+	exit 2
+}
+
+# A machine can expose heterogeneous or administratively restricted CPUs.
+# Recommending a kernel from the first stanza alone could then select a kernel
+# that crashes when a task migrates.  Intersect every flags stanza instead.
+if ! detected="$({
+	awk -F: '
+		/^[[:space:]]*flags[[:space:]]*:/ {
+			processors++
+			for (key in current) delete current[key]
+			count = split($2, values, /[[:space:]]+/)
+			for (i = 1; i <= count; i++) {
+				flag = values[i]
+				if (flag == "") continue
+				if (flag == "pni") flag = "sse3"
+				current[flag] = 1
+			}
+			if (processors == 1) {
+				for (flag in current) common[flag] = 1
+			} else {
+				for (flag in common)
+					if (!(flag in current)) delete common[flag]
+			}
+		}
+		END {
+			if (processors == 0) exit 3
+			printf "@processors=%d\n", processors
+			for (flag in common) print flag
+		}
+	' "$cpuinfo"
+} 2>/dev/null)"; then
+	printf 'no usable Linux flags stanzas in %s\n' "$cpuinfo" >&2
+	exit 2
+fi
+
+mapfile -t detected_lines <<<"$detected"
+[[ "${detected_lines[0]:-}" =~ ^@processors=([1-9][0-9]*)$ ]] || {
+	printf 'invalid CPU information in %s\n' "$cpuinfo" >&2
+	exit 2
+}
+processors="${BASH_REMATCH[1]}"
+declare -A available=()
+for flag in "${detected_lines[@]:1}"; do
+	[ -n "$flag" ] && available["$flag"]=1
+done
+
+missing_for() {
+	local flavor="$1" flag
+	while IFS= read -r flag; do
+		[ -n "${available[$flag]:-}" ] || printf '%s\n' "$flag"
+	done < <(flags_for "$flavor")
+}
+
+supports() {
+	[ -z "$(missing_for "$1")" ]
+}
+
+recommended=none
+if supports v4; then
+	recommended=v4
+elif supports v3; then
+	recommended=v3
+elif supports v2; then
+	recommended=v2
+fi
+
+compatible=1
+missing=()
+if [ -n "$requested" ]; then
+	mapfile -t missing < <(missing_for "$requested")
+	[ "${#missing[@]}" -eq 0 ] || compatible=0
+elif [ "$recommended" = none ]; then
+	mapfile -t missing < <(missing_for v2)
+	compatible=0
+fi
+
+if [ "$json" -eq 1 ]; then
+	printf '{"schema_version":1,"processors":%s,"recommended":"%s","requested":' \
+		"$processors" "$recommended"
+	if [ -n "$requested" ]; then
+		printf '"%s"' "$requested"
+	else
+		printf 'null'
+	fi
+	if [ "$compatible" -eq 1 ]; then
+		printf ',"compatible":true,"missing":['
+	else
+		printf ',"compatible":false,"missing":['
+	fi
+	separator=""
+	for flag in "${missing[@]}"; do
+		printf '%s"%s"' "$separator" "$flag"
+		separator=,
+	done
+	printf ']}\n'
+else
+	printf '%s\n' "$recommended"
+fi
+
+if [ "$compatible" -eq 0 ]; then
+	if [ "$json" -eq 0 ]; then
+		printf 'incompatible CPU set; missing for %s: %s\n' \
+			"${requested:-v2}" "${missing[*]}" >&2
+	fi
+	exit 1
+fi

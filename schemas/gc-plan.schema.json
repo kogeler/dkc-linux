@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/gc-plan-1.json",
+  "title": "Signed garbage-collection plan",
+  "description": "A dry-run plan that must be archived before --apply. S3-compatible deletion has no conditional fencing, so deletion is by exact key only and nothing here may be a prefix or a pattern.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "expected_generation", "targets", "caps", "planned_utc"],
+  "properties": {
+    "schema": { "const": "dkc.gc-plan.v1" },
+    "expected_generation": {
+      "description": "Deletion refuses to run unless signed state still reports this generation.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "sha256", "reason", "size"],
+        "properties": {
+          "key": {
+            "description": "Restricted to immutable repository prefixes. Mutable metadata, keys/**, state pointers and locks are never targets.",
+            "type": "string",
+            "pattern": "^(pool/|dists/[^ ]*/by-hash/|state/publications/|state/transactions/)[^ ]+$"
+          },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "reason": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "caps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_objects", "max_bytes"],
+      "properties": {
+        "max_objects": { "type": "integer", "exclusiveMinimum": 0 },
+        "max_bytes": { "type": "integer", "exclusiveMinimum": 0 }
+      }
+    },
+    "planned_utc": { "type": "string", "format": "date-time" }
+  }
+}

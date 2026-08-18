@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Rebuild one flavor from an unpacked final dkc-linux source package.
+
+set -Eeuo pipefail
+
+if [ "$#" -ne 1 ] || [[ ! "$1" =~ ^v[234]$ ]]; then
+	printf 'usage: debian/dkc/rebuild-flavor <v2|v3|v4>\n' >&2
+	exit 2
+fi
+flavor="$1"
+jobs="${DKC_BUILD_JOBS:-$(nproc)}"
+[[ "$jobs" =~ ^[1-9][0-9]*$ ]] || {
+	printf 'DKC_BUILD_JOBS must be a positive integer\n' >&2
+	exit 2
+}
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+cd "$root"
+
+# shellcheck disable=SC1091
+. debian/dkc/build-profiles
+export DEB_BUILD_PROFILES="$DKC_BUILD_PROFILES"
+export DEB_BUILD_OPTIONS="parallel=${jobs} noautodbgsym"
+export SOURCE_DATE_EPOCH
+SOURCE_DATE_EPOCH="$(dpkg-parsechangelog -l debian/changelog -STimestamp)"
+
+lto_mode="$(python3 -c 'import json; print(json.load(open("debian/dkc/publication-identity.json"))["lto_mode"])')"
+case "$lto_mode" in
+none | thin | full) ;;
+*)
+	printf 'source package has an invalid LTO mode\n' >&2
+	exit 1
+	;;
+esac
+python3 debian/dkc/prepare-flavor.py . "$flavor" "$lto_mode"
+make -f debian/rules debian/control-real >/dev/null
+dpkg-checkbuilddeps debian/control
+exec dpkg-buildpackage --build=binary --no-sign -j"$jobs"

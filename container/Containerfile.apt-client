@@ -1,0 +1,26 @@
+# Minimal client for offline verification of the complete signed APT archive.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN set -eux; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		bash \
+		dpkg-dev \
+		gpgv \
+		initramfs-tools \
+		kmod \
+		linux-base \
+		python3 \
+		python3-jsonschema \
+		xz-utils; \
+	rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/docker-clean
+
+ENV LC_ALL=C.UTF-8 \
+	LANG=C.UTF-8 \
+	TZ=UTC \
+	PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONHASHSEED=0

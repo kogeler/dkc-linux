@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/publication-manifest-1.json",
+  "title": "Immutable publication manifest",
+  "description": "Signed and immutable. Garbage collection computes reachability from live_objects only; audit references never keep a retired payload alive.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "generation", "publication_id", "transaction_id",
+    "source_version", "source_dsc_sha256", "dkc_version", "dkc_revision",
+    "build_policy_sha256", "lto_mode", "build_id", "retained_series",
+    "artifacts", "live_objects", "apt_metadata", "meta_packages", "created_utc"
+  ],
+  "properties": {
+    "schema": { "const": "dkc.publication-manifest.v1" },
+    "generation": { "type": "integer", "minimum": 0 },
+    "publication_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+    "transaction_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+    "source_version": { "type": "string", "minLength": 1 },
+    "source_dsc_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dkc_version": { "type": "string", "minLength": 1 },
+    "dkc_revision": { "type": "integer", "minimum": 1 },
+    "build_policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "lto_mode": { "enum": ["none", "thin", "full"] },
+    "build_id": { "type": "string", "pattern": "^[0-9a-f]{12,}$" },
+    "retained_series": {
+      "description": "The newest three upstream X.Y series, parsed rather than sorted lexically.",
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "retention_mode": { "enum": ["series", "series-size"] },
+    "retention_max_bytes": { "type": "integer", "minimum": 1 },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "live_objects": {
+      "description": "The current signed liveness set. Retired immutable identities remain protected by permanent tombstones until exact deletion.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "apt_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inrelease_sha256", "date", "valid_until", "index_hashes"],
+      "properties": {
+        "inrelease_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "date": { "type": "string" },
+        "valid_until": { "type": "string" },
+        "index_hashes": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "meta_packages": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "generation_snapshot_prefix": { "type": "string" },
+    "provenance_ref": { "type": "string" },
+    "gc_queue": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gc_entry" }
+    },
+    "previous_publication": {
+      "description": "An audit reference. It records history and does not pin the described payloads.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["publication_id", "generation"],
+      "properties": {
+        "publication_id": { "type": "string", "pattern": "^[0-9a-z-]{8,64}$" },
+        "generation": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "created_utc": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "sha256", "size", "media_type", "cache_class"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 0 },
+        "media_type": { "type": "string", "minLength": 1 },
+        "cache_class": { "enum": ["immutable", "mutable"] },
+        "provenance_ref": { "type": "string" }
+      }
+    },
+    "gc_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "sha256", "size", "reason", "tombstoned"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string", "minLength": 1 },
+        "tombstoned": {
+          "description": "Permanent. A tombstoned key can never become live again; restoring content requires a new revision and a new key.",
+          "const": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "retention_mode": { "const": "series-size" } }, "required": ["retention_mode"] },
+      "then": { "required": ["retention_max_bytes"] },
+      "else": { "not": { "required": ["retention_max_bytes"] } }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+# The published source package intentionally supports only amd64.  Keep every
+# excluded Debian architecture explicit so an upstream inventory change fails
+# the preparation gate instead of silently expanding the package graph.
+
+[[kernelarch]]
+name = 'alpha'
+enable = false
+
+[[kernelarch]]
+name = 'arc'
+enable = false
+
+[[kernelarch]]
+name = 'arm'
+enable = false
+
+[[kernelarch]]
+name = 'arm64'
+enable = false
+
+[[kernelarch]]
+name = 'parisc'
+enable = false
+
+[[kernelarch]]
+name = 'loongarch'
+enable = false
+
+[[kernelarch]]
+name = 'm68k'
+enable = false
+
+[[kernelarch]]
+name = 'mips'
+enable = false
+
+[[kernelarch]]
+name = 'powerpc'
+enable = false
+
+[[kernelarch]]
+name = 'riscv'
+enable = false
+
+[[kernelarch]]
+name = 's390'
+enable = false
+
+[[kernelarch]]
+name = 'sh'
+enable = false
+
+[[kernelarch]]
+name = 'sparc'
+enable = false
+
+[[kernelarch]]
+name = 'x86'
+
+  [[kernelarch.debianarch]]
+  name = 'amd64'
+  enable = true
+
+  [[kernelarch.debianarch]]
+  name = 'i386'
+  enable = false
+
+  [[kernelarch.debianarch]]
+  name = 'x32'
+  enable = false

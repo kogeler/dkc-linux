@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dkc.invalid/schemas/pool-export-1.json",
+  "title": "Authenticated live-pool export summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "state", "object_count", "size"],
+  "properties": {
+    "schema": { "const": "dkc.pool-export.v1" },
+    "status": { "const": "PASS" },
+    "state": { "enum": ["EMPTY", "PRESENT"] },
+    "object_count": { "type": "integer", "minimum": 0 },
+    "size": { "type": "integer", "minimum": 0 }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "state": { "const": "EMPTY" },
+        "object_count": { "const": 0 },
+        "size": { "const": 0 }
+      }
+    },
+    {
+      "properties": {
+        "state": { "const": "PRESENT" },
+        "object_count": { "type": "integer", "minimum": 1 },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    }
+  ]
+}

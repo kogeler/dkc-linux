@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the deadlock-safe /proc/PID/mem access case without the independent
+# ptrace attach case carried by the same upstream test executable.
+exec "$(dirname "$0")/vmaccess" -t vmaccess

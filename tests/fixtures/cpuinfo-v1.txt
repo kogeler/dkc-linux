@@ -1,0 +1,2 @@
+processor : 0
+flags : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr cmov pat pse36 clflush mmx fxsr sse sse2 syscall lm

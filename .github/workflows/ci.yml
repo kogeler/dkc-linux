@@ -1,0 +1,943 @@
+# Build, validation, signing, and repository publication lifecycle.
+#
+# This workflow is a trigger, not a build system. Every executable step is one
+# make target. Provider-neutral targets use the same implementation as a
+# developer's machine; thin github-* adapters own command files and hosted
+# runner setup. Local execution builds images with Podman's cache; CI snapshots
+# the currently published latest bundle to immutable digests for the duration of
+# one run. The runner is ubuntu-26.04 because it ships the same Podman 5.7.0 the
+# project targets locally.
+#
+# Build, test, assembly, and final verification have no secrets. Authoritative
+# state reads, signing, and publication use separate exact-main Environments.
+# pull_request_target and workflow_run bridges remain forbidden here, because
+# either would run repository code with a token that untrusted contributors
+# must not reach.
+
+name: ci
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      confirm_lifecycle:
+        description: Run the production lifecycle from canonical main
+        required: true
+        default: false
+        type: boolean
+      allow_empty_bootstrap:
+        description: Allow this manual run to initialize an empty repository
+        required: true
+        default: false
+        type: boolean
+
+# Least privilege at the top. The terminal exact-cache cleanup is the only job
+# that raises the repository token, and only to actions:write on canonical main.
+permissions:
+  contents: read
+
+# Pull requests may cancel superseded work. Every trusted event shares one
+# non-cancelling production group; the storage lease supplies the second fence.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || 'dkc-production-lifecycle' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lifecycle-gate:
+    name: authorize trusted lifecycle trigger
+    # Run on every non-PR trigger so a manual selection of another ref fails
+    # explicitly instead of turning the whole workflow into silent skips.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    outputs:
+      bootstrap_allowed: ${{ steps.gate.outputs.bootstrap_allowed }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authorize the canonical main trigger
+        id: gate
+        env:
+          GITHUB_CONFIRM_LIFECYCLE: ${{ inputs.confirm_lifecycle }}
+          GITHUB_ALLOW_EMPTY_BOOTSTRAP: ${{ inputs.allow_empty_bootstrap }}
+        run: make github-lifecycle-gate
+
+  container_images:
+    name: resolve published image bundle
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.repository == 'kogeler/dkc-linux' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-26.04
+    # A relevant push can arrive while the serialized weekly publisher is
+    # already building the previous main commit. Allow both bounded publisher
+    # attempts to finish without starting any expensive kernel job early.
+    timeout-minutes: 195
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      toolbox_image: ${{ steps.resolve.outputs.toolbox_image }}
+      build_image: ${{ steps.resolve.outputs.build_image }}
+      apt_client_image: ${{ steps.resolve.outputs.apt_client_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Snapshot one coherent latest bundle
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make github-container-images-resolve
+
+  discover-source:
+    name: discover authenticated source
+    if: github.event_name != 'pull_request'
+    needs: [lifecycle-gate, container_images]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      source_handoff: ${{ format('dkc-source-{0}-{1}', github.run_id, github.run_attempt) }}
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the discovery run identity
+        run: make github-run-id GITHUB_RUN_ROLE=source
+
+      - name: Resolve the newest signed Debian source inventory
+        run: make source-discover
+
+      - name: Upload the authenticated source handoff
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/source-discovery/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  read-authoritative-state:
+    name: read authoritative repository state
+    if: github.event_name != 'pull_request'
+    needs: [lifecycle-gate, container_images]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      state_handoff: ${{ format('dkc-authoritative-state-{0}-{1}', github.run_id, github.run_attempt) }}
+    environment:
+      name: production-state-read
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the state-read run identity
+        run: make github-run-id GITHUB_RUN_ROLE=state-read
+
+      - name: Fetch and verify the confined storage toolbox
+        run: make image
+
+      - name: Read and verify signed state
+        env:
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ADDRESSING_STYLE: ${{ secrets.S3_ADDRESSING_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+        run: make github-storage-state-read
+
+      - name: Upload the authenticated state handoff
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-authoritative-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/authoritative-state/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  lifecycle-decision:
+    name: decide repository lifecycle
+    if: github.event_name != 'pull_request'
+    needs: [lifecycle-gate, container_images, discover-source, read-authoritative-state]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      lifecycle_handoff: ${{ format('dkc-lifecycle-{0}-{1}', github.run_id, github.run_attempt) }}
+      build_required: ${{ steps.decision.outputs.build_required }}
+      decision: ${{ steps.decision.outputs.decision }}
+      maintenance_required: ${{ steps.decision.outputs.maintenance_required }}
+      next_generation: ${{ steps.decision.outputs.next_generation }}
+      publish_allowed: ${{ steps.decision.outputs.publish_allowed }}
+      state_present: ${{ steps.decision.outputs.state_present }}
+      v2_cache_key: ${{ steps.decision.outputs.v2_cache_key }}
+      v3_cache_key: ${{ steps.decision.outputs.v3_cache_key }}
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download authenticated source handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.discover-source.outputs.source_handoff }}
+          path: out/ci-source
+
+      - name: Download authenticated state handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.read-authoritative-state.outputs.state_handoff }}
+          path: out/ci-state
+
+      - name: Set the decision run identity
+        run: make github-run-id GITHUB_RUN_ROLE=decision
+
+      - name: Make the typed lifecycle decision
+        id: decision
+        run: >-
+          make github-lifecycle-decision
+          SOURCE_DISCOVERY_RESULT=out/ci-source
+          AUTHORITATIVE_STATE_RESULT=out/ci-state
+          LIFECYCLE_BOOTSTRAP_ALLOWED='${{ needs.lifecycle-gate.outputs.bootstrap_allowed }}'
+
+      - name: Upload lifecycle evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/lifecycle-decision/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  fast:
+    name: fast tier
+    needs: [container_images]
+    # Keep runner selection in reviewable workflow code. In particular, a
+    # repository variable must not silently switch this project to a paid
+    # larger runner.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fast tier
+        run: make fast
+
+  release-preflight:
+    name: release preflight
+    if: >-
+      always() &&
+      needs.container_images.result == 'success' &&
+      needs.fast.result == 'success' &&
+      (github.event_name == 'pull_request' ||
+       needs.lifecycle-decision.outputs.build_required == 'true')
+    needs: [container_images, fast, discover-source, lifecycle-decision]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      DKC_IMAGE_MODE: registry
+      BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download authenticated source handoff
+        if: github.event_name != 'pull_request'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.discover-source.outputs.source_handoff }}
+          path: out/ci-source
+
+      - name: Bind the discovered source to the preflight
+        if: github.event_name != 'pull_request'
+        run: >-
+          make github-source-build-env
+          GITHUB_SOURCE_RESULT=out/ci-source
+
+      # Downloads and extracts the locked source once, then checks the complete
+      # overlay, package graph, compiler wiring, dependency closure, and its
+      # immutable build-image prerequisite on that same tree before any flavor
+      # runner starts.
+      - name: Verify the release inputs
+        run: make release-preflight
+
+  flavors:
+    name: build and validate ${{ matrix.flavor }}
+    if: needs.lifecycle-decision.outputs.build_required == 'true'
+    needs: [container_images, discover-source, lifecycle-decision, fast, release-preflight]
+    strategy:
+      fail-fast: false
+      matrix:
+        # v4 remains available for periodic manual qualification, but it is not
+        # part of the automatic release or binary distribution.
+        flavor: [v2, v3]
+    runs-on: ubuntu-26.04
+    # GitHub's standard public runner allows six hours. The accepted reference
+    # build completed a full flavor in under three; this leaves room for image setup,
+    # the complete final-ELF SIMD scan, Lintian, VM qualification, and cache save.
+    timeout-minutes: 360
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+      BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
+      GITHUB_RELEASE_CACHE_KEY: ${{ matrix.flavor == 'v2' && needs.lifecycle-decision.outputs.v2_cache_key || needs.lifecycle-decision.outputs.v3_cache_key }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the flavor run identity
+        run: make github-run-id GITHUB_RUN_ROLE='flavor-${{ matrix.flavor }}'
+
+      - name: Download authenticated source handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.discover-source.outputs.source_handoff }}
+          path: out/ci-source
+
+      - name: Download lifecycle decision handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.lifecycle-decision.outputs.lifecycle_handoff }}
+          path: out/ci-lifecycle
+
+      - name: Bind every flavor to the same discovered source
+        run: >-
+          make github-source-build-env
+          GITHUB_SOURCE_RESULT=out/ci-source
+
+      - name: Restore an already accepted flavor
+        id: restore_release_cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: out/release-cache/${{ matrix.flavor }}
+          key: ${{ env.GITHUB_RELEASE_CACHE_KEY }}
+
+      # The hosted VM is disposable. This is the only privileged setup in the
+      # workflow; the build, repository preparation, and QEMU targets remain
+      # ordinary-user processes. Device permissions are changed directly and
+      # the exact flavor model is required to pass KVM preflight before the
+      # expensive build begins.
+      - name: Prepare and verify hardware virtualization
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        run: make github-kvm-prepare GITHUB_QEMU_FLAVOR='${{ matrix.flavor }}'
+
+      - name: Build and audit the flavor
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        run: make build-flavor FLAVOR='${{ matrix.flavor }}'
+
+      - name: Build exact-source kernel selftests
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        run: >-
+          make kselftest-flavor
+          FLAVOR='${{ matrix.flavor }}'
+          FLAVOR_RESULT="out/flavors/${{ matrix.flavor }}/${DKC_RUN_ID}"
+
+      - name: Boot and exercise the flavor
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        run: >-
+          make qemu-boot-flavor
+          FLAVOR='${{ matrix.flavor }}'
+          FLAVOR_RESULT="out/flavors/${{ matrix.flavor }}/${DKC_RUN_ID}"
+          KSELFTEST_RESULT="out/kselftest/qualification/${{ matrix.flavor }}/${DKC_RUN_ID}"
+          QEMU_ACCEL=kvm
+
+      - name: Seal the accepted flavor handoff
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        run: >-
+          make github-release-cache-prepare
+          FLAVOR='${{ matrix.flavor }}'
+          GITHUB_LIFECYCLE_RESULT=out/ci-lifecycle
+
+      - name: Verify the accepted flavor handoff
+        run: >-
+          make github-release-cache-verify
+          FLAVOR='${{ matrix.flavor }}'
+          GITHUB_LIFECYCLE_RESULT=out/ci-lifecycle
+
+      - name: Save the newly accepted flavor
+        if: steps.restore_release_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: out/release-cache/${{ matrix.flavor }}
+          key: ${{ env.GITHUB_RELEASE_CACHE_KEY }}
+
+  export-live-pool:
+    name: export authenticated live pool
+    if: >-
+      needs.lifecycle-decision.outputs.state_present == 'true' &&
+      (needs.lifecycle-decision.outputs.build_required == 'true' ||
+       needs.lifecycle-decision.outputs.maintenance_required == 'true')
+    needs: [container_images, lifecycle-decision, read-authoritative-state]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    outputs:
+      pool_handoff: ${{ format('dkc-live-pool-{0}-{1}', github.run_id, github.run_attempt) }}
+    environment:
+      name: production-state-read
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download authenticated state handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.read-authoritative-state.outputs.state_handoff }}
+          path: out/ci-state
+
+      - name: Set the pool-export run identity
+        run: make github-run-id GITHUB_RUN_ROLE=pool-export
+
+      - name: Fetch and verify the confined storage toolbox
+        run: make image
+
+      - name: Export and verify only signed live pool objects
+        env:
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ADDRESSING_STYLE: ${{ secrets.S3_ADDRESSING_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+        run: >-
+          make github-storage-export-pool
+          STORAGE_POOL_STATE_RESULT=out/ci-state
+
+      - name: Upload authenticated live pool
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-live-pool-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/storage-pool/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  package-matrix:
+    name: package install matrix
+    if: >-
+      always() &&
+      needs.lifecycle-decision.outputs.build_required == 'true' &&
+      needs.flavors.result == 'success' &&
+      (needs.lifecycle-decision.outputs.state_present == 'false' ||
+       needs.export-live-pool.result == 'success')
+    needs:
+      [container_images, lifecycle-decision, read-authoritative-state, flavors, export-live-pool]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    outputs:
+      unsigned_handoff: ${{ format('dkc-apt-unsigned-{0}-{1}', github.run_id, github.run_attempt) }}
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+      BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the matrix run identity
+        run: make github-run-id GITHUB_RUN_ROLE=package-matrix
+
+      - name: Download lifecycle decision handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.lifecycle-decision.outputs.lifecycle_handoff }}
+          path: out/ci-lifecycle
+
+      - name: Restore accepted v2 result
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: out/release-cache/v2
+          key: ${{ needs.lifecycle-decision.outputs.v2_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Restore accepted v3 result
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: out/release-cache/v3
+          key: ${{ needs.lifecycle-decision.outputs.v3_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Verify accepted v2 result
+        run: >-
+          make github-release-cache-verify
+          FLAVOR=v2
+          GITHUB_RELEASE_CACHE_KEY='${{ needs.lifecycle-decision.outputs.v2_cache_key }}'
+          GITHUB_LIFECYCLE_RESULT=out/ci-lifecycle
+
+      - name: Verify accepted v3 result
+        run: >-
+          make github-release-cache-verify
+          FLAVOR=v3
+          GITHUB_RELEASE_CACHE_KEY='${{ needs.lifecycle-decision.outputs.v3_cache_key }}'
+          GITHUB_LIFECYCLE_RESULT=out/ci-lifecycle
+
+      - name: Download previous signed state
+        if: needs.lifecycle-decision.outputs.state_present == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.read-authoritative-state.outputs.state_handoff }}
+          path: out/ci-state
+
+      - name: Download previous authenticated live pool
+        if: needs.lifecycle-decision.outputs.state_present == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.export-live-pool.outputs.pool_handoff }}
+          path: out/ci-pool
+
+      - name: Reconcile and install-test all packages
+        id: package_matrix
+        run: >-
+          make package-matrix
+          MATRIX_V2=out/release-cache/v2/flavor
+          MATRIX_V3=out/release-cache/v3/flavor
+
+      - name: Assemble the unsigned common repository
+        id: assemble_repository
+        run: >-
+          make apt-repository-assemble-lifecycle
+          APT_LIFECYCLE_MODE=build
+          PACKAGE_MATRIX_RESULT="out/package-matrix/${DKC_RUN_ID}"
+          APT_REPOSITORY_GENERATION='${{ needs.lifecycle-decision.outputs.next_generation }}'
+          APT_PREVIOUS_STATE_PRESENT='${{ needs.lifecycle-decision.outputs.state_present }}'
+          APT_PREVIOUS_POOL_RESULT=out/ci-pool
+          APT_PREVIOUS_STATE_RESULT=out/ci-state
+
+      - name: Verify the package lifecycle artifact boundary
+        if: ${{ always() && steps.package_matrix.outcome != 'skipped' }}
+        run: >-
+          make package-matrix-verify-lifecycle
+          PACKAGE_MATRIX_RESULT="out/package-matrix/${DKC_RUN_ID}"
+
+      - name: Upload package lifecycle evidence
+        if: ${{ always() && steps.package_matrix.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-package-matrix-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            out/package-matrix/${{ env.DKC_RUN_ID }}/evidence/
+            out/package-matrix/${{ env.DKC_RUN_ID }}/client-image/
+            out/package-matrix/${{ env.DKC_RUN_ID }}/client-headers/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+      - name: Upload unsigned repository handoff
+        if: ${{ always() && steps.assemble_repository.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-apt-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/apt-unsigned/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  refresh-metadata:
+    name: refresh repository metadata without kernel builds
+    if: >-
+      needs.lifecycle-decision.outputs.maintenance_required == 'true' &&
+      needs.export-live-pool.result == 'success'
+    needs:
+      [container_images, lifecycle-decision, read-authoritative-state, export-live-pool, fast]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    outputs:
+      unsigned_handoff: ${{ format('dkc-apt-unsigned-{0}-{1}', github.run_id, github.run_attempt) }}
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the refresh run identity
+        run: make github-run-id GITHUB_RUN_ROLE=metadata-refresh
+
+      - name: Download previous signed state
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.read-authoritative-state.outputs.state_handoff }}
+          path: out/ci-state
+
+      - name: Download previous authenticated live pool
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.export-live-pool.outputs.pool_handoff }}
+          path: out/ci-pool
+
+      - name: Rebuild indexes and expiry from the signed live pool
+        id: assemble_repository
+        run: >-
+          make apt-repository-assemble-lifecycle
+          APT_LIFECYCLE_MODE=maintenance
+          PACKAGE_MATRIX_RESULT=
+          APT_REPOSITORY_GENERATION='${{ needs.lifecycle-decision.outputs.next_generation }}'
+          APT_PREVIOUS_STATE_PRESENT=true
+          APT_PREVIOUS_POOL_RESULT=out/ci-pool
+          APT_PREVIOUS_STATE_RESULT=out/ci-state
+
+      - name: Upload unsigned repository handoff
+        if: ${{ always() && steps.assemble_repository.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-apt-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/apt-unsigned/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  current-main:
+    name: require current main before signing
+    if: >-
+      always() &&
+      needs.lifecycle-decision.outputs.publish_allowed == 'true' &&
+      (needs.package-matrix.result == 'success' ||
+       needs.refresh-metadata.result == 'success')
+    needs: [lifecycle-decision, package-matrix, refresh-metadata]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve canonical main without credentials
+        run: >-
+          make current-main
+          CANONICAL_REPOSITORY='kogeler/dkc-linux'
+          EXPECTED_COMMIT='${{ github.sha }}'
+
+  sign-repository:
+    name: sign common repository
+    if: >-
+      always() &&
+      needs.current-main.result == 'success' &&
+      (needs.package-matrix.result == 'success' ||
+       needs.refresh-metadata.result == 'success')
+    needs:
+      [container_images, lifecycle-decision, package-matrix, refresh-metadata, current-main]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    outputs:
+      signature_handoff: ${{ format('dkc-apt-signature-{0}-{1}', github.run_id, github.run_attempt) }}
+      unsigned_handoff: ${{ needs.package-matrix.outputs.unsigned_handoff || needs.refresh-metadata.outputs.unsigned_handoff }}
+    environment:
+      name: production-signing
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the signing run identity
+        run: make github-run-id GITHUB_RUN_ROLE=repository-signing
+
+      - name: Download the unsigned repository handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.package-matrix.outputs.unsigned_handoff || needs.refresh-metadata.outputs.unsigned_handoff }}
+          path: out/ci-apt-unsigned
+
+      - name: Download the lifecycle signing authorization
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.lifecycle-decision.outputs.lifecycle_handoff }}
+          path: out/ci-lifecycle
+
+      - name: Fetch and verify the confined signing toolbox
+        run: make image
+
+      - name: Repeat the current-main check immediately before signing
+        run: >-
+          make current-main
+          CANONICAL_REPOSITORY='kogeler/dkc-linux'
+          EXPECTED_COMMIT='${{ github.sha }}'
+
+      - name: Sign the strict repository request
+        id: sign_repository
+        env:
+          APT_GPG_SIGNING_SUBKEY_B64: ${{ secrets.APT_GPG_SIGNING_SUBKEY_B64 }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: >-
+          make github-apt-repository-sign
+          APT_UNSIGNED_RESULT=out/ci-apt-unsigned
+          LIFECYCLE_DECISION_RESULT=out/ci-lifecycle
+
+      - name: Upload the bounded signature overlay
+        if: ${{ always() && steps.sign_repository.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-apt-signature-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/apt-signature/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  # Mandatory publication boundary: every future external-storage or delivery
+  # job must depend on this job and consume only its verified repository
+  # artifact. A successful signing job alone is never sufficient.
+  verify-repository:
+    name: verify signed common repository
+    if: >-
+      always() && needs.sign-repository.result == 'success'
+    needs: [container_images, lifecycle-decision, sign-repository]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    outputs:
+      repository_handoff: ${{ format('dkc-apt-repository-{0}-{1}', github.run_id, github.run_attempt) }}
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+      APT_CLIENT_IMAGE: ${{ needs.container_images.outputs.apt_client_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the verification run identity
+        run: make github-run-id GITHUB_RUN_ROLE=repository-verification
+
+      - name: Download the unsigned repository handoff
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.sign-repository.outputs.unsigned_handoff }}
+          path: out/ci-apt-unsigned
+
+      - name: Download the signature overlay
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.sign-repository.outputs.signature_handoff }}
+          path: out/ci-apt-signature
+
+      - name: Download the lifecycle decision
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.lifecycle-decision.outputs.lifecycle_handoff }}
+          path: out/ci-lifecycle
+
+      - name: Merge and verify the complete repository
+        id: verify_repository
+        run: >-
+          make apt-repository-verify-decision
+          APT_UNSIGNED_RESULT=out/ci-apt-unsigned
+          APT_SIGNATURE_RESULT=out/ci-apt-signature
+          LIFECYCLE_DECISION_RESULT=out/ci-lifecycle
+
+      - name: Upload the complete verified repository
+        if: ${{ always() && steps.verify_repository.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-apt-repository-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/apt-repository/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish-repository:
+    name: publish and collect retired objects
+    # The build and maintenance branches intentionally leave one another
+    # skipped. GitHub otherwise propagates that skipped ancestor through the
+    # successful convergence jobs and suppresses this job before evaluating
+    # its explicit result check.
+    if: >-
+      always() && needs.verify-repository.result == 'success'
+    needs: [container_images, lifecycle-decision, verify-repository]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      contents: read
+    environment:
+      name: production-storage
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the publication run identity
+        run: make github-run-id GITHUB_RUN_ROLE=repository-publication
+
+      - name: Download the clean-client-verified repository
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.verify-repository.outputs.repository_handoff }}
+          path: out/ci-repository
+
+      - name: Fetch and verify the confined storage toolbox
+        run: make image
+
+      - name: Commit through the leased conditional S3 protocol
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ADDRESSING_STYLE: ${{ secrets.S3_ADDRESSING_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+        run: >-
+          make github-storage-publish
+          STORAGE_PUBLISH_RESULT=out/ci-repository
+          CANONICAL_REPOSITORY=kogeler/dkc-linux
+          EXPECTED_COMMIT='${{ github.sha }}'
+          WORKFLOW_RUN_ID='${{ github.run_id }}'
+          WORKFLOW_RUN_ATTEMPT='${{ github.run_attempt }}'
+
+      - name: Upload sanitized publication evidence
+        if: ${{ always() && steps.publish.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-storage-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/storage-publication/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  verify-published-state:
+    name: verify committed authoritative state
+    if: >-
+      always() && needs.publish-repository.result == 'success'
+    needs: [container_images, lifecycle-decision, publish-repository]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    environment:
+      name: production-state-read
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the final state-read identity
+        run: make github-run-id GITHUB_RUN_ROLE=final-state-read
+
+      - name: Fetch and verify the confined storage toolbox
+        run: make image
+
+      - name: Read and verify the committed signed state
+        env:
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ADDRESSING_STYLE: ${{ secrets.S3_ADDRESSING_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+        run: make github-storage-state-read
+
+      - name: Require the intended generation
+        run: >-
+          make storage-state-require-generation
+          AUTHORITATIVE_STATE_RESULT="out/authoritative-state/${DKC_RUN_ID}"
+          EXPECTED_STATE_GENERATION='${{ needs.lifecycle-decision.outputs.next_generation }}'
+
+      - name: Upload sanitized final-state evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-final-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/authoritative-state/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  lifecycle-result:
+    name: lifecycle result
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.repository == 'kogeler/dkc-linux' &&
+      github.ref == 'refs/heads/main' &&
+      needs.fast.result == 'success'
+    needs: [fast, lifecycle-decision, verify-published-state]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require a valid terminal state
+        run: >-
+          make github-lifecycle-result
+          GITHUB_LIFECYCLE_DECISION='${{ needs.lifecycle-decision.outputs.decision }}'
+          GITHUB_LIFECYCLE_DECISION_RESULT='${{ needs.lifecycle-decision.result }}'
+          GITHUB_FINAL_STATE_RESULT='${{ needs.verify-published-state.result }}'
+
+      # A retry after publication can legitimately decide no_op. Keep cleanup
+      # in the terminal job so that such a retry can finish an earlier cache
+      # deletion failure without rebuilding or republishing anything.
+      - name: Remove accepted release caches
+        if: >-
+          success() &&
+          (needs.lifecycle-decision.outputs.decision == 'build' ||
+           needs.lifecycle-decision.outputs.decision == 'maintenance' ||
+           needs.lifecycle-decision.outputs.decision == 'no_op')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          make github-release-cache-delete
+          GITHUB_RELEASE_CACHE_KEY_V2='${{ needs.lifecycle-decision.outputs.v2_cache_key }}'
+          GITHUB_RELEASE_CACHE_KEY_V3='${{ needs.lifecycle-decision.outputs.v3_cache_key }}'
