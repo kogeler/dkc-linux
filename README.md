@@ -75,6 +75,19 @@ may run on supports x86-64-v3:
 sudo apt install dkc-linux-image-v2-amd64
 ```
 
+If you use DKMS or build other out-of-tree modules, install the matching
+headers too. Headers require the version-matched `clang-21`, `lld-21`, and
+`llvm-21` packages from Debian's official `trixie-backports` suite, so
+[enable Debian Backports](https://backports.debian.org/Instructions/) before
+running:
+
+```sh
+sudo apt install dkc-linux-headers-v3-amd64
+```
+
+Replace `v3` with `v2` when that is the image flavor you installed. The kernel
+image itself does not require backports.
+
 The archive's primary fingerprint is
 `7B98 D4BE 1341 8D38 BAC0 37D2 7634 9629 CC45 3C26`. The
 [complete installation guide](docs/USER_INSTALL.md) includes the stricter
@@ -87,10 +100,6 @@ exact-version installs, upgrades, rollback, removal, and source retrieval.
 | --- | --- |
 | `v2` | You want the widest DKC compatibility, or you are unsure. Every CPU the kernel may run on must support x86-64-v2. |
 | `v3` | Every local, hot-pluggable, and VM migration-destination CPU supports x86-64-v3. |
-
-Headers are available through `dkc-linux-headers-v2-amd64` and
-`dkc-linux-headers-v3-amd64`. They use LLVM 21 from the official Debian
-`trixie-backports` suite; kernel images themselves need no extra Debian suite.
 
 There is a maintained `v4` build path, but no published `v4` flavor. Linux keeps
 general kernel code out of SIMD registers and runtime-selects its explicit
