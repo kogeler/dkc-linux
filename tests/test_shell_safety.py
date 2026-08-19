@@ -474,6 +474,10 @@ def test_release_build_handoff_separates_semantic_and_transport_cache_keys() -> 
     assert steps["Upload bounded flavor qualification evidence"]["with"][
         "if-no-files-found"
     ] == "error"
+    ordered_names = [step["name"] for step in flavors["steps"]]
+    assert ordered_names.index("Save the newly accepted flavor") < ordered_names.index(
+        "Prepare bounded flavor qualification evidence"
+    ) < ordered_names.index("Upload bounded flavor qualification evidence")
     flavor_condition = str(flavors["if"])
     assert flavor_condition.startswith("always() &&")
     assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (

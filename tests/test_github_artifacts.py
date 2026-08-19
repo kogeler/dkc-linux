@@ -11,6 +11,14 @@ from dkc.github_artifacts import (
     prepare_flavor_evidence,
     prepare_pull_request_repository_evidence,
 )
+from dkc.release_cache import prepare_release_cache, release_cache_identity
+from tests.test_release_cache import (
+    IMAGE,
+    ROOT,
+    TOOLBOX,
+    _accepted_results,
+    _decision,
+)
 
 
 def _write(path: Path, body: str = "value\n") -> None:
@@ -19,48 +27,47 @@ def _write(path: Path, body: str = "value\n") -> None:
 
 
 def _flavor_cache(root: Path) -> Path:
-    _write(
-        root / "cache.json",
-        json.dumps(
-            {
-                "schema": "dkc.release-cache.v2",
-                "identity": {"flavor": "v3"},
-            }
-        )
-        + "\n",
+    root.mkdir()
+    decision_root = root / "decision"
+    decision = _decision(decision_root, "qualification")
+    flavor, selftest, qemu = _accepted_results(root / "results", decision)
+    _write(flavor / "evidence/capacity.env")
+    _write(qemu / "evidence/package-audit.json", "{}\n")
+    _write(qemu / "evidence/evidence.sha256", "full result manifest\n")
+    _write(qemu / "v3/evidence/serial.log.xz")
+    _write(qemu / "v3/evidence/evidence.sha256", "full scenario manifest\n")
+    _write(qemu / "v3/guest/kselftest-summary.env")
+    _write(qemu / "v3/guest/kselftest-skips.log")
+
+    workspace = root / "workspace"
+    workspace.mkdir()
+    cache = workspace / "out/release-cache/v3"
+    identity = release_cache_identity(decision, flavor="v3", repository_root=ROOT)
+    prepare_release_cache(
+        cache,
+        flavor_result=flavor,
+        selftest_result=selftest,
+        qemu_result=qemu,
+        decision_root=decision_root,
+        flavor="v3",
+        build_image=IMAGE,
+        toolbox_image=TOOLBOX,
+        expected_key=identity.key(),
+        repository_root=ROOT,
+        cache_workspace=workspace,
     )
-    for relative in (
-        "flavor/evidence/result.env",
-        "flavor/evidence/publication-identity.json",
-        "flavor/evidence/build-image-provenance.env",
-        "flavor/evidence/post-build-gates.env",
-        "flavor/evidence/capacity.env",
-        "flavor/evidence/attestation.json",
-        "flavor/evidence/kbuild-command-audit.json",
-        "flavor/evidence/kernel-simd-audit.json",
-        "selftest/evidence/result.env",
-        "selftest/evidence/kselftest-build.json",
-        "qemu/evidence/result.env",
-        "qemu/evidence/package-audit.json",
-        "qemu/v3/evidence/result.json",
-        "qemu/v3/evidence/serial.log.xz",
-        "qemu/v3/guest/result.env",
-        "qemu/v3/guest/kselftest-summary.env",
-        "qemu/v3/guest/kselftest-skips.log",
-    ):
-        _write(root / relative)
-    _write(root / "qemu/evidence/evidence.sha256", "full result manifest\n")
-    _write(root / "qemu/v3/evidence/evidence.sha256", "full scenario manifest\n")
-    _write(root / "flavor/artifacts/kernel.deb", "large package is not evidence\n")
-    return root
+    return cache
 
 
 def test_flavor_artifact_is_bounded_exact_and_idempotent(tmp_path: Path) -> None:
     cache = _flavor_cache(tmp_path / "cache")
     output = tmp_path / "output"
+    assert (cache / "kselftest/evidence/result.env").is_file()
+    assert not (cache / "selftest").exists()
 
     prepare_flavor_evidence(cache, output, flavor="v3")
     paths = verify_evidence_directory(output)
+    assert "selftest/evidence/result.env" in paths
     assert "qemu/v3/guest/kselftest-summary.env" in paths
     assert "flavor/evidence/kernel-simd-audit.json" in paths
     assert not any(path.endswith(".deb") for path in paths)
@@ -172,4 +179,13 @@ def test_artifact_evidence_rejects_oversized_reports(tmp_path: Path) -> None:
     with (cache / "qemu/v3/evidence/serial.log.xz").open("wb") as stream:
         stream.truncate(8 * 1024 * 1024 + 1)
     with pytest.raises(ValueError, match="file exceeds its size limit"):
+        prepare_flavor_evidence(cache, tmp_path / "output", flavor="v3")
+
+
+def test_flavor_artifact_rejects_an_invalid_payload_map(tmp_path: Path) -> None:
+    cache = _flavor_cache(tmp_path / "cache")
+    manifest = json.loads((cache / "cache.json").read_text())
+    manifest["payload"]["kselftest"] = manifest["payload"]["flavor"]
+    (cache / "cache.json").write_text(json.dumps(manifest) + "\n")
+    with pytest.raises(ValueError, match="invalid payload path"):
         prepare_flavor_evidence(cache, tmp_path / "output", flavor="v3")
