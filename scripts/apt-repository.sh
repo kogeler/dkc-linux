@@ -27,18 +27,25 @@ retention_max_bytes="${15}"
 lifecycle_decision="${16}"
 
 case "$phase" in
-assemble | sign | verify | all) ;;
-*) dkc::die "APT_REPOSITORY_PHASE must be assemble, sign, verify, or all" ;;
+assemble | sign | verify | all | qualify) ;;
+*) dkc::die "APT_REPOSITORY_PHASE must be assemble, sign, verify, all, or qualify" ;;
 esac
 case "${DKC_APT_EPHEMERAL_SIGNING:-0}" in
 0 | 1) ;;
 *) dkc::die "DKC_APT_EPHEMERAL_SIGNING must be exactly 0 or 1" ;;
 esac
-if [ "${DKC_APT_EPHEMERAL_SIGNING:-0}" = 1 ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
+if [ "${DKC_APT_EPHEMERAL_SIGNING:-0}" = 1 ] &&
+	[ -n "${GITHUB_ACTIONS:-}" ] && [ "$phase" != qualify ]; then
 	dkc::die "ephemeral APT signing is forbidden in GitHub Actions"
 fi
 if [ "$phase" = all ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
 	dkc::die "GitHub Actions must keep APT assembly, signing, and verification in separate jobs"
+fi
+if [ "$phase" = qualify ] && [ "${DKC_APT_EPHEMERAL_SIGNING:-0}" != 1 ]; then
+	dkc::die "repository qualification requires an ephemeral signing key"
+fi
+if [ "$phase" = qualify ]; then
+	export DKC_APT_PULL_REQUEST_QUALIFICATION=1
 fi
 
 ephemeral_keys=""
@@ -78,7 +85,9 @@ generate_ephemeral_keys() {
 	export APT_GPG_SIGNING_SUBKEY_B64 APT_GPG_PASSPHRASE
 }
 
-if [ "$phase" = all ] && [ "${DKC_APT_EPHEMERAL_SIGNING:-0}" = 1 ]; then
+if [ "$phase" = all ] || [ "$phase" = qualify ]; then
+	[ "${DKC_APT_EPHEMERAL_SIGNING:-0}" = 1 ] ||
+		dkc::die "combined repository flow requires an ephemeral signing key"
 	generate_ephemeral_keys
 fi
 
@@ -98,7 +107,7 @@ verify)
 	exec "$DKC_ROOT/scripts/verify-apt-repository.sh" \
 		"$toolbox" "$client_image" "$unsigned" "$signature" "$keys_dir"
 	;;
-all)
+all | qualify)
 	"$DKC_ROOT/scripts/assemble-apt-repository.sh" \
 		"$toolbox" "$matrix" "$keys_dir" "$epoch" "$generation" \
 		"$previous_pool_result" "$previous_state_result" \

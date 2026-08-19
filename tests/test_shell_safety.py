@@ -106,6 +106,7 @@ def test_ci_uses_only_standard_runners_and_has_no_temporary_capacity_job() -> No
     assert events["workflow_dispatch"]["inputs"]["confirm_lifecycle"]["type"] == "boolean"
     assert events["workflow_dispatch"]["inputs"]["allow_empty_bootstrap"]["type"] == "boolean"
     assert "push" not in events
+    assert events["pull_request"] == {"branches": ["main"]}
     assert events["schedule"] == [{"cron": "17 */6 * * *"}]
     assert jobs["lifecycle-gate"]["if"] == "github.event_name != 'pull_request'"
     assert jobs["container_images"]["if"] == (
@@ -120,10 +121,12 @@ def test_ci_uses_only_standard_runners_and_has_no_temporary_capacity_job() -> No
     )
     assert jobs["publish-repository"]["needs"][-1] == "verify-repository"
     assert jobs["publish-repository"]["if"] == (
-        "always() && needs.verify-repository.result == 'success'"
+        "always() && github.event_name != 'pull_request' && "
+        "needs.verify-repository.result == 'success'"
     )
     assert jobs["verify-published-state"]["if"] == (
-        "always() && needs.publish-repository.result == 'success'"
+        "always() && github.event_name != 'pull_request' && "
+        "needs.publish-repository.result == 'success'"
     )
     assert jobs["lifecycle-result"]["if"] == (
         "always() && github.event_name != 'pull_request' && "
@@ -424,14 +427,16 @@ def test_every_automatic_release_flavor_requires_kvm() -> None:
     assert not (ROOT / "scripts" / "qemu-host-diagnostics.sh").exists()
 
 
-def test_release_build_handoff_uses_exact_verified_main_caches() -> None:
+def test_release_build_handoff_separates_semantic_and_transport_cache_keys() -> None:
     workflow_text = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     workflow = yaml.safe_load(workflow_text)
     jobs = workflow["jobs"]
     decision = jobs["lifecycle-decision"]
     assert {
         "v2_cache_key",
+        "v2_cache_transport_key",
         "v3_cache_key",
+        "v3_cache_transport_key",
     } <= set(decision["outputs"])
 
     flavors = jobs["flavors"]
@@ -442,7 +447,7 @@ def test_release_build_handoff_uses_exact_verified_main_caches() -> None:
     assert expected_action in restore["uses"]
     assert expected_action in save["uses"]
     assert "restore-keys" not in restore["with"]
-    assert restore["with"]["key"] == "${{ env.GITHUB_RELEASE_CACHE_KEY }}"
+    assert restore["with"]["key"] == "${{ env.GITHUB_RELEASE_CACHE_TRANSPORT_KEY }}"
     assert save["with"]["key"] == restore["with"]["key"]
     miss = "steps.restore_release_cache.outputs.cache-hit != 'true'"
     for name in (
@@ -468,6 +473,11 @@ def test_release_build_handoff_uses_exact_verified_main_caches() -> None:
         assert expected_action in restored["uses"]
         assert restored["with"]["fail-on-cache-miss"] is True
         assert "restore-keys" not in restored["with"]
+        assert restored["with"]["key"] == (
+            "${{ needs.lifecycle-decision.outputs."
+            + flavor
+            + "_cache_transport_key }}"
+        )
         assert f"Verify accepted {flavor} result" in matrix_steps
     package_command = matrix_steps["Reconcile and install-test all packages"]["run"]
     assert "MATRIX_V2=out/release-cache/v2/flavor" in package_command
@@ -484,6 +494,46 @@ def test_release_build_handoff_uses_exact_verified_main_caches() -> None:
     assert "decision == 'maintenance'" in cleanup["if"]
     assert "decision == 'no_op'" in cleanup["if"]
     assert cleanup["run"].startswith("make github-release-cache-delete ")
+
+
+def test_pull_requests_run_full_non_publishing_qualification() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    )
+    jobs = workflow["jobs"]
+    assert "github.event_name == 'pull_request'" in jobs["discover-source"]["if"]
+    assert "github.event_name == 'pull_request'" in jobs["lifecycle-decision"]["if"]
+    decision_steps = {
+        step["name"]: step for step in jobs["lifecycle-decision"]["steps"]
+    }
+    qualification = decision_steps["Make the pull-request build qualification"]
+    assert qualification["if"] == "github.event_name == 'pull_request'"
+    assert qualification["run"].startswith("make github-pull-request-qualification ")
+    assert decision_steps["Download authenticated state handoff"]["if"] == (
+        "github.event_name != 'pull_request'"
+    )
+
+    package_steps = {step["name"]: step for step in jobs["package-matrix"]["steps"]}
+    repository = package_steps[
+        "Qualify the complete repository with a disposable key"
+    ]
+    assert repository["if"] == "github.event_name == 'pull_request'"
+    assert repository["run"].startswith("make github-apt-repository-qualify ")
+
+    for name in (
+        "read-authoritative-state",
+        "export-live-pool",
+        "refresh-metadata",
+        "current-main",
+        "sign-repository",
+        "verify-repository",
+        "publish-repository",
+        "verify-published-state",
+        "lifecycle-result",
+    ):
+        assert "github.event_name != 'pull_request'" in str(
+            jobs[name].get("if", "")
+        ), name
 
 
 def test_language_policy_does_not_decode_tracked_binary_artifacts() -> None:
@@ -1018,9 +1068,15 @@ def test_package_client_uses_exact_installed_and_autoremove_sets() -> None:
     assert "package-matrix-manifest.sh verify-full" in assembler
     assert "build-local-signed-repository.sh" not in orchestrator
     assert "test-signed-repository.sh" not in orchestrator
-    assert "assemble | sign | verify | all" in repository
+    assert "assemble | sign | verify | all | qualify" in repository
     assert "ephemeral APT signing is forbidden in GitHub Actions" in repository
     assert "must keep APT assembly, signing, and verification in separate jobs" in repository
+    assert "repository qualification requires an ephemeral signing key" in repository
+    assert "DKC_APT_PULL_REQUEST_QUALIFICATION=1" in repository
+    assert "DKC_APT_PULL_REQUEST_QUALIFICATION" in signer
+    github_make = (ROOT / "mk" / "github.mk").read_text()
+    assert "github-apt-repository-qualify: image apt-client-image" in github_make
+    assert "DKC_APT_EPHEMERAL_SIGNING=1" in github_make
     assert "APT_GPG_SIGNING_SUBKEY_B64" in signer
     assert "--network=none" in signer
     assert "APT_REPOSITORY_IMAGE_PREREQUISITES" in (

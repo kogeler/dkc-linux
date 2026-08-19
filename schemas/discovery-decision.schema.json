@@ -14,8 +14,8 @@
   "properties": {
     "schema": { "const": "dkc.discovery-decision.v1" },
     "decision": {
-      "description": "no_op and blocked are not the same: blocked means an invariant would be violated, and must never be relaxed into no_op.",
-      "enum": ["no_op", "build", "maintenance", "blocked"]
+      "description": "qualification requires a build but carries no state or publication authority; no_op and blocked are distinct because blocked means an invariant would be violated.",
+      "enum": ["no_op", "build", "maintenance", "qualification", "blocked"]
     },
     "reason": { "type": "string", "maxLength": 500 },
     "source_version": { "type": "string", "minLength": 1, "maxLength": 200 },
@@ -88,6 +88,23 @@
           "maintenance_required": { "const": true },
           "publish_allowed": { "const": true },
           "authoritative_state_read": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "qualification" } } },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["state_generation"] },
+            { "required": ["state_publication_id"] }
+          ]
+        },
+        "properties": {
+          "build_required": { "const": true },
+          "maintenance_required": { "const": false },
+          "publish_allowed": { "const": false },
+          "authoritative_state_read": { "const": false }
         }
       }
     },

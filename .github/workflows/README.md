@@ -17,8 +17,9 @@ Artifact producers export their actual attempt-qualified name as a job output.
 Consumers use that output instead of reconstructing a name from their own
 attempt, so failed-jobs-only re-runs retain valid upstream handoffs.
 
-`ci.yml` runs the read-only tiers for pull requests and the production
-lifecycle on its six-hour schedule or an exact-main manual dispatch. A manual
+`ci.yml` runs a complete non-publishing qualification for pull requests whose
+base is `main`, and the production lifecycle on its six-hour schedule or an
+exact-main manual dispatch. A manual
 dispatch from any other branch or tag fails before source discovery or
 compilation. Ordinary pushes do not start this workflow. The workflow has no
 `pull_request_target` or `workflow_run` bridge. CI never deletes software from
@@ -43,8 +44,9 @@ The `container_images` resolver job resolves the three public `latest` tags,
 requires one input fingerprint and publication generation, and emits immutable
 digest references. Every image-consuming job selects registry mode explicitly;
 the main CI workflow contains no Containerfile build. Pull-request CI resolves
-the base branch's bundle, while the separate read-only image workflow verifies
-any candidate Containerfile changes.
+the currently published bundle, while the separate read-only image workflow
+verifies candidate Containerfile changes when relevant paths changed. Candidate
+images are never published or passed into the main pull-request workflow.
 
 Trusted runs whose typed lifecycle decision requires a build run the `v2`/`v3`
 matrix on independent standard `ubuntu-26.04` runners. Every parallel job
@@ -57,15 +59,20 @@ baseline as omitted rather than treating their internal early exit as a pass.
 The profile's environment-sensitive cases and maintenance rules are documented
 in [`docs/KERNEL_TESTING.md`](../../docs/KERNEL_TESTING.md).
 
-An accepted flavor is saved in the `main` branch's GitHub Actions cache only
-after build attestation, selftest compilation, KVM boot, and guest qualification
-all pass. Its exact key binds the Debian source version and descriptor hash,
+An accepted flavor is saved only after build attestation, selftest compilation,
+KVM boot, and guest qualification all pass. Its semantic identity binds the
+Debian source version and descriptor hash,
 downstream revision, build-policy digest, LTO mode, flavor, and a separate
 digest of every qualification input. Container image digests are retained as
 provenance inside the sealed cache but do not participate in its identity. APT,
 signing, and storage implementation files are deliberately outside that
 identity, so a failed downstream run can be corrected without compiling the
-same kernel again. There are no prefix fallback keys. Restored files are treated as
+same kernel again. Production uses that semantic identity as its exact transport
+key. A pull request uses an additional run-and-attempt-qualified transport key,
+so it cannot hit an accepted `main` entry and always executes both kernel builds
+and both VMs. Its entries remain confined to the pull-request merge ref and are
+used only to hand the two results to the package job in that run. There are no
+prefix fallback keys. Restored files are treated as
 untrusted: a complete SHA-256 inventory and all semantic identities and PASS
 records are verified before use. An exact hit skips runner QEMU setup, kernel
 compilation, selftest compilation, and VM execution. Flavor packages, source,
@@ -76,6 +83,10 @@ proves the common packages byte-identical, selects their
 canonical `v2` copies, reconciles the resulting 18 unique packages, and runs
 clean image-only plus complete headers/DKMS clients. It then assembles one
 unsigned 19-binary/two-source repository and a strict hashed signing request.
+For a pull request, the same package job additionally assembles the repository
+with a disposable key and runs the complete signed clean client, including
+binary/source acquisition and negative signature cases. Only bounded test
+evidence is uploaded; the disposable key and repository are not retained.
 
 Production signing is deliberately separated from both package processing and
 final verification. A credential-free gate first proves that the tested commit
@@ -120,10 +131,14 @@ from a controlled local checkout. The main CI workflow contains the sole hosted
 storage path after all build, VM, signing, and clean-client gates. No workflow
 contains a separate disposable qualification job.
 
-Pull requests run the fast and release-input tiers only. Trusted runs discover
-the newest authenticated Debian source and direct-read signed authoritative
-state. They build only for a newer source or an explicitly increased downstream
-revision. They refresh metadata when `Valid-Until` enters its safety horizon,
+Pull requests discover authenticated Debian source, run the fast and release
+preflight tiers, always build and VM-test v2/v3 through isolated cache transport,
+run the package matrix, and exercise a disposable signed repository. Their typed
+qualification has no publication authority; authoritative-state reads,
+production signing, publication, and final state verification remain skipped.
+Trusted runs additionally direct-read signed authoritative state. They build
+only for a newer source or an explicitly increased downstream revision. They
+refresh metadata when `Valid-Until` enters its safety horizon,
 when the signed retention policy changes, or when the measured namespace is
 over its signed byte limit; otherwise they finish as a typed no-op. The first
 hosted generation is accepted. The unattended schedule is active, ordinary

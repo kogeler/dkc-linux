@@ -25,12 +25,12 @@ The suite covers:
 - complete exact GC, liveness, generation, byte, object-count, partial-plan,
   and changed-byte rejection;
 - source-bound release-cache identity independent of image rollover, complete
-  restored-file verification, exact-key-only restore, tamper rejection, and
-  exact main-ref cleanup;
+  restored-file verification, exact-key-only restore, tamper rejection,
+  run/attempt-isolated pull-request transport, and exact main-ref cleanup;
 - workflow trigger, acyclic dependency graph, declared job-output use,
   producer-attempt artifact routing, unique YAML mappings, secret boundaries,
-  cache/KVM, build/maintenance/no-op convergence, pre-sign decision binding,
-  and publication dependency invariants;
+  cache/KVM, build/maintenance/qualification/no-op convergence, pre-sign
+  decision binding, and publication dependency invariants;
 - retry-safe content-derived immutable publication namespaces;
 - exact predecessor publication binding at decision, signing, and storage-CAS
   boundaries.
@@ -49,6 +49,18 @@ No build/package/QEMU result is uploaded as a flavor-job artifact. A failed APT
 or publication stage preserves the accepted cache for retry; the terminal job
 removes it after final remote-state verification, while maintenance and no-op
 paths repeat the same exact cleanup idempotently.
+
+The pull-request graph is locally accepted by the repository suite, including
+its typed non-publishing decision, forced cache-transport miss, storage/secret
+exclusions, and DAG/output invariants. A direct `make
+github-apt-repository-qualify` run on 2026-08-19 additionally generated a
+disposable key, assembled and signed the binary/source repository, passed the
+complete clean client and negative signature cases, and recorded
+`publishable=false`. The same flow also passed with `GITHUB_ACTIONS=true`,
+covering its CI-only signing guard. This is not a claim that a hosted
+pull-request run has completed: hosted acceptance still requires both real
+flavor builds and KVM qualifications, the package matrix, and the same
+disposable signed clean client to pass on a PR targeting `main`.
 
 ## Real storage acceptance completed locally
 

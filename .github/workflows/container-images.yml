@@ -7,6 +7,7 @@ name: container images
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - .github/workflows/container-images.yml
       - config/base-image.lock

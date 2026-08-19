@@ -174,6 +174,46 @@ def test_decision_matches_schema() -> None:
     schema.validate("discovery-decision", decision.to_dict())
 
 
+def test_qualification_requires_build_without_state_or_publication_authority() -> None:
+    decision = DiscoveryDecision(
+        decision="qualification",
+        source_version="7.1.7-1",
+        source_dsc_sha256=SHA,
+        utc=NOW,
+        dkc_revision=1,
+        build_policy_sha256="c" * 64,
+        lto_mode="thin",
+        build_required=True,
+    )
+    schema.validate("discovery-decision", decision.to_dict())
+    assert not decision.authoritative_state_read
+    assert not decision.publish_allowed
+    with pytest.raises(ValueError, match="contradictory"):
+        DiscoveryDecision(
+            decision="qualification",
+            source_version="7.1.7-1",
+            source_dsc_sha256=SHA,
+            utc=NOW,
+            dkc_revision=1,
+            build_policy_sha256="c" * 64,
+            lto_mode="thin",
+            build_required=False,
+        )
+    with pytest.raises(ValueError, match="cannot carry authoritative state"):
+        DiscoveryDecision(
+            decision="qualification",
+            source_version="7.1.7-1",
+            source_dsc_sha256=SHA,
+            utc=NOW,
+            dkc_revision=1,
+            build_policy_sha256="c" * 64,
+            lto_mode="thin",
+            build_required=True,
+            state_generation=3,
+            state_publication_id="20260817-abcdef12",
+        )
+
+
 def test_gc_plan_matches_schema() -> None:
     plan = GcPlan(
         expected_generation=4,
@@ -316,6 +356,7 @@ def test_blocked_never_carries_work_or_permission() -> None:
                          "publish_allowed": True, "authoritative_state_read": True,
                          "state_generation": 1,
                          "state_publication_id": "20260817-abcdef12"}),
+        ("qualification", {"maintenance_required": True}),
     ),
 )
 def test_decision_routing_flags_are_not_independent_booleans(
