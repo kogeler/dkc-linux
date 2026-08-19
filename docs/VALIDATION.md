@@ -62,6 +62,15 @@ pull-request run has completed: hosted acceptance still requires both real
 flavor builds and KVM qualifications, the package matrix, and the same
 disposable signed clean client to pass on a PR targeting `main`.
 
+[Pull-request run 32221805371](https://github.com/kogeler/dkc-linux/actions/runs/32221805371)
+confirmed authenticated source discovery, the fast tier, the typed
+`qualification` decision, and release preflight. It did not provide hosted
+build acceptance: GitHub suppressed the flavor matrix because its condition
+lacked `always()` while the successful decision had deliberately skipped
+production-only ancestors. The workflow now combines `always()` with explicit
+success requirements for every direct flavor dependency; repository structure
+tests enforce that convergence rule.
+
 ## Real storage acceptance completed locally
 
 Before production activation, the selected empty S3-compatible bucket was used

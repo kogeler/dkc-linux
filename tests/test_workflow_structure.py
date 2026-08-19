@@ -238,10 +238,15 @@ def test_every_production_mutation_path_requires_the_fast_tier() -> None:
 def test_ci_lifecycle_branches_converge_on_one_terminal_contract() -> None:
     jobs = _workflow(WORKFLOWS / "ci.yml")["jobs"]
 
-    assert jobs["flavors"]["if"] == (
-        "needs.lifecycle-decision.outputs.build_required == 'true'"
+    flavor_condition = str(jobs["flavors"]["if"])
+    assert flavor_condition.startswith("always() &&")
+    assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
+        flavor_condition
     )
+    for dependency in _needs(jobs["flavors"]):
+        assert f"needs.{dependency}.result == 'success'" in flavor_condition
     package_condition = str(jobs["package-matrix"]["if"])
+    assert package_condition.startswith("always() &&")
     assert "build_required == 'true'" in package_condition
     assert "needs.flavors.result == 'success'" in package_condition
     assert "state_present == 'false'" in package_condition

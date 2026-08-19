@@ -316,7 +316,18 @@ jobs:
 
   flavors:
     name: build and validate ${{ matrix.flavor }}
-    if: needs.lifecycle-decision.outputs.build_required == 'true'
+    # The successful decision has skipped production-only ancestors in a pull
+    # request. Without always(), GitHub propagates that earlier skip before it
+    # evaluates this job's own build decision. Require every direct producer
+    # explicitly so a real failure remains fail-closed.
+    if: >-
+      always() &&
+      needs.container_images.result == 'success' &&
+      needs.discover-source.result == 'success' &&
+      needs.lifecycle-decision.result == 'success' &&
+      needs.fast.result == 'success' &&
+      needs.release-preflight.result == 'success' &&
+      needs.lifecycle-decision.outputs.build_required == 'true'
     needs: [container_images, discover-source, lifecycle-decision, fast, release-preflight]
     strategy:
       fail-fast: false
@@ -493,6 +504,7 @@ jobs:
       DKC_IMAGE_MODE: registry
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
       BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
+      APT_CLIENT_IMAGE: ${{ needs.container_images.outputs.apt_client_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

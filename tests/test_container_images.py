@@ -501,7 +501,7 @@ def test_main_ci_consumes_only_resolved_registry_images() -> None:
         "fast": ("TOOLBOX_IMAGE",),
         "release-preflight": ("BUILD_IMAGE",),
         "flavors": ("TOOLBOX_IMAGE", "BUILD_IMAGE"),
-        "package-matrix": ("TOOLBOX_IMAGE",),
+        "package-matrix": ("TOOLBOX_IMAGE", "APT_CLIENT_IMAGE"),
         "sign-repository": ("TOOLBOX_IMAGE",),
         "verify-repository": ("TOOLBOX_IMAGE", "APT_CLIENT_IMAGE"),
     }

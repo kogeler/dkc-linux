@@ -116,8 +116,10 @@ def test_ci_uses_only_standard_runners_and_has_no_temporary_capacity_job() -> No
     )
     gate = jobs["lifecycle-gate"]["steps"][-1]
     assert gate["run"] == "make github-lifecycle-gate"
-    assert jobs["flavors"]["if"] == (
-        "needs.lifecycle-decision.outputs.build_required == 'true'"
+    flavor_condition = str(jobs["flavors"]["if"])
+    assert flavor_condition.startswith("always() &&")
+    assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
+        flavor_condition
     )
     assert jobs["publish-repository"]["needs"][-1] == "verify-repository"
     assert jobs["publish-repository"]["if"] == (
@@ -462,7 +464,11 @@ def test_release_build_handoff_separates_semantic_and_transport_cache_keys() -> 
         "steps.restore_release_cache.outputs.cache-hit != 'true'"
     )
     assert "if" not in steps["Verify the accepted flavor handoff"]
-    assert flavors["if"] == "needs.lifecycle-decision.outputs.build_required == 'true'"
+    flavor_condition = str(flavors["if"])
+    assert flavor_condition.startswith("always() &&")
+    assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
+        flavor_condition
+    )
     assert "dkc-flavor-${{" not in workflow_text
     assert "dkc-kselftest-${{" not in workflow_text
     assert "dkc-qemu-${{" not in workflow_text
@@ -513,12 +519,24 @@ def test_pull_requests_run_full_non_publishing_qualification() -> None:
         "github.event_name != 'pull_request'"
     )
 
-    package_steps = {step["name"]: step for step in jobs["package-matrix"]["steps"]}
+    flavor_condition = str(jobs["flavors"]["if"])
+    assert flavor_condition.startswith("always() &&")
+    for dependency in jobs["flavors"]["needs"]:
+        assert f"needs.{dependency}.result == 'success'" in flavor_condition
+    assert "build_required == 'true'" in flavor_condition
+
+    package_job = jobs["package-matrix"]
+    assert "environment" not in package_job
+    assert "secrets." not in str(package_job)
+    package_steps = {step["name"]: step for step in package_job["steps"]}
     repository = package_steps[
         "Qualify the complete repository with a disposable key"
     ]
     assert repository["if"] == "github.event_name == 'pull_request'"
     assert repository["run"].startswith("make github-apt-repository-qualify ")
+    assert package_job["env"]["APT_CLIENT_IMAGE"] == (
+        "${{ needs.container_images.outputs.apt_client_image }}"
+    )
 
     for name in (
         "read-authoritative-state",
