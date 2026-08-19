@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 CacheClass = Literal["immutable", "mutable"]
-Decision = Literal["no_op", "build", "maintenance", "blocked"]
+Decision = Literal["no_op", "build", "maintenance", "qualification", "blocked"]
 LtoMode = Literal["none", "thin", "full"]
 
 # Deletion may only ever touch these. Mutable metadata, keys, state pointers and
@@ -187,6 +187,7 @@ class DiscoveryDecision(_Record):
             "no_op": (False, False, False),
             "build": (True, False, True),
             "maintenance": (False, True, True),
+            "qualification": (True, False, False),
             "blocked": (False, False, False),
         }[self.decision]
         observed_flags = (
@@ -208,6 +209,8 @@ class DiscoveryDecision(_Record):
             raise ValueError(
                 f"{self.decision} decision requires a published state generation"
             )
+        if self.decision == "qualification" and self.state_generation is not None:
+            raise ValueError("qualification cannot carry authoritative state")
 
 
 # --------------------------------------------------------------------------

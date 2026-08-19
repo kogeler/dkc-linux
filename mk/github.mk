@@ -58,8 +58,28 @@ github-apt-repository-sign: ## Sign an authorized lifecycle handoff with a prepa
 		{ echo 'LIFECYCLE_DECISION_RESULT is required'; exit 1; }
 	@$(MAKE) --no-print-directory apt-repository-sign-prepared
 
-.PHONY: github-lifecycle-decision
-github-lifecycle-decision: lifecycle-decide ## Decide the lifecycle and export its typed job outputs
+.PHONY: github-apt-repository-qualify
+github-apt-repository-qualify: image apt-client-image ## Exercise the complete repository flow with a disposable key
+	@DKC_APT_EPHEMERAL_SIGNING=1 $(DKC_ROOT)/scripts/apt-repository.sh \
+		qualify '$(TOOLBOX_IMAGE)' '$(APT_CLIENT_IMAGE)' \
+		'$(PACKAGE_MATRIX_RESULT)' '$(APT_UNSIGNED_RESULT)' \
+		'$(APT_SIGNATURE_RESULT)' '$(APT_KEYS_DIR)' \
+		'$(APT_REPOSITORY_EPOCH)' '$(APT_REPOSITORY_GENERATION)' \
+		'$(APT_CLOCK_SKEW_SECONDS)' '$(APT_SIGNING_SAFETY_SECONDS)' \
+		'' '' '$(APT_RETENTION_MODE)' \
+		'$(if $(filter series,$(APT_RETENTION_MODE)),,$(APT_RETENTION_MAX_BYTES))' ''
+
+.PHONY: github-pull-request-qualification
+github-pull-request-qualification: ## Create a non-publishing build decision from authenticated source
+	@$(DKC_ROOT)/scripts/github-ci.py qualification-decision \
+		--source '$(SOURCE_DISCOVERY_RESULT)' \
+		--decision '$(GITHUB_LIFECYCLE_RESULT)' --root '$(DKC_ROOT)' \
+		--epoch '$(LIFECYCLE_DECISION_EPOCH)' --dkc-revision '$(DKC_REVISION)' \
+		--lto-mode '$(KERNEL_LTO)' --retention-mode '$(APT_RETENTION_MODE)' \
+		--retention-max-bytes '$(if $(filter series,$(APT_RETENTION_MODE)),,$(APT_RETENTION_MAX_BYTES))'
+
+.PHONY: github-lifecycle-outputs
+github-lifecycle-outputs: ## Export typed decision and isolated transport-cache outputs
 	@$(DKC_ROOT)/scripts/github-ci.py export-lifecycle \
 		--decision '$(GITHUB_LIFECYCLE_RESULT)' --root '$(DKC_ROOT)'
 

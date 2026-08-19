@@ -7,6 +7,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -15,6 +16,7 @@ from dkc.github import (
     export_image_bundle,
     export_lifecycle_outputs,
     export_source_environment,
+    prepare_pull_request_qualification,
     require_terminal_result,
     write_run_identity,
     write_workflow_assignments,
@@ -24,6 +26,8 @@ from dkc.release_cache import (
     prepare_release_cache,
     verify_release_cache,
 )
+from dkc.records import LtoMode
+from dkc.retention import RetentionMode
 from dkc.serialize import boolean_text
 
 
@@ -70,6 +74,19 @@ def main() -> int:
     export = subparsers.add_parser("export-lifecycle")
     export.add_argument("--decision", type=Path, required=True)
     export.add_argument("--root", type=Path, required=True)
+    qualification = subparsers.add_parser("qualification-decision")
+    qualification.add_argument("--source", type=Path, required=True)
+    qualification.add_argument("--decision", type=Path, required=True)
+    qualification.add_argument("--root", type=Path, required=True)
+    qualification.add_argument("--epoch", type=int, required=True)
+    qualification.add_argument("--dkc-revision", type=int, required=True)
+    qualification.add_argument(
+        "--lto-mode", choices=("none", "thin", "full"), required=True
+    )
+    qualification.add_argument(
+        "--retention-mode", choices=("series", "series-size"), required=True
+    )
+    qualification.add_argument("--retention-max-bytes")
     source = subparsers.add_parser("export-source")
     source.add_argument("--source", type=Path, required=True)
     images = subparsers.add_parser("export-image-bundle")
@@ -109,8 +126,30 @@ def main() -> int:
             args.decision,
             Path(required_environment("GITHUB_OUTPUT")),
             repository_root=args.root,
+            event=required_environment("GITHUB_EVENT_NAME"),
+            workflow_run_id=required_environment("GITHUB_RUN_ID"),
+            run_attempt=required_environment("GITHUB_RUN_ATTEMPT"),
         )
         print("PASS typed lifecycle outputs exported")
+    elif args.command == "qualification-decision":
+        retention_max_bytes = None
+        if args.retention_mode == "series-size":
+            if not args.retention_max_bytes or not args.retention_max_bytes.isdecimal():
+                raise ValueError("size retention requires a positive byte limit")
+            retention_max_bytes = int(args.retention_max_bytes)
+        elif args.retention_max_bytes:
+            raise ValueError("series retention does not accept a byte limit")
+        prepare_pull_request_qualification(
+            args.source,
+            args.decision,
+            repository_root=args.root,
+            epoch=args.epoch,
+            dkc_revision=args.dkc_revision,
+            lto_mode=cast(LtoMode, args.lto_mode),
+            retention_mode=cast(RetentionMode, args.retention_mode),
+            retention_max_bytes=retention_max_bytes,
+        )
+        print("PASS pull-request build qualification prepared")
     elif args.command == "export-source":
         export_source_environment(
             args.source, Path(required_environment("GITHUB_ENV"))

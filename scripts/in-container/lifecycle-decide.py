@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import pathlib
 from datetime import datetime, timezone
 
@@ -14,9 +13,8 @@ from dkc.handoffs import (
     load_source_handoff,
 )
 from dkc.lifecycle import decide
-from dkc.release_gate import discovery_decision_outputs
-from dkc.schema import validate
-from dkc.serialize import dumps, parse_boolean_text
+from dkc.release_gate import write_discovery_decision
+from dkc.serialize import parse_boolean_text
 
 
 def main() -> int:
@@ -65,25 +63,7 @@ def main() -> int:
         state_read_succeeded=True,
         bootstrap_allowed=args.bootstrap_allowed,
     )
-    validate("discovery-decision", result.to_dict())
-    args.output.mkdir(parents=True)
-    (args.output / "decision.json").write_text(
-        dumps(result.to_dict()), encoding="utf-8"
-    )
-    outputs = discovery_decision_outputs(result)
-    (args.output / "outputs.env").write_text(
-        "".join(f"{key}={value}\n" for key, value in sorted(outputs.items())),
-        encoding="utf-8",
-    )
-    (args.output / "result.env").write_text(
-        f"status=PASS\nlifecycle_decision={result.decision}\n", encoding="utf-8"
-    )
-    checksums = []
-    for path in sorted(args.output.iterdir()):
-        checksums.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
-    (args.output / "evidence.sha256").write_text(
-        "\n".join(checksums) + "\n", encoding="utf-8"
-    )
+    write_discovery_decision(args.output, result)
     print(f"PASS lifecycle decision: {result.decision}")
     return 0
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from .handoffs import load_authoritative_state_handoff
 from .naming import Identity
 from .records import DiscoveryDecision
 from .schema import validate
-from .serialize import boolean_text
+from .serialize import boolean_text, dumps
 from .storage_repository import load_verified_repository
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "require_publication_matches_decision",
     "require_signing_request_matches_decision",
     "require_state_generation",
+    "write_discovery_decision",
 ]
 
 
@@ -40,6 +42,34 @@ def discovery_decision_outputs(decision: DiscoveryDecision) -> dict[str, str]:
         "source_version": decision.source_version,
         "state_present": boolean_text(decision.state_generation is not None),
     }
+
+
+def write_discovery_decision(root: Path, decision: DiscoveryDecision) -> None:
+    """Write one exact, hash-bound decision handoff without replacing output."""
+
+    if root.exists() or root.is_symlink():
+        raise ValueError("refusing to replace lifecycle decision output")
+    validate("discovery-decision", decision.to_dict())
+    root.mkdir(parents=True)
+    files = {
+        "decision.json": dumps(decision.to_dict()),
+        "outputs.env": "".join(
+            f"{key}={value}\n"
+            for key, value in sorted(discovery_decision_outputs(decision).items())
+        ),
+        "result.env": (
+            f"status=PASS\nlifecycle_decision={decision.decision}\n"
+        ),
+    }
+    for name, body in files.items():
+        (root / name).write_text(body, encoding="utf-8")
+    (root / "evidence.sha256").write_text(
+        "".join(
+            f"{hashlib.sha256(body.encode()).hexdigest()}  {name}\n"
+            for name, body in sorted(files.items())
+        ),
+        encoding="utf-8",
+    )
 
 
 def load_discovery_decision(root: Path) -> DiscoveryDecision:

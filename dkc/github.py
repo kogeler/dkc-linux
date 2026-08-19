@@ -7,9 +7,16 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .buildpolicy import build_policy_digest
 from .handoffs import load_source_handoff
-from .release_gate import discovery_decision_outputs, load_discovery_decision
+from .records import DiscoveryDecision, LtoMode
+from .release_gate import (
+    discovery_decision_outputs,
+    load_discovery_decision,
+    write_discovery_decision,
+)
 from .release_cache import release_cache_identity
+from .retention import RetentionMode
 from .source_discovery import make_variables
 
 __all__ = [
@@ -17,6 +24,7 @@ __all__ = [
     "export_lifecycle_outputs",
     "export_image_bundle",
     "export_source_environment",
+    "prepare_pull_request_qualification",
     "require_terminal_result",
     "write_workflow_assignments",
     "write_run_identity",
@@ -148,6 +156,9 @@ def export_lifecycle_outputs(
     output_file: Path,
     *,
     repository_root: Path,
+    event: str,
+    workflow_run_id: str,
+    run_attempt: str,
 ) -> None:
     decision = load_discovery_decision(decision_root)
     values = discovery_decision_outputs(decision)
@@ -157,13 +168,72 @@ def export_lifecycle_outputs(
         )
         for flavor in ("v2", "v3")
     }
+    if event == "pull_request":
+        if not _RUN_ID_RE.fullmatch(workflow_run_id):
+            raise ValueError("workflow run ID is invalid")
+        if not _ATTEMPT_RE.fullmatch(run_attempt):
+            raise ValueError("workflow run attempt is invalid")
+        transport_keys = {
+            flavor: (
+                f"dkc-pr-{workflow_run_id}-{run_attempt}-{flavor}-"
+                f"{identity.digest()}"
+            )
+            for flavor, identity in identities.items()
+        }
+    elif event in ("schedule", "workflow_dispatch"):
+        transport_keys = {
+            flavor: identity.key() for flavor, identity in identities.items()
+        }
+    else:
+        raise ValueError("event cannot export lifecycle cache keys")
     values.update(
         {
             "v2_cache_key": identities["v2"].key(),
+            "v2_cache_transport_key": transport_keys["v2"],
             "v3_cache_key": identities["v3"].key(),
+            "v3_cache_transport_key": transport_keys["v3"],
         }
     )
     write_workflow_assignments(output_file, values)
+
+
+def prepare_pull_request_qualification(
+    source_root: Path,
+    decision_root: Path,
+    *,
+    repository_root: Path,
+    epoch: int,
+    dkc_revision: int,
+    lto_mode: LtoMode,
+    retention_mode: RetentionMode,
+    retention_max_bytes: int | None,
+) -> None:
+    """Create a build-only decision that can never authorize publication."""
+
+    if epoch < 1:
+        raise ValueError("qualification epoch must be positive")
+    source = load_source_handoff(source_root)
+    descriptor = source.get("dsc")
+    if not isinstance(descriptor, dict) or not isinstance(
+        descriptor.get("sha256"), str
+    ):
+        raise ValueError("source inventory lacks its descriptor hash")
+    decision = DiscoveryDecision(
+        decision="qualification",
+        source_version=str(source["source_version"]),
+        source_dsc_sha256=descriptor["sha256"],
+        dkc_revision=dkc_revision,
+        build_policy_sha256=build_policy_digest(repository_root),
+        lto_mode=lto_mode,
+        retention_mode=retention_mode,
+        retention_max_bytes=retention_max_bytes,
+        utc=datetime.fromtimestamp(epoch, timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        build_required=True,
+        reason="validate an untrusted pull request without publication authority",
+    )
+    write_discovery_decision(decision_root, decision)
 
 
 def export_source_environment(source_root: Path, environment_file: Path) -> None:

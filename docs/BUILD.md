@@ -420,7 +420,8 @@ for an already active main image publication to finish, then snapshots whatever
 coherent `latest` bundle is current; it never waits for a checkout-derived image
 fingerprint. Partial updates to the three mutable tags therefore cannot create
 a mixed build environment, while the image and kernel schedules remain
-independent.
+independent. Pull-request kernel jobs use that same published bundle, never the
+unpublished candidate images built by the separate path-filtered image workflow.
 
 Trusted lifecycle triggers first discover authenticated Debian source and read
 signed repository state. The typed decision builds only when the source is new,
@@ -429,8 +430,8 @@ empty bootstrap is required. A current source reaches metadata maintenance or a
 no-op without compiling a kernel. A manual dispatch from any branch or tag
 other than current `main` fails before image resolution or compilation.
 
-For a build decision, v2 and v3 run on independent standard `ubuntu-26.04`
-runners. Each job computes one main-branch Actions cache key from the
+For a production build decision, v2 and v3 run on independent standard
+`ubuntu-26.04` runners. Each job computes one semantic Actions cache key from the
 authenticated Debian source, downstream revision/build policy, flavor, and LTO
 mode, plus the tracked validation policy for attestation, selftests, and QEMU.
 Image digests remain provenance and do not invalidate an accepted result. A
@@ -447,6 +448,18 @@ terminal job only after the intended signed repository generation is read back
 successfully from storage. Artifact consumers use producer-exported names, so
 a failed-jobs-only retry reuses the successful producer attempt instead of
 searching for a nonexistent artifact under the new attempt number.
+
+A pull request targeting `main` uses the same authenticated source, release
+preflight, v2/v3 build, SIMD/Kbuild/package attestation, KVM boot, selftests, and
+package matrix. Its decision is a separate `qualification` state with
+`build_required=true` and `publish_allowed=false`. The semantic identity is
+still checked, but the cache transport key includes the workflow run and
+attempt, guaranteeing a miss even though GitHub permits pull requests to read
+default-branch caches. The package job restores only those attempt-local
+handoffs. It then signs a newly assembled repository with a disposable key and
+runs the complete clean APT client. Authoritative state, the production signing
+key, external publication, and final state verification are never reachable
+from this decision.
 
 There is no cache prefix fallback, paid-runner selector, runner cleanup, or
 synthetic CPU/RAM cap. Local sequential builds do not populate or consume the

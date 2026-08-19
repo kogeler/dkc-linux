@@ -61,7 +61,7 @@ cannot cause one flavor to be built from different bytes than another. The
 manual v4 target uses the same locked process but does not enter the release
 artifact graph.
 
-GitHub's cache is a transport optimization, not a trust anchor. Main-branch
+GitHub's cache is a transport optimization, not a trust anchor. Production
 cache keys bind the source descriptor, downstream revision, tracked build
 policy, LTO mode, flavor, and every KVM/selftest/audit policy input. The
 immutable build and toolbox image digests remain sealed provenance rather than
@@ -71,8 +71,11 @@ secret and is readable by pull-request contexts under GitHub's cache model.
 Every restore is therefore handled as untrusted input: symbolic/special files,
 unexpected paths, changed bytes, identity mismatches, or any non-PASS build,
 SIMD, Kbuild, selftest, KVM, or guest result fail closed before package use.
-Only trusted canonical-main lifecycle triggers can reach the save step, and it
-runs after all expensive gates. Exact cache IDs are removed by the terminal job
+Production and pull-request jobs can reach a save step only after all expensive
+gates. Pull requests use a run-and-attempt-qualified transport key in their
+merge-ref scope, so they cannot overwrite or suppress work with a `main` entry;
+the semantic key inside the handoff is still verified independently. Exact
+production cache IDs are removed by the terminal job
 after the published signed generation has been read back successfully; the
 maintenance and no-op paths perform the same idempotent cleanup, so a later
 no-op retry may finish an interrupted deletion.
@@ -84,7 +87,7 @@ file inventories and semantic status. Signed state is reauthenticated after
 download, and the previous pool is accepted only when every path, byte count,
 and SHA-256 matches that signed live-object inventory.
 
-The lifecycle record admits only four exact flag combinations; routing booleans
+The lifecycle record admits only five exact flag combinations; routing booleans
 cannot contradict its selected decision. The secret-bearing signer reloads that
 exact record and rejects a signing request that differs in source, revision,
 derived package version, build policy, LTO mode, retention mode, whole-storage

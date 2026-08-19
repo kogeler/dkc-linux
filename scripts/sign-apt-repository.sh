@@ -28,6 +28,7 @@ case "${DKC_APT_EPHEMERAL_SIGNING:-0}" in
 1)
 	signing_mode=ephemeral
 	[ -z "${GITHUB_ACTIONS:-}" ] ||
+		[ "${DKC_APT_PULL_REQUEST_QUALIFICATION:-0}" = 1 ] ||
 		dkc::die "ephemeral signing is forbidden in GitHub Actions"
 	;;
 *) dkc::die "DKC_APT_EPHEMERAL_SIGNING must be exactly 0 or 1" ;;

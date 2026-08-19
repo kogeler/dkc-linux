@@ -452,6 +452,9 @@ def test_image_workflow_has_one_read_only_pr_path_and_one_main_publisher() -> No
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "container-images.yml").read_text()
     )
+    events = workflow.get("on", workflow.get(True))
+    assert events["pull_request"]["branches"] == ["main"]
+    assert events["pull_request"]["paths"] == events["push"]["paths"]
     jobs = workflow["jobs"]
     assert set(jobs) == {"verify-pull-request", "publish-main"}
     assert {job["runs-on"] for job in jobs.values()} == {"ubuntu-26.04"}

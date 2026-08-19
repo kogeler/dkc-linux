@@ -9,12 +9,15 @@ import pytest
 
 from dkc.github import (
     authorize_lifecycle,
+    export_lifecycle_outputs,
     export_image_bundle,
     export_source_environment,
+    prepare_pull_request_qualification,
     require_terminal_result,
     write_run_identity,
     write_workflow_assignments,
 )
+from dkc.release_gate import load_discovery_decision
 from dkc.source_discovery import build_inventory, make_variables
 from dkc.serialize import boolean_text, parse_boolean_text
 
@@ -163,6 +166,63 @@ def test_source_environment_is_reconstructed_from_the_typed_handoff(
     initial = environment.read_bytes()
     export_source_environment(root, environment)
     assert environment.read_bytes() == initial
+
+    decision_root = tmp_path / "qualification"
+    repository_root = Path(__file__).parents[1]
+    prepare_pull_request_qualification(
+        root,
+        decision_root,
+        repository_root=repository_root,
+        epoch=1_787_875_200,
+        dkc_revision=1,
+        lto_mode="thin",
+        retention_mode="series-size",
+        retention_max_bytes=9_500_000_000,
+    )
+    decision = load_discovery_decision(decision_root)
+    assert decision.decision == "qualification"
+    assert decision.build_required
+    assert not decision.publish_allowed
+    assert not decision.authoritative_state_read
+
+    pull_request_output = tmp_path / "pull-request-output"
+    export_lifecycle_outputs(
+        decision_root,
+        pull_request_output,
+        repository_root=repository_root,
+        event="pull_request",
+        workflow_run_id="123",
+        run_attempt="2",
+    )
+    pull_request_values = dict(
+        line.split("=", 1)
+        for line in pull_request_output.read_text(encoding="utf-8").splitlines()
+    )
+    assert pull_request_values["v2_cache_key"].startswith("dkc-release-v2-v2-")
+    assert pull_request_values["v2_cache_transport_key"].startswith(
+        "dkc-pr-123-2-v2-"
+    )
+    assert (
+        pull_request_values["v2_cache_transport_key"]
+        != pull_request_values["v2_cache_key"]
+    )
+
+    production_output = tmp_path / "production-output"
+    export_lifecycle_outputs(
+        decision_root,
+        production_output,
+        repository_root=repository_root,
+        event="schedule",
+        workflow_run_id="123",
+        run_attempt="2",
+    )
+    production_values = dict(
+        line.split("=", 1)
+        for line in production_output.read_text(encoding="utf-8").splitlines()
+    )
+    assert production_values["v2_cache_transport_key"] == production_values[
+        "v2_cache_key"
+    ]
 
     (root / "source.env").write_text("DKC_SOURCE_VERSION=wrong\n", encoding="utf-8")
     with pytest.raises(ValueError):

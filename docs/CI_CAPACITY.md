@@ -110,10 +110,12 @@ by the accepted run.
   containers. Retain only the process-count safety boundary and timeouts.
 - Do not use paid GitHub-hosted runners.
 - Do not delete software from GitHub-hosted runner images.
-- Save only a fully qualified flavor handoff in the exact main-branch Actions
-  cache, never a build tree. Workflow artifacts remain limited to bounded
-  lifecycle/signing evidence and the complete verified repository handed to
-  publication.
+- Save only a fully qualified flavor handoff, never a build tree. Production
+  uses its exact semantic Actions-cache key. Pull requests use merge-ref-scoped,
+  run-and-attempt-qualified transport keys so default-branch entries cannot
+  suppress compilation; those entries only connect the parallel flavor jobs to
+  their package job. Workflow artifacts remain bounded evidence or a complete
+  verified repository handed to publication.
 - Keep complete jobs below GitHub's six-hour maximum; use a project timeout
   that still leaves time to seal an accepted cache entry or retain bounded
   failure evidence.

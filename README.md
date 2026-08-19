@@ -17,7 +17,10 @@ repository.
 - **Real `x86-64-v2` and `x86-64-v3` builds.** Debian's official archive does
   not offer its kernel as separately installable v2/v3 flavors. DKC gives LLVM
   an explicit CPU baseline and audits the resulting machine code. Pick `v2` for
-  reach or `v3` for newer machines.
+  reach; on compatible processors, `v3` can be slightly faster in some
+  kernel-sensitive workloads because Clang may use additional scalar
+  instructions. It is not a universal speed boost—see the [CPU compatibility
+  table and performance evidence](#cpu-compatibility).
 - **Clang/LLVM 21 instead of GCC.** Debian's official kernel configuration
   selects GCC 15; DKC compiles and links the kernel proper with Debian-packaged
   Clang 21, LLD, and the matching LLVM tools. That gives the kernel a modern,
@@ -69,7 +72,8 @@ sudo apt install dkc-linux-image-v3-amd64
 
 That last command installs the recommended `v3` flavor. Use `v2` instead when
 you need wider CPU compatibility or are not certain that every CPU the kernel
-may run on supports x86-64-v3:
+may run on supports x86-64-v3; the [CPU guide below](#cpu-compatibility) lists
+the practical generation boundaries:
 
 ```sh
 sudo apt install dkc-linux-image-v2-amd64
@@ -94,12 +98,41 @@ The archive's primary fingerprint is
 first-use fingerprint check, CPU selection, headers and Debian backports,
 exact-version installs, upgrades, rollback, removal, and source retrieval.
 
-### Which flavor?
+### CPU compatibility
 
-| Flavor | Choose it when |
-| --- | --- |
-| `v2` | You want the widest DKC compatibility, or you are unsure. Every CPU the kernel may run on must support x86-64-v2. |
-| `v3` | Every local, hot-pluggable, and VM migration-destination CPU supports x86-64-v3. |
+The levels are cumulative: every v3 CPU can run the v2 kernel. This table is a
+practical family guide rather than an exhaustive SKU database:
+
+| CPU family | Use `v2` | Use `v3` |
+| --- | --- | --- |
+| Intel Core | 1st–3rd generation: Nehalem, Westmere, Sandy Bridge, Ivy Bridge | 4th generation and newer: Haswell, Broadwell, Skylake, Ice/Tiger Lake, Alder/Raptor Lake, Core Ultra |
+| Intel Xeon | Nehalem/Westmere and Sandy/Ivy Bridge Xeons, including Xeon 5500/5600 and early E5/E7 | Haswell-generation Xeon E5 v3 and newer, including Xeon Scalable generations |
+| Intel Atom and E-cores | Silvermont, Airmont, Goldmont, Goldmont Plus, Tremont | Gracemont and newer |
+| AMD | Jaguar/Puma; Bulldozer, Piledriver, Steamroller | Excavator; every Zen generation, including Ryzen, Threadripper, and EPYC |
+
+Intel Core 2, Bonnell/Saltwell Atom, and AMD K8, K10, and Bobcat do not provide
+the complete v2 baseline, so neither published flavor supports them. The
+[Clang feature table](https://clang.llvm.org/docs/UsersManual.html#x86) defines
+v2 as roughly Nehalem-class and v3 as roughly Haswell-class; v3 additionally
+requires AVX/AVX2, BMI1/2, F16C, FMA, LZCNT, MOVBE, and XSAVE.
+
+Model names are not proof: some Pentium/Celeron SKUs disable features, and a
+hypervisor can hide them. Check every local or hot-pluggable CPU and every VM
+migration destination. From a project checkout, the exact gate is:
+
+```sh
+./scripts/dkc-cpu-select --require v3
+# or: ./scripts/dkc-cpu-select --require v2
+```
+
+`v3` gives Clang more scalar instructions to choose from, but it is not a
+universal speed tier. A recent [same-configuration Linux 6.16
+comparison](https://www.phoronix.com/review/linux-616-x86-native-cpu/5) found
+little aggregate change across more than 100 tests from the broader
+`-march=native` optimization, while some synthetic I/O and lightweight
+graphics/gaming tests improved by 3–5%. That test used GCC and `native` is more
+specific than v3, so it demonstrates the workload-dependent pattern rather
+than predicting a DKC percentage.
 
 There is a maintained `v4` build path, but no published `v4` flavor. Linux keeps
 general kernel code out of SIMD registers and runtime-selects its explicit

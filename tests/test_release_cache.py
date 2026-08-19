@@ -33,9 +33,10 @@ def _inventory(root: Path) -> None:
     (root / "evidence.sha256").write_text("\n".join(records) + "\n")
 
 
-def _decision(root: Path) -> DiscoveryDecision:
+def _decision(root: Path, kind: str = "build") -> DiscoveryDecision:
+    qualification = kind == "qualification"
     value = DiscoveryDecision(
-        decision="build",
+        decision=kind,  # type: ignore[arg-type]
         source_version="7.1.7-1",
         source_dsc_sha256=SHA,
         dkc_revision=1,
@@ -43,8 +44,8 @@ def _decision(root: Path) -> DiscoveryDecision:
         lto_mode="thin",
         utc="2026-08-17T12:00:00Z",
         build_required=True,
-        publish_allowed=True,
-        authoritative_state_read=True,
+        publish_allowed=not qualification,
+        authoritative_state_read=not qualification,
     )
     root.mkdir()
     (root / "decision.json").write_text(dumps(value.to_dict()))
@@ -54,7 +55,9 @@ def _decision(root: Path) -> DiscoveryDecision:
             for key, field in sorted(discovery_decision_outputs(value).items())
         )
     )
-    (root / "result.env").write_text("status=PASS\nlifecycle_decision=build\n")
+    (root / "result.env").write_text(
+        f"status=PASS\nlifecycle_decision={kind}\n"
+    )
     _inventory(root)
     return value
 
@@ -183,11 +186,12 @@ def test_release_cache_key_binds_source_policy_and_flavor_not_image_rollover() -
     )
 
 
+@pytest.mark.parametrize("decision_kind", ["build", "qualification"])
 def test_release_cache_is_sealed_verified_idempotent_and_tamper_evident(
-    tmp_path: Path,
+    tmp_path: Path, decision_kind: str,
 ) -> None:
     decision_root = tmp_path / "decision"
-    decision = _decision(decision_root)
+    decision = _decision(decision_root, decision_kind)
     flavor, selftest, qemu = _accepted_results(tmp_path / "results", decision)
     identity = release_cache_identity(decision, flavor="v3", repository_root=ROOT)
     workspace = tmp_path / "workspace"

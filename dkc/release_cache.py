@@ -472,8 +472,11 @@ def prepare_release_cache(
     workspace = cache_workspace or repository_root
     _require_cache_location(cache_root, workspace, flavor)
     decision = load_discovery_decision(decision_root)
-    if decision.decision != "build" or not decision.build_required:
-        raise ValueError("release cache can only be prepared for a build decision")
+    if (
+        decision.decision not in ("build", "qualification")
+        or not decision.build_required
+    ):
+        raise ValueError("release cache requires a build or qualification decision")
     identity = release_cache_identity(
         decision, flavor=flavor, repository_root=repository_root
     )
