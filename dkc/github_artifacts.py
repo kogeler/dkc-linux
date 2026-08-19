@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -77,16 +77,43 @@ def _tree_files(
     return files
 
 
-def _selected_files(root: Path, names: Iterable[str]) -> dict[str, Path]:
-    resolved = _require_plain_directory(root, "release cache")
+def _selected_files(
+    root: Path,
+    names: Mapping[str, str],
+    *,
+    label: str,
+) -> dict[str, Path]:
+    resolved = _require_plain_directory(root, label)
     files: dict[str, Path] = {}
-    for name in names:
+    for destination, name in sorted(names.items()):
+        target = _safe_relative(destination).as_posix()
         relative = _safe_relative(name)
         source = resolved / relative
         if source.is_symlink() or not source.is_file():
-            raise ValueError(f"release cache lacks bounded evidence: {name}")
-        files[name] = source
+            raise ValueError(f"{label} lacks bounded evidence: {name}")
+        files[target] = source
     return files
+
+
+def _cache_payload_roots(cache: Path, manifest: Mapping[str, Any]) -> dict[str, Path]:
+    payload = manifest.get("payload")
+    expected = ("flavor", "kselftest", "qemu")
+    if not isinstance(payload, dict) or set(payload) != set(expected):
+        raise ValueError("release-cache manifest has an invalid payload map")
+    roots: dict[str, Path] = {}
+    observed: set[Path] = set()
+    for name in expected:
+        value = payload.get(name)
+        if not isinstance(value, str):
+            raise ValueError("release-cache manifest has an invalid payload path")
+        relative = _safe_relative(value)
+        if len(relative.parts) != 1 or relative in observed:
+            raise ValueError("release-cache manifest has an invalid payload path")
+        observed.add(relative)
+        roots[name] = _require_plain_directory(
+            cache / relative, f"release-cache {name} payload"
+        )
+    return roots
 
 
 def _sha256(path: Path) -> str:
@@ -212,34 +239,61 @@ def prepare_flavor_evidence(
         or identity.get("flavor") != flavor
     ):
         raise ValueError("release-cache manifest has the wrong flavor identity")
+    payload = _cache_payload_roots(cache, manifest)
 
-    names = (
-        "cache.json",
-        "flavor/evidence/result.env",
-        "flavor/evidence/publication-identity.json",
-        "flavor/evidence/build-image-provenance.env",
-        "flavor/evidence/post-build-gates.env",
-        "flavor/evidence/capacity.env",
-        "flavor/evidence/attestation.json",
-        "flavor/evidence/kbuild-command-audit.json",
-        "flavor/evidence/kernel-simd-audit.json",
-        "selftest/evidence/result.env",
-        "selftest/evidence/kselftest-build.json",
+    files = _selected_files(
+        cache, {"cache.json": "cache.json"}, label="release cache"
     )
-    files = _selected_files(cache, names)
+    files.update(
+        _selected_files(
+            payload["flavor"],
+            {
+                f"flavor/evidence/{name}": f"evidence/{name}"
+                for name in (
+                    "result.env",
+                    "publication-identity.json",
+                    "build-image-provenance.env",
+                    "post-build-gates.env",
+                    "capacity.env",
+                    "attestation.json",
+                    "kbuild-command-audit.json",
+                    "kernel-simd-audit.json",
+                )
+            },
+            label="release-cache flavor payload",
+        )
+    )
+    files.update(
+        _selected_files(
+            payload["kselftest"],
+            {
+                "selftest/evidence/result.env": "evidence/result.env",
+                "selftest/evidence/kselftest-build.json": (
+                    "evidence/kselftest-build.json"
+                ),
+            },
+            label="release-cache kselftest payload",
+        )
+    )
     omitted = frozenset(("evidence.sha256",))
     files.update(
-        _tree_files(cache / "qemu/evidence", "qemu/evidence", omit_names=omitted)
+        _tree_files(
+            payload["qemu"] / "evidence",
+            "qemu/evidence",
+            omit_names=omitted,
+        )
     )
     files.update(
         _tree_files(
-            cache / "qemu" / flavor / "evidence",
+            payload["qemu"] / flavor / "evidence",
             f"qemu/{flavor}/evidence",
             omit_names=omitted,
         )
     )
     files.update(
-        _tree_files(cache / "qemu" / flavor / "guest", f"qemu/{flavor}/guest")
+        _tree_files(
+            payload["qemu"] / flavor / "guest", f"qemu/{flavor}/guest"
+        )
     )
     return _prepare_bundle(
         output,
