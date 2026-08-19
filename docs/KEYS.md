@@ -11,8 +11,10 @@ The trust boundary has three parts:
   primary secret is a stub;
 - the repository tracks only the public bundle and reviewed fingerprints.
 
-The signing workflow creates artifacts but publishes nothing to an external
-origin. Storage, retention, and garbage collection are separate concerns.
+The isolated signing job creates only a bounded signature/state overlay and
+publishes nothing to an external origin. Later no-secret verification and
+separately credentialed storage jobs own publication, retention, and garbage
+collection.
 
 ## Offline provisioning
 
