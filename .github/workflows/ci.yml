@@ -336,9 +336,9 @@ jobs:
         # part of the automatic release or binary distribution.
         flavor: [v2, v3]
     runs-on: ubuntu-26.04
-    # GitHub's standard public runner allows six hours. The accepted reference
-    # build completed a full flavor in under three; this leaves room for image setup,
-    # the complete final-ELF SIMD scan, Lintian, VM qualification, and cache save.
+    # GitHub's standard public runner allows six hours. The accepted v2
+    # qualification took 3h16m end to end; this leaves substantial room for
+    # source growth, the final-ELF SIMD scan, VM qualification, and cache save.
     timeout-minutes: 360
     env:
       DKC_IMAGE_MODE: registry
@@ -427,6 +427,18 @@ jobs:
         with:
           path: out/release-cache/${{ matrix.flavor }}
           key: ${{ env.GITHUB_RELEASE_CACHE_TRANSPORT_KEY }}
+
+      - name: Prepare bounded flavor qualification evidence
+        run: make github-flavor-evidence FLAVOR='${{ matrix.flavor }}'
+
+      - name: Upload bounded flavor qualification evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dkc-flavor-evidence-${{ matrix.flavor }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/github-evidence/flavor/${{ matrix.flavor }}/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
 
   export-live-pool:
     name: export authenticated live pool
@@ -595,6 +607,13 @@ jobs:
           make package-matrix-verify-lifecycle
           PACKAGE_MATRIX_RESULT="out/package-matrix/${DKC_RUN_ID}"
 
+      - name: Prepare bounded pull-request repository evidence
+        if: ${{ always() && steps.qualify_repository.outcome != 'skipped' }}
+        id: prepare_pr_repository_evidence
+        run: >-
+          make github-pull-request-apt-evidence
+          GITHUB_PR_APT_QUALIFICATION_OUTCOME='${{ steps.qualify_repository.outcome }}'
+
       - name: Upload package lifecycle evidence
         if: ${{ always() && steps.package_matrix.outcome != 'skipped' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -619,16 +638,12 @@ jobs:
           retention-days: 7
 
       - name: Upload pull-request repository evidence
-        if: ${{ always() && steps.qualify_repository.outcome != 'skipped' }}
+        if: ${{ always() && steps.prepare_pr_repository_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: dkc-pr-apt-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            out/apt-unsigned/${{ env.DKC_RUN_ID }}/evidence/
-            out/apt-signature/${{ env.DKC_RUN_ID }}/evidence/
-            out/apt-repository/${{ env.DKC_RUN_ID }}/evidence/
-            out/apt-repository/${{ env.DKC_RUN_ID }}/client/
-          if-no-files-found: warn
+          path: out/github-evidence/apt/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
           compression-level: 1
           retention-days: 7
 

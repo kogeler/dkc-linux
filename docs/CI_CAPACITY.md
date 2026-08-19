@@ -120,7 +120,10 @@ by the accepted run.
   run-and-attempt-qualified transport keys so default-branch entries cannot
   suppress compilation; those entries only connect the parallel flavor jobs to
   their package job. Workflow artifacts remain bounded evidence or a complete
-  verified repository handed to publication.
+  verified repository handed to publication. A flavor evidence artifact may
+  retain compact audit and VM/selftest reports, but never packages, source,
+  replay binaries, or full build logs; its root checksum manifest describes
+  exactly the downloaded boundary.
 - Keep complete jobs below GitHub's six-hour maximum; use a project timeout
   that still leaves time to seal an accepted cache entry or retain bounded
   failure evidence.

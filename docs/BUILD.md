@@ -442,10 +442,13 @@ runs `make build-flavor`, `make kselftest-flavor`, and
 `make qemu-boot-flavor`, and seals the result only after every gate passes.
 The dependent package job restores both entries, verifies every cached byte and
 semantic identity again, and then runs `make package-matrix`. Flavor packages,
-source, and QEMU evidence are not uploaded as workflow artifacts. The exact
-caches remain available after a downstream failure and are deleted by the
-terminal job only after the intended signed repository generation is read back
-successfully from storage. Artifact consumers use producer-exported names, so
+source, replay payloads, and full build logs are not uploaded as workflow
+artifacts. Each flavor does upload a bounded, self-verifying report bundle with
+capacity, Kbuild/SIMD/package attestation, selftest summaries, and VM evidence;
+it contains no packages. The exact caches remain available after a downstream
+failure and are deleted by the terminal job only after the intended signed
+repository generation is read back successfully from storage. Artifact
+consumers use producer-exported names, so
 a failed-jobs-only retry reuses the successful producer attempt instead of
 searching for a nonexistent artifact under the new attempt number.
 

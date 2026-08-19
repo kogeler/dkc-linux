@@ -242,3 +242,9 @@ Acceptance requires matching planned and executed counts, zero failed selected
 programs, no unreviewed omission, verified restoration of modified guest state,
 and a complete package/boot/fallback/removal lifecycle. A QEMU process exiting
 normally is not sufficient when the guest result says `FAIL`.
+
+GitHub retains these compact reports with the corresponding capacity,
+attestation, Kbuild, and SIMD summaries in one flavor evidence artifact. Run
+`sha256sum --check evidence.sha256` from the downloaded artifact root before
+inspection. Kernel packages, source, replay binaries, and full build logs are
+deliberately excluded from that artifact.

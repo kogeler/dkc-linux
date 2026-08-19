@@ -45,8 +45,10 @@ verification.
 The hosted build cache is intentionally not evidence by itself. A producer
 seals it only after all expensive gates pass, and each consumer recomputes its
 key from the authenticated lifecycle decision and validates every cached byte.
-No build/package/QEMU result is uploaded as a flavor-job artifact. A failed APT
-or publication stage preserves the accepted cache for retry; the terminal job
+Packages, source, replay binaries, and full build logs are not uploaded by a
+flavor job. Compact build-audit and VM/selftest reports are copied to a separate
+size-bounded artifact with an exact root checksum inventory. A failed APT or
+publication stage preserves the accepted cache for retry; the terminal job
 removes it after final remote-state verification, while maintenance and no-op
 paths repeat the same exact cleanup idempotently.
 
@@ -57,10 +59,8 @@ github-apt-repository-qualify` run on 2026-08-19 additionally generated a
 disposable key, assembled and signed the binary/source repository, passed the
 complete clean client and negative signature cases, and recorded
 `publishable=false`. The same flow also passed with `GITHUB_ACTIONS=true`,
-covering its CI-only signing guard. This is not a claim that a hosted
-pull-request run has completed: hosted acceptance still requires both real
-flavor builds and KVM qualifications, the package matrix, and the same
-disposable signed clean client to pass on a PR targeting `main`.
+covering its CI-only signing guard. This was the local prerequisite for the
+hosted pull-request acceptance recorded below.
 
 [Pull-request run 32221805371](https://github.com/kogeler/dkc-linux/actions/runs/32221805371)
 confirmed authenticated source discovery, the fast tier, the typed
@@ -70,6 +70,21 @@ lacked `always()` while the successful decision had deliberately skipped
 production-only ancestors. The workflow now combines `always()` with explicit
 success requirements for every direct flavor dependency; repository structure
 tests enforce that convergence rule.
+
+[Pull-request run 32225405539](https://github.com/kogeler/dkc-linux/actions/runs/32225405539)
+then completed the entire non-publishing graph from real cache misses. Both
+ThinLTO flavors compiled and passed package, Kbuild, SIMD, KVM boot, and kernel
+selftest qualification; v2 completed in 3h16m and v3 in 2h06m. The dependent
+job reconciled 20 inputs into 18 unique packages, passed image and headers/DKMS
+clients, assembled the 19-binary/two-source repository, signed it with a
+disposable key, and passed the complete clean client and negative signature
+cases. Every credential-bearing storage and production-signing job remained
+skipped. Inspection of the downloaded APT evidence exposed that its retained
+subdirectories still carried full-result checksum manifests referring to
+intentionally omitted repository files. The current artifact adapter instead
+creates one bounded directory with its own exact root inventory; unit tests
+cover direct verification, omissions, tampering, links, and partial-failure
+evidence.
 
 ## Real storage acceptance completed locally
 

@@ -262,11 +262,15 @@ def test_ci_uploads_only_outputs_whose_producer_step_started() -> None:
                 f"${{{{ always() && steps.{producer_id}.outcome != 'skipped' }}}}"
             )
             assert any(step.get("id") == producer_id for step in steps.values())
-    flavor_steps = jobs["flavors"]["steps"]
-    assert not any(
-        str(step.get("uses", "")).startswith("actions/upload-artifact@")
-        for step in flavor_steps
+    flavor_steps = {step["name"]: step for step in jobs["flavors"]["steps"]}
+    flavor_upload = flavor_steps["Upload bounded flavor qualification evidence"]
+    assert str(flavor_upload["uses"]).startswith("actions/upload-artifact@")
+    assert flavor_upload["with"]["path"].startswith(
+        "out/github-evidence/flavor/"
     )
+    assert flavor_steps["Prepare bounded flavor qualification evidence"][
+        "run"
+    ].startswith("make github-flavor-evidence ")
 
 
 def test_ci_verifies_the_exact_package_lifecycle_artifact_before_upload() -> None:
@@ -464,6 +468,12 @@ def test_release_build_handoff_separates_semantic_and_transport_cache_keys() -> 
         "steps.restore_release_cache.outputs.cache-hit != 'true'"
     )
     assert "if" not in steps["Verify the accepted flavor handoff"]
+    assert steps["Prepare bounded flavor qualification evidence"]["run"].startswith(
+        "make github-flavor-evidence "
+    )
+    assert steps["Upload bounded flavor qualification evidence"]["with"][
+        "if-no-files-found"
+    ] == "error"
     flavor_condition = str(flavors["if"])
     assert flavor_condition.startswith("always() &&")
     assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
@@ -537,6 +547,19 @@ def test_pull_requests_run_full_non_publishing_qualification() -> None:
     assert package_job["env"]["APT_CLIENT_IMAGE"] == (
         "${{ needs.container_images.outputs.apt_client_image }}"
     )
+    evidence = package_steps["Prepare bounded pull-request repository evidence"]
+    assert evidence["if"] == (
+        "${{ always() && steps.qualify_repository.outcome != 'skipped' }}"
+    )
+    assert evidence["run"].startswith("make github-pull-request-apt-evidence ")
+    upload = package_steps["Upload pull-request repository evidence"]
+    assert upload["if"] == (
+        "${{ always() && steps.prepare_pr_repository_evidence.outcome == 'success' }}"
+    )
+    assert upload["with"]["path"] == (
+        "out/github-evidence/apt/${{ env.DKC_RUN_ID }}/"
+    )
+    assert upload["with"]["if-no-files-found"] == "error"
 
     for name in (
         "read-authoritative-state",
