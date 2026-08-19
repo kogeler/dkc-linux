@@ -76,7 +76,10 @@ prefix fallback keys. Restored files are treated as
 untrusted: a complete SHA-256 inventory and all semantic identities and PASS
 records are verified before use. An exact hit skips runner QEMU setup, kernel
 compilation, selftest compilation, and VM execution. Flavor packages, source,
-and build/VM evidence are not uploaded as workflow artifacts.
+replay payloads, and full build logs remain only in the cache handoff. Each
+accepted flavor also exports a small seven-day artifact containing capacity,
+Kbuild/SIMD/packaging reports and detailed VM/selftest results. That artifact
+has its own exact root `evidence.sha256`; it never contains a kernel package.
 
 A dependent job restores and independently verifies both exact cache entries,
 proves the common packages byte-identical, selects their
@@ -86,7 +89,10 @@ unsigned 19-binary/two-source repository and a strict hashed signing request.
 For a pull request, the same package job additionally assembles the repository
 with a disposable key and runs the complete signed clean client, including
 binary/source acquisition and negative signature cases. Only bounded test
-evidence is uploaded; the disposable key and repository are not retained.
+evidence is uploaded; the disposable key and repository are not retained. The
+reports are first copied into one explicit artifact boundary whose root
+checksum manifest inventories exactly the retained files, so it remains
+directly verifiable after download.
 
 Production signing is deliberately separated from both package processing and
 final verification. A credential-free gate first proves that the tested commit

@@ -21,6 +21,10 @@ from dkc.github import (
     write_run_identity,
     write_workflow_assignments,
 )
+from dkc.github_artifacts import (
+    prepare_flavor_evidence,
+    prepare_pull_request_repository_evidence,
+)
 from dkc.github_cache import delete_release_caches
 from dkc.release_cache import (
     prepare_release_cache,
@@ -112,6 +116,16 @@ def main() -> int:
     cache_verify.add_argument("--flavor", required=True)
     cache_verify.add_argument("--key", required=True)
     cache_verify.add_argument("--root", type=Path, required=True)
+    flavor_evidence = subparsers.add_parser("flavor-evidence")
+    flavor_evidence.add_argument("--cache", type=Path, required=True)
+    flavor_evidence.add_argument("--output", type=Path, required=True)
+    flavor_evidence.add_argument("--flavor", required=True)
+    repository_evidence = subparsers.add_parser("pull-request-repository-evidence")
+    repository_evidence.add_argument("--unsigned", type=Path, required=True)
+    repository_evidence.add_argument("--signature", type=Path, required=True)
+    repository_evidence.add_argument("--repository", type=Path, required=True)
+    repository_evidence.add_argument("--output", type=Path, required=True)
+    repository_evidence.add_argument("--outcome", required=True)
     delete_cache = subparsers.add_parser("release-cache-delete")
     delete_cache.add_argument("--v2-key", required=True)
     delete_cache.add_argument("--v3-key", required=True)
@@ -188,6 +202,18 @@ def main() -> int:
             repository_root=args.root,
         )
         print(f"PASS accepted release cache verified for {args.flavor}")
+    elif args.command == "flavor-evidence":
+        prepare_flavor_evidence(args.cache, args.output, flavor=args.flavor)
+        print(f"PASS bounded flavor evidence prepared for {args.flavor}")
+    elif args.command == "pull-request-repository-evidence":
+        prepare_pull_request_repository_evidence(
+            args.output,
+            unsigned_result=args.unsigned,
+            signature_result=args.signature,
+            repository_result=args.repository,
+            qualification_outcome=args.outcome,
+        )
+        print("PASS bounded pull-request repository evidence prepared")
     elif args.command == "release-cache-delete":
         removed = delete_release_caches(
             repository=required_environment("GITHUB_REPOSITORY"),

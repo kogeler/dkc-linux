@@ -13,6 +13,12 @@ GITHUB_RELEASE_CACHE_SELFTEST_RESULT ?= $(DKC_ROOT)/out/kselftest/qualification/
 GITHUB_RELEASE_CACHE_QEMU_RESULT ?= $(DKC_ROOT)/out/qemu-boot/$(DKC_RUN_ID)
 GITHUB_RELEASE_CACHE_KEY_V2 ?=
 GITHUB_RELEASE_CACHE_KEY_V3 ?=
+GITHUB_FLAVOR_EVIDENCE_RESULT ?= $(DKC_ROOT)/out/github-evidence/flavor/$(FLAVOR)/$(DKC_RUN_ID)
+GITHUB_PR_APT_EVIDENCE_RESULT ?= $(DKC_ROOT)/out/github-evidence/apt/$(DKC_RUN_ID)
+GITHUB_PR_APT_QUALIFICATION_OUTCOME ?=
+GITHUB_PR_APT_UNSIGNED_RESULT ?= $(DKC_ROOT)/out/apt-unsigned/$(DKC_RUN_ID)
+GITHUB_PR_APT_SIGNATURE_RESULT ?= $(DKC_ROOT)/out/apt-signature/$(DKC_RUN_ID)
+GITHUB_PR_APT_REPOSITORY_RESULT ?= $(DKC_ROOT)/out/apt-repository/$(DKC_RUN_ID)
 
 .PHONY: github-lifecycle-gate
 github-lifecycle-gate: ## Authorize one exact-main production lifecycle trigger
@@ -104,6 +110,24 @@ github-release-cache-verify: ## Verify one restored accepted flavor before any c
 		--decision '$(GITHUB_LIFECYCLE_RESULT)' --flavor '$(FLAVOR)' \
 		--key '$(GITHUB_RELEASE_CACHE_KEY)' \
 		--root '$(DKC_ROOT)'
+
+.PHONY: github-flavor-evidence
+github-flavor-evidence: ## Prepare compact self-verifying reports from one accepted flavor
+	@$(DKC_ROOT)/scripts/github-ci.py flavor-evidence \
+		--cache '$(GITHUB_RELEASE_CACHE_ROOT)' \
+		--output '$(GITHUB_FLAVOR_EVIDENCE_RESULT)' \
+		--flavor '$(FLAVOR)'
+
+.PHONY: github-pull-request-apt-evidence
+github-pull-request-apt-evidence: ## Prepare one bounded artifact from disposable APT qualification
+	@test -n '$(GITHUB_PR_APT_QUALIFICATION_OUTCOME)' || \
+		{ echo 'GITHUB_PR_APT_QUALIFICATION_OUTCOME is required'; exit 1; }
+	@$(DKC_ROOT)/scripts/github-ci.py pull-request-repository-evidence \
+		--unsigned '$(GITHUB_PR_APT_UNSIGNED_RESULT)' \
+		--signature '$(GITHUB_PR_APT_SIGNATURE_RESULT)' \
+		--repository '$(GITHUB_PR_APT_REPOSITORY_RESULT)' \
+		--output '$(GITHUB_PR_APT_EVIDENCE_RESULT)' \
+		--outcome '$(GITHUB_PR_APT_QUALIFICATION_OUTCOME)'
 
 .PHONY: github-release-cache-delete
 github-release-cache-delete: ## Delete exact main-branch release caches after remote verification
