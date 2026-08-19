@@ -84,10 +84,15 @@ decision.
 
 ## Product and evidence validation
 
-The accepted build produced six `.deb` files plus one `.buildinfo` and one
-`.changes` file. All eight hashes match the build manifest; the checksums inside
-`.changes` and `.buildinfo` also validate. All package payload paths are
-relative and safe. No debug or installer package was emitted.
+The capacity experiment produced the six `.deb` files in the package graph that
+existed at the time, plus one `.buildinfo` and one `.changes` file. All eight
+hashes matched the build manifest; the checksums inside `.changes` and
+`.buildinfo` also validated. All package payload paths were relative and safe,
+and no debug or installer package was emitted. This is historical capacity
+evidence, not the current package inventory: each current flavor exports ten
+packages, and the accepted production run recorded in
+[`VALIDATION.md`](VALIDATION.md#hosted-production-acceptance) completed both
+current flavor jobs and their KVM gates on the same standard runner class.
 
 The bounded attestation reconciled all 4,225 shipped modules with 32,336 Kbuild
 records, inspected 32 deterministic module samples, confirmed LLVM 21.1.8 and

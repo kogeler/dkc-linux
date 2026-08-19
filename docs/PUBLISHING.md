@@ -1,8 +1,9 @@
 # Publishing
 
-The main workflow discovers, builds, signs, verifies, and publishes one common
-APT repository without an operator handoff between stages. Pull requests never
-receive production secrets and cannot enter this graph.
+The production path discovers, builds, signs, verifies, and publishes one
+common APT repository without an operator handoff between stages. Pull requests
+run the build, package, and disposable-signature qualification path but never
+receive production secrets or enter the production signing and storage graph.
 
 ## Lifecycle decisions
 
@@ -29,6 +30,11 @@ exactly one result:
   source discovery moved behind signed state, an equal Debian version appeared
   with a different descriptor hash, the configured downstream revision moved
   backwards, or build policy/LTO changed without a revision increase.
+
+A pull request uses the same schema but has a separate `qualification` result:
+it requires fresh v2/v3 builds and repository verification while carrying no
+authoritative-state or publication authority. It is not one of the production
+lifecycle results above.
 
 For one Debian source version, `DKC_REVISION` is the explicit authorization to
 publish different build bytes. The decision hashes the same tracked build-policy

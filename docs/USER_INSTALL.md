@@ -16,58 +16,51 @@ APT archive signature authenticates downloaded metadata and packages; it does
 not grant UEFI, kernel, or module-signing trust. Keep Debian's stock kernel
 installed as a known-good fallback. See [SECURITY.md](SECURITY.md).
 
-## Install the archive trust root
+## Recommended v3 install
 
-The following single copy-and-paste command downloads the public keyring,
-verifies its primary fingerprint, creates APT's local keyring directory when
-needed, and installs the verified file:
-
-```sh
-(
-  set -eu
-  keyring="$(mktemp)"
-  trap 'rm -f "$keyring"' EXIT
-  curl -fsSLo "$keyring" \
-    https://dkc-linux.romancello.net/keys/dkc-archive-keyring.gpg
-  primary_fingerprints="$(gpg --show-keys --with-colons "$keyring" | \
-    awk -F: '$1 == "pub" { want_fpr = 1; next } \
-      want_fpr && $1 == "fpr" { print $10; want_fpr = 0 }')"
-  test "$primary_fingerprints" = \
-    7B98D4BE13418D38BAC037D276349629CC453C26
-  sudo install -d -m 0755 /etc/apt/keyrings
-  sudo install -m 0644 "$keyring" \
-    /etc/apt/keyrings/dkc-archive-keyring.gpg
-)
-```
-
-Compare the fingerprint through an independently trusted project channel before
-the first installation. Then create the Deb822 source:
+The normal installation path is the same four commands shown in the project
+README. Stock Trixie already provides `/etc/apt/keyrings`:
 
 ```sh
-APT_BASE_URL=https://dkc-linux.romancello.net
-sudo tee /etc/apt/sources.list.d/dkc.sources >/dev/null <<EOF
-Types: deb deb-src
-URIs: ${APT_BASE_URL}
-Suites: trixie
-Components: main
-Architectures: amd64
-Signed-By: /etc/apt/keyrings/dkc-archive-keyring.gpg
-EOF
+curl -fsSL https://dkc-linux.romancello.net/keys/dkc-archive-keyring.gpg | sudo tee /etc/apt/keyrings/dkc-archive-keyring.gpg >/dev/null
+printf '%s\n' 'Types: deb deb-src' 'URIs: https://dkc-linux.romancello.net' 'Suites: trixie' 'Components: main' 'Architectures: amd64' 'Signed-By: /etc/apt/keyrings/dkc-archive-keyring.gpg' | sudo tee /etc/apt/sources.list.d/dkc.sources >/dev/null
 sudo apt update
+sudo apt install dkc-linux-image-v3-amd64
 ```
 
-The active keyring is local administrator state under `/etc/apt/keyrings`.
-Archive package upgrades do not replace it. If the published fingerprint ever
-changes, verify the new fingerprint through an independently trusted project
-channel and repeat the command above before accepting metadata signed only by
-the new key.
+The last command installs the recommended `v3` image metapackage. Use the CPU
+guidance below before choosing it for older hardware or a migratable VM. The
+image itself does not need Debian backports.
+
+## Verify the archive fingerprint
+
+The concise bootstrap relies on HTTPS to obtain the initial public key. If your
+first-use policy requires an independent trust check, run only the first line
+of the four-command block, obtain the primary fingerprint through an
+independently trusted project channel, run the command below, and continue with
+the other three lines only after the values match:
+
+```sh
+gpg --show-keys --with-colons \
+  /etc/apt/keyrings/dkc-archive-keyring.gpg | \
+  awk -F: '$1 == "pub" { want_fpr = 1; next } \
+    want_fpr && $1 == "fpr" { print $10; exit }'
+```
+
+The expected primary fingerprint is
+`7B98D4BE13418D38BAC037D276349629CC453C26`. The active keyring is local
+administrator state under `/etc/apt/keyrings`; archive package upgrades do not
+replace it. If the published fingerprint ever changes, verify the new value
+through an independently trusted project channel before accepting metadata
+signed only by the new key.
 
 ## Enable Debian backports when installing headers
 
 Kernel images need no extra Debian suite. DKC headers depend on the matching
-LLVM 21 tools from the official Debian 13 backports suite. If
-`trixie-backports` is not already configured, add it before installing a
-headers metapackage:
+`clang-21`, `lld-21`, and `llvm-21` tools from the official Debian 13 backports
+suite. If `trixie-backports` is not already configured, add it before
+installing a headers metapackage. The stanza below follows Debian's official
+[Backports instructions](https://backports.debian.org/Instructions/):
 
 ```sh
 sudo tee /etc/apt/sources.list.d/trixie-backports.sources >/dev/null <<'EOF'
@@ -93,6 +86,10 @@ Use the lowest flavor that provides the compatibility you need:
   when the machine, all hot-pluggable CPUs, and any migration destination meet
   that baseline.
 
+The [CPU compatibility table](../README.md#cpu-compatibility) gives practical
+Intel and AMD generation boundaries and explains why model names alone are not
+proof of the complete feature set.
+
 From a checkout of this repository, the unprivileged selector checks every CPU
 listed in `/proc/cpuinfo`:
 
@@ -105,24 +102,27 @@ The command exits nonzero when any online CPU lacks the requested baseline. The
 helper is a repository maintenance tool and is not installed by the kernel
 packages.
 
-## Install the kernel and headers
+## Install another flavor or add headers
 
-For `v2`:
-
-```sh
-sudo apt install dkc-linux-image-v2-amd64 dkc-linux-headers-v2-amd64
-```
-
-For `v3`:
+Install the `v2` image instead of the recommended `v3` image when wider CPU
+compatibility is required:
 
 ```sh
-sudo apt install dkc-linux-image-v3-amd64 dkc-linux-headers-v3-amd64
+sudo apt install dkc-linux-image-v2-amd64
 ```
 
-These stable metapackages pull the exact versioned base, binary, modules, image,
-headers-common, Kbuild, and flavor-header packages. Keep the metapackages
-installed: they are how a later repository generation upgrades the selected
-flavor.
+Headers are optional. After enabling `trixie-backports` as described above,
+install the headers metapackage that matches the selected image flavor:
+
+```sh
+sudo apt install dkc-linux-headers-v3-amd64
+# or: sudo apt install dkc-linux-headers-v2-amd64
+```
+
+The stable image and header metapackages pull their exact versioned base,
+binary, modules, image, headers-common, Kbuild, and flavor-header dependencies.
+Keep the metapackages installed: they are how a later repository generation
+upgrades the selected flavor.
 
 To install one exact build without following later DKC generations, select a
 versioned `dkc-linux-image-<release>-v2-amd64` or

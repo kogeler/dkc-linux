@@ -9,17 +9,20 @@ verification, signing, and publication protocol.
 1. A no-secret network job authenticates Debian's Sid metadata and emits one
    hash-bound source inventory, including the exact archive member names used
    by the descriptor rather than locally reconstructed version templates.
-2. A separate read-only storage job verifies the signed authoritative state.
-3. A no-secret decision selects build, metadata maintenance, no-op, or blocked.
-   For the same Debian source it binds the configured downstream revision,
-   tracked build-policy digest, LTO mode, retention mode, and whole-storage
-   byte limit to the signed prior manifest. A retention-policy mismatch or an
-   oversized namespace selects maintenance without rebuilding kernels.
+2. On a production trigger, a separate read-only storage job verifies the
+   signed authoritative state. Pull requests receive no storage credential and
+   do not execute this step.
+3. A no-secret decision selects build, metadata maintenance, no-op, blocked,
+   or the pull-request-only qualification state. Production decisions bind the
+   configured downstream revision, tracked build-policy digest, LTO mode,
+   retention mode, and whole-storage byte limit to the signed prior manifest.
+   Qualification deliberately has no prior-state or publication authority and
+   always requires fresh v2/v3 builds.
 4. Build jobs derive exact content keys, restore or compile v2 and v3
    independently, attest SIMD/LTO and packaging, boot newly built results with
-   KVM, and run exact-source kernel selftests. Only a completely accepted
-   flavor is sealed in the main-branch cache; an exact verified hit skips every
-   expensive build/VM operation.
+   KVM, and run exact-source kernel selftests. Production can restore an exact
+   verified main-branch cache entry. Pull requests use run-and-attempt-isolated
+   transport keys that force both builds and VMs to execute.
 5. A no-secret convergence job restores and verifies both exact cache entries,
    reconciles the 18 unique packages, validates
    clean package clients, merges the authenticated prior live pool when one
@@ -39,10 +42,13 @@ verification, signing, and publication protocol.
    a narrowly scoped Actions permission; a no-op retry can repeat only this
    cleanup after an earlier cache-API failure.
 
-Pull requests stop after unprivileged fast and release-input checks. No build
-artifact, package script, or source file executes inside a secret-bearing job.
-Both the build and metadata-maintenance publication branches require the fast
-tier to pass before signing or external mutation.
+Pull requests run source discovery, fast and release-input checks, both flavor
+builds and KVM qualifications, package convergence, and a complete repository
+test signed with a disposable key. They cannot read authoritative state, enter
+the production signing Environment, publish, or run production cache cleanup.
+No build artifact, package script, or source file executes inside a
+secret-bearing job. Both production publication branches require the fast tier
+to pass before signing or external mutation.
 
 ## Commit points
 

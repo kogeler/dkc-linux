@@ -6,7 +6,8 @@ storage trust boundaries:
 - `source-inventory` — authenticated Debian source members and hashes;
 - `authoritative-state-read` — exact result of one signed state read;
 - `pool-export` — size and object count for a manifest-bound live pool;
-- `discovery-decision` — one exact build, maintenance, no-op, or blocked result;
+- `discovery-decision` — one exact build, maintenance, no-op, qualification, or
+  blocked result;
 - `provenance` — one accepted build identity and its inputs;
 - `repository-signing-request` — exact unsigned repository bytes authorized for
   the confined signing boundary;
