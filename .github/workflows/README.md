@@ -136,6 +136,10 @@ preflight tiers, always build and VM-test v2/v3 through isolated cache transport
 run the package matrix, and exercise a disposable signed repository. Their typed
 qualification has no publication authority; authoritative-state reads,
 production signing, publication, and final state verification remain skipped.
+Jobs that cross those deliberately skipped production-only branches use
+`always()` together with explicit successful-result checks for every direct
+producer. This prevents GitHub's skipped-ancestor propagation from suppressing
+the pull-request build while keeping genuine dependency failures fail-closed.
 Trusted runs additionally direct-read signed authoritative state. They build
 only for a newer source or an explicitly increased downstream revision. They
 refresh metadata when `Valid-Until` enters its safety horizon,
