@@ -110,6 +110,34 @@ def parse_control_records(path: pathlib.Path) -> list[dict[str, str]]:
     return records
 
 
+def validate_binary_package_records(
+    records: list[dict[str, str]],
+    *,
+    current_packages: list[str],
+    inherited_filenames: set[str],
+) -> list[str]:
+    """Allow current packages and exact binaries inherited from signed state.
+
+    Retained releases have ABI-qualified names that are absent from the current
+    package graph. Their indexed filename must therefore be an exact live pool
+    key from the authenticated predecessor manifest.
+    """
+
+    allowed_current = set(current_packages) | {"dkc-archive-keyring"}
+    packages: list[str] = []
+    for record in records:
+        package = record.get("Package", "")
+        filename = record.get("Filename", "")
+        if not package or (
+            package not in allowed_current and filename not in inherited_filenames
+        ):
+            raise SystemExit("Packages index contains an unexpected binary package")
+        packages.append(package)
+    if not packages:
+        raise SystemExit("Packages index contains an unexpected binary package")
+    return packages
+
+
 def pool_version(path: pathlib.Path):
     from dkc.debver import DebianVersion
 
@@ -733,6 +761,7 @@ def assemble(arguments: list[str]) -> int:
     previous_manifest = None
     previous_state = None
     previous_pool = None
+    inherited_binary_filenames: set[str] = set()
     if args.previous_state_result is not None:
         previous_state = load_authoritative_state_handoff(
             args.previous_state_result,
@@ -753,6 +782,9 @@ def assemble(arguments: list[str]) -> int:
             artifact.key: artifact
             for artifact in previous_manifest.artifacts
             if artifact.key.startswith("pool/") and artifact.key in previous_manifest.live_objects
+        }
+        inherited_binary_filenames = {
+            key for key in expected_pool if key.endswith(".deb")
         }
         actual_pool: set[str] = set()
         for source in sorted(previous_pool.rglob("*")):
@@ -895,7 +927,6 @@ def assemble(arguments: list[str]) -> int:
     run_to_file(["dpkg-scanpackages", "--multiversion", "pool", "/dev/null"], binary_index, root)
     run_to_file(["dpkg-scansources", "pool", "/dev/null"], source_index, root)
     package_records = parse_control_records(binary_index)
-    packages = [record.get("Package", "") for record in package_records]
     if args.maintenance:
         current_names = [
             record.get("Package", "")
@@ -911,8 +942,11 @@ def assemble(arguments: list[str]) -> int:
         ):
             raise SystemExit("maintenance pool lacks the exact current release graph")
         binaries = sorted(current_names)
-    if not package_records or not set(packages) <= set(binaries) | {"dkc-archive-keyring"}:
-        raise SystemExit("Packages index contains an unexpected binary package")
+    packages = validate_binary_package_records(
+        package_records,
+        current_packages=binaries,
+        inherited_filenames=inherited_binary_filenames,
+    )
     for package in binaries:
         current = [
             record
