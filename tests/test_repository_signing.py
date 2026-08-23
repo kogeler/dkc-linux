@@ -154,6 +154,70 @@ def test_series_retention_keeps_every_revision_in_the_newest_three_parsed_series
     ]
 
 
+def test_binary_index_accepts_only_exact_packages_from_the_signed_previous_pool() -> None:
+    def release(source_version: str, build_id: str) -> tuple[list[str], str]:
+        identity = Identity.create(source_version, 1, build_id)
+        publication = {
+            "abi": identity.abi,
+            "kernel_releases": {
+                flavor: identity.kernel_release(flavor) for flavor in FLAVORS
+            },
+            "package_names": package_names(identity),
+        }
+        _source, binaries, _meta = repository.release_package_inventory(publication)
+        return binaries, identity.package_version
+
+    previous, previous_version = release("7.1.8-2", "a" * 12)
+    current, current_version = release("7.1.9-1", "b" * 12)
+
+    def records(names: list[str], version: str) -> list[dict[str, str]]:
+        return [
+            {
+                "Package": name,
+                "Version": version,
+                "Filename": f"pool/main/d/dkc-linux/{name}_{version}_amd64.deb",
+            }
+            for name in names
+        ]
+
+    previous_records = records(previous, previous_version)
+    current_records = records(current, current_version)
+    keyring_record = {
+        "Package": "dkc-archive-keyring",
+        "Version": "1.0",
+        "Filename": "pool/main/d/dkc-archive-keyring/dkc-archive-keyring_1.0_all.deb",
+    }
+    inherited = {record["Filename"] for record in previous_records}
+    combined = [*previous_records, *current_records, keyring_record]
+
+    assert repository.validate_binary_package_records(
+        combined,
+        current_packages=current,
+        inherited_filenames=inherited,
+    ) == [record["Package"] for record in combined]
+
+    with pytest.raises(SystemExit, match="unexpected binary package"):
+        repository.validate_binary_package_records(
+            combined,
+            current_packages=current,
+            inherited_filenames=set(),
+        )
+
+    with pytest.raises(SystemExit, match="unexpected binary package"):
+        repository.validate_binary_package_records(
+            [
+                *combined,
+                {
+                    "Package": "untrusted-package",
+                    "Version": current_version,
+                    "Filename": "pool/main/u/untrusted/untrusted.deb",
+                },
+            ],
+            current_packages=current,
+            inherited_filenames=inherited,
+        )
+
+
 def test_strict_unsigned_handoff_accepts_only_its_exact_inventory(tmp_path: pathlib.Path) -> None:
     root, request, tracked = _handoff(tmp_path)
     assert _validate(root, request, tracked) == request["artifacts"]
