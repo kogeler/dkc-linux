@@ -138,6 +138,28 @@ def validate_binary_package_records(
     return packages
 
 
+def validate_source_package_records(
+    records: list[dict[str, str]], *, current_version: str
+) -> list[str]:
+    """Require the current source once while allowing retained DKC versions."""
+
+    packages = [record.get("Package", "") for record in records]
+    if (
+        not records
+        or not set(packages) <= {"dkc-archive-keyring", "dkc-linux"}
+        or sum(
+            record.get("Package") == "dkc-linux"
+            and record.get("Version") == current_version
+            for record in records
+        )
+        != 1
+        or packages.count("dkc-archive-keyring") < 1
+        or len(records) < 2
+    ):
+        raise SystemExit("Sources index lacks the exact current source release")
+    return packages
+
+
 def pool_version(path: pathlib.Path):
     from dkc.debver import DebianVersion
 
@@ -957,20 +979,9 @@ def assemble(arguments: list[str]) -> int:
             raise SystemExit("Packages index lacks one exact current release package")
     if packages.count("dkc-archive-keyring") < 1 or len(package_records) < 19:
         raise SystemExit("Packages index lacks the archive keyring or current release graph")
-    source_records = parse_control_records(source_index)
-    source_packages = [record.get("Package", "") for record in source_records]
-    if (
-        not source_records
-        or not set(source_packages) <= {"dkc-archive-keyring", "dkc-linux"}
-        or sum(
-            record.get("Package") == "dkc-linux" and record.get("Version") == package_version
-            for record in source_records
-        )
-        != 1
-        or source_packages.count("dkc-archive-keyring") < 1
-        or len(source_records) < 2
-    ):
-        raise SystemExit("Sources index lacks the exact current source release")
+    source_packages = validate_source_package_records(
+        parse_control_records(source_index), current_version=package_version
+    )
     compress_index(binary_index)
     compress_index(source_index)
 

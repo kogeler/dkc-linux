@@ -70,8 +70,11 @@ version, build policy, LTO mode, retention mode and byte limit, generation, and
 predecessor to match the exact typed lifecycle handoff. It receives no storage
 credential and executes no package content. The following job has no secrets,
 merges only the bounded signature overlay, verifies all signatures and hashes,
-and proves installation, upgrade, both release kernels, headers/DKMS, `deb-src`,
-by-hash, and negative signature cases in a clean client.
+and proves installation, upgrade selection, both release kernels,
+headers/DKMS, `deb-src`, by-hash, and negative signature cases in a clean
+client. Stable metapackage candidates and the source selected from a
+multi-version index must equal the current version bound by the signed
+manifest.
 
 Only that verified repository artifact can enter the storage job. The storage
 job receives no signing secret. The authoritative state read and final state

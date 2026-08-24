@@ -218,6 +218,31 @@ def test_binary_index_accepts_only_exact_packages_from_the_signed_previous_pool(
         )
 
 
+def test_source_index_accepts_retained_versions_and_one_exact_current_release() -> None:
+    previous = {"Package": "dkc-linux", "Version": "7.1.8-2+dkc13.1"}
+    current = {"Package": "dkc-linux", "Version": "7.1.9-1+dkc13.1"}
+    keyring = {"Package": "dkc-archive-keyring", "Version": "1.0"}
+    records = [previous, current, keyring]
+
+    assert repository.validate_source_package_records(
+        records, current_version=current["Version"]
+    ) == ["dkc-linux", "dkc-linux", "dkc-archive-keyring"]
+
+    with pytest.raises(SystemExit, match="exact current source release"):
+        repository.validate_source_package_records(
+            [previous, keyring], current_version=current["Version"]
+        )
+    with pytest.raises(SystemExit, match="exact current source release"):
+        repository.validate_source_package_records(
+            [*records, current], current_version=current["Version"]
+        )
+    with pytest.raises(SystemExit, match="exact current source release"):
+        repository.validate_source_package_records(
+            [*records, {"Package": "untrusted", "Version": "1"}],
+            current_version=current["Version"],
+        )
+
+
 def test_strict_unsigned_handoff_accepts_only_its_exact_inventory(tmp_path: pathlib.Path) -> None:
     root, request, tracked = _handoff(tmp_path)
     assert _validate(root, request, tracked) == request["artifacts"]

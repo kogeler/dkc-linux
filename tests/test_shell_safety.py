@@ -618,6 +618,34 @@ def test_verified_clean_client_is_the_external_publication_boundary() -> None:
     assert "dkc-linux-image-v3-amd64" in signed_client
     assert "apt-install-release-kernels.log" in signed_client
     assert "release_kernel_install=PASS" in signed_client
+    assert "current_version_selection=PASS" in signed_client
+    krel_check = signed_client[
+        signed_client.index("for flavor in v2 v3; do") : signed_client.index(
+            '\ndone\n\nsources="$work/sources"'
+        )
+    ]
+    dependency_selection = krel_check[
+        krel_check.index("mapfile -t installed_krels") : krel_check.index(
+            '\n\t[ "${#installed_krels[@]}" -eq 1 ]'
+        )
+    ]
+    assert "dpkg-query -W -f='${Depends}\\n' \"$meta\"" in dependency_selection
+    assert '"$evidence/installed-packages.txt"' not in dependency_selection
+    assert '"$repository/dists/trixie/main/binary-amd64/Packages"' not in dependency_selection
+    assert 'manifest["meta_packages"]' in signed_client
+    assert '"$candidate" != "$current_dkc_version"' in signed_client
+    assert '"$(dpkg-query -W -f=\'${Version}\' "$meta")" != "$current_dkc_version"' in krel_check
+    source_tarball_check = signed_client[
+        signed_client.index("mapfile -t linux_trees") : signed_client.index(
+            '\nrebuild="$work/rebuild"'
+        )
+    ]
+    assert '"$linux_source_version" != "$current_dkc_version"' in source_tarball_check
+    assert 'find "$sources"' in source_tarball_check
+    assert "-xtype f" in source_tarball_check
+    assert 'original_tarball="$(realpath' in source_tarball_check
+    assert '"$repository"/pool/main/d/dkc-linux/*' in source_tarball_check
+    assert 'find "$repository/pool/' not in source_tarball_check
 
     publisher = jobs["publish-repository"]
     assert "verify-repository" in publisher["needs"]
