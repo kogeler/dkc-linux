@@ -84,8 +84,11 @@ has its own exact root `evidence.sha256`; it never contains a kernel package.
 A dependent job restores and independently verifies both exact cache entries,
 proves the common packages byte-identical, selects their
 canonical `v2` copies, reconciles the resulting 18 unique packages, and runs
-clean image-only plus complete headers/DKMS clients. It then assembles one
-unsigned 19-binary/two-source repository and a strict hashed signing request.
+clean image-only plus complete headers/DKMS clients. It then adds the archive
+keyring, merges the authenticated retained pool when one exists, and assembles
+a multi-version unsigned repository plus a strict hashed signing request. A
+bootstrap contains 19 binary and two source records; later generations can
+contain additional retained kernel and keyring versions.
 For a pull request, the same package job additionally assembles the repository
 with a disposable key and runs the complete signed clean client, including
 binary/source acquisition and negative signature cases. Only bounded test
@@ -104,10 +107,12 @@ imported. It then creates a bounded signature/state overlay. The
 following no-secret job rejects any handoff mismatch, merges the overlay, and
 runs the complete clean APT client, including by-hash acquisition, keyring
 installation, installation of both release kernels from the signed archive,
-source reconstruction and rebuild, signed-state validation, and negative
-signature tests. The complete repository and evidence are uploaded as seven-day
-workflow artifacts. Only after this job passes can the production-storage job
-acquire the shared lease, conditionally publish the exact verified bytes, apply
+binding every stable metapackage candidate and the selected source to the
+manifest's current version, source reconstruction and rebuild, signed-state
+validation, and negative signature tests. The complete repository and evidence
+are uploaded as seven-day workflow artifacts. Only after this job passes can
+the production-storage job acquire the shared lease, conditionally publish the
+exact verified bytes, apply
 the complete exact plan derived from signed tombstones within fail-closed safety
 caps, enforce the signed whole-namespace byte limit, and verify committed signed
 state through a separate read-only credential. A failed downstream stage leaves

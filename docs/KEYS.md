@@ -239,9 +239,11 @@ manual run follows this sequence:
 
 1. two independent jobs restore exact accepted v2/v3 cache entries or, on a
    miss, build and exercise those flavors in KVM before sealing the entries;
-2. a no-secret job reconciles the package matrix, builds one unsigned
-   19-binary/two-source repository, and emits a strict request containing every
-   accepted path, size, and SHA-256;
+2. a no-secret job reconciles the package matrix, merges the authenticated
+   retained pool when present, builds one multi-version unsigned repository,
+   and emits a strict request containing every accepted path, size, and
+   SHA-256; bootstrap has 19 binary and two source records, while later
+   generations can contain additional retained versions;
 3. a no-secret gate resolves canonical `main` and rejects a stale workflow;
 4. the only job attached to `production-signing` repeats that gate, requires
    the complete signing request to match the typed lifecycle decision, then

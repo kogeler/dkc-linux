@@ -152,23 +152,58 @@ if ! grep -Eq 'by-hash(%2f|/)SHA256' "$evidence/apt-update.log"; then
 	tail -n 120 "$evidence/apt-update.log" >&2
 	exit 1
 fi
-apt-cache policy dkc-archive-keyring \
-	dkc-linux-image-v2-amd64 dkc-linux-image-v3-amd64 \
+release_meta_packages=(
+	dkc-linux-base-v2-amd64
+	dkc-linux-base-v3-amd64
+	dkc-linux-headers-v2-amd64
+	dkc-linux-headers-v3-amd64
+	dkc-linux-image-v2-amd64
+	dkc-linux-image-v3-amd64
+)
+release_image_metas=(
+	dkc-linux-image-v2-amd64
+	dkc-linux-image-v3-amd64
+)
+current_dkc_version="$(
+	python3 - "$repository/manifest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+versions = set(manifest["meta_packages"].values())
+if len(versions) != 1:
+    raise SystemExit("signed manifest does not identify one current DKC version")
+print(versions.pop())
+PY
+)"
+test -n "$current_dkc_version"
+apt-cache policy dkc-archive-keyring "${release_meta_packages[@]}" \
 	>"$evidence/apt-policy.txt"
-if [ "$(grep -c 'Candidate: ' "$evidence/apt-policy.txt")" -ne 3 ] ||
-	grep -q 'Candidate: (none)' "$evidence/apt-policy.txt"; then
-	printf 'signed archive does not expose the keyring and all release metapackages\n' >&2
+keyring_candidate="$(
+	apt-cache policy dkc-archive-keyring |
+		sed -n 's/^[[:space:]]*Candidate: //p'
+)"
+if [ -z "$keyring_candidate" ] || [ "$keyring_candidate" = '(none)' ]; then
+	printf 'signed archive does not expose the archive keyring\n' >&2
 	exit 1
 fi
+for package in "${release_meta_packages[@]}"; do
+	candidate="$(
+		apt-cache policy "$package" |
+			sed -n 's/^[[:space:]]*Candidate: //p'
+	)"
+	if [ "$candidate" != "$current_dkc_version" ]; then
+		printf '%s candidate %s differs from signed current version %s\n' \
+			"$package" "$candidate" "$current_dkc_version" >&2
+		exit 1
+	fi
+done
 
 # The earlier package-matrix clients exercise the complete package lifecycle
 # against an unsigned local fixture. This independent client proves that APT
 # can also resolve and install both release kernels through the final signed
 # indexes, with Debian network sources removed and networking disabled.
-release_image_metas=(
-	dkc-linux-image-v2-amd64
-	dkc-linux-image-v3-amd64
-)
 if ! apt-get install -y --no-install-recommends "${release_image_metas[@]}" \
 	>"$evidence/apt-install-release-kernels.log" 2>&1; then
 	tail -n 120 "$evidence/apt-install-release-kernels.log" >&2
@@ -178,12 +213,21 @@ dpkg-query -W -f='${binary:Package}\t${db:Status-Status}\n' |
 	awk -F '\t' '$2 == "installed" { print $1 }' |
 	sort >"$evidence/installed-packages.txt"
 for flavor in v2 v3; do
-	krel="$(
-		sed -n "s/^Package: dkc-linux-image-\\(.*-${flavor}-amd64\\)$/\\1/p" \
-			"$repository/dists/trixie/main/binary-amd64/Packages"
-	)"
+	meta="dkc-linux-image-${flavor}-amd64"
+	if [ "$(dpkg-query -W -f='${Version}' "$meta")" != "$current_dkc_version" ]; then
+		printf '%s did not install the signed current version\n' "$meta" >&2
+		exit 1
+	fi
+	# Read the installed current metapackage relationship, not every retained
+	# ABI name in Packages or every old kernel that may coexist on the client.
+	mapfile -t installed_krels < <(
+		dpkg-query -W -f='${Depends}\n' "$meta" |
+			tr ',' '\n' |
+			sed -n "s/^[[:space:]]*dkc-linux-image-\\([^[:space:](]*-${flavor}-amd64\\)[[:space:]]*(=.*/\\1/p"
+	)
+	[ "${#installed_krels[@]}" -eq 1 ]
+	krel="${installed_krels[0]}"
 	[[ "$krel" =~ ^[A-Za-z0-9][A-Za-z0-9.+~-]*-${flavor}-amd64$ ]]
-	[ "$(printf '%s\n' "$krel" | wc -l)" -eq 1 ]
 	for package in \
 		"dkc-linux-base-${flavor}-amd64" \
 		"dkc-linux-image-${flavor}-amd64" \
@@ -208,23 +252,44 @@ chmod 0777 "$sources"
 	apt-get source dkc-linux >"$evidence/apt-source-linux.log" 2>&1
 	apt-get source dkc-archive-keyring >"$evidence/apt-source-keyring.log" 2>&1
 )
+find "$sources" -mindepth 1 -maxdepth 1 -printf '%y\t%f\t%l\n' |
+	sort >"$evidence/source-download-inventory.tsv"
 mapfile -t linux_trees < <(
 	find "$sources" -mindepth 1 -maxdepth 1 -type d -name 'dkc-linux-*' -print
 )
 [ "${#linux_trees[@]}" -eq 1 ]
+linux_source_version="$(
+	dpkg-parsechangelog -l"${linux_trees[0]}/debian/changelog" -SVersion
+)"
+if [ "$linux_source_version" != "$current_dkc_version" ]; then
+	printf 'APT selected source version %s instead of signed current version %s\n' \
+		"$linux_source_version" "$current_dkc_version" >&2
+	exit 1
+fi
+printf '%s\n' "$linux_source_version" >"$evidence/source-version.txt"
 mapfile -t keyring_trees < <(
 	find "$sources" -mindepth 1 -maxdepth 1 -type d -name 'dkc-archive-keyring-*' -print
 )
 [ "${#keyring_trees[@]}" -eq 1 ]
+# The file method normally links source members back into the signed pool.
+# Accept only paths with regular referents, then constrain the resolved target.
 mapfile -t original_tarballs < <(
-	find "$repository/pool/main/d/dkc-linux" -maxdepth 1 -type f \
+	find "$sources" -maxdepth 1 -xtype f \
 		-name 'dkc-linux_*.orig.tar.xz' -print
 )
 [ "${#original_tarballs[@]}" -eq 1 ]
+original_tarball="$(realpath "${original_tarballs[0]}")"
+case "$original_tarball" in
+"$sources"/* | "$repository"/pool/main/d/dkc-linux/*) ;;
+*)
+	printf 'APT source tarball resolved outside the verified source boundaries\n' >&2
+	exit 1
+	;;
+esac
 
 rebuild="$work/rebuild"
 mkdir "$rebuild"
-cp --reflink=auto "${original_tarballs[0]}" "$rebuild/"
+cp --reflink=auto "$original_tarball" "$rebuild/"
 cp -a --reflink=auto "${linux_trees[0]}" "$rebuild/"
 rebuilt_tree="$rebuild/$(basename "${linux_trees[0]}")"
 (
@@ -325,6 +390,7 @@ source_only_rebuild=PASS
 archive_key_inventory=PASS
 keyring_install=PASS
 release_kernel_install=PASS
+current_version_selection=PASS
 corrupt_signature_rejected=PASS
 missing_signature_rejected=PASS
 EOF
