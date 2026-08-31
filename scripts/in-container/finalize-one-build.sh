@@ -110,6 +110,9 @@ import json
 import pathlib
 import sys
 
+sys.path.insert(0, "/work/repo")
+from dkc.tarmetadata import require_package_archive_evidence
+
 (
     attestation_path,
     kbuild_path,
@@ -134,13 +137,24 @@ def record(path: pathlib.Path) -> dict[str, object]:
 
 expected_krel = identity.get("kernel_releases", {}).get(flavor)
 expected_lto = identity.get("lto_mode")
+packages = attestation.get("packages")
 if (
     attestation.get("status") != "PASS"
     or attestation.get("flavor") != flavor
     or attestation.get("kernel_release") != expected_krel
     or attestation.get("lto_mode") != expected_lto
+    or not isinstance(packages, dict)
 ):
     raise SystemExit("build attestation identity/status did not pass")
+try:
+    require_package_archive_evidence(
+        attestation.get("package_archive_metadata"),
+        packages,
+        identity.get("publication_source_date_epoch"),
+        "build attestation package archive evidence",
+    )
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 if (
     replay.get("status") != "COMPLETE"
     or replay.get("llvm_major") != attestation.get("llvm_major")
@@ -203,6 +217,9 @@ import lzma
 import pathlib
 import sys
 
+sys.path.insert(0, "/work/repo")
+from dkc.tarmetadata import require_source_archive_evidence
+
 report_path, manifest_path, bundle_path, identity_path = map(pathlib.Path, sys.argv[1:])
 report = json.loads(report_path.read_text(encoding="utf-8"))
 identity = json.loads(identity_path.read_text(encoding="utf-8"))
@@ -214,6 +231,14 @@ if (
     or report.get("build_input_digest") != identity.get("build_input_digest")
 ):
     raise SystemExit("source-package identity or reconstruction did not pass")
+try:
+    require_source_archive_evidence(
+        report.get("debian_archive_metadata"),
+        identity.get("publication_source_date_epoch"),
+        "source package archive evidence",
+    )
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 files = report.get("files")
 if not isinstance(files, list) or len(files) != 5:
     raise SystemExit("source-package report lacks the exact five-file bundle")

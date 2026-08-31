@@ -8,7 +8,7 @@ import pathlib
 __all__ = ["BUILD_POLICY_REVISION", "build_policy_digest", "build_policy_paths"]
 
 
-BUILD_POLICY_REVISION = 7
+BUILD_POLICY_REVISION = 8
 
 
 def build_policy_paths(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
@@ -21,6 +21,7 @@ def build_policy_paths(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
         "dkc/naming.py",
         "dkc/serialize.py",
         "dkc/sourcepackage.py",
+        "dkc/tarmetadata.py",
         "config/base-image.lock",
         "config/build-profiles",
         "container/Containerfile.build",

@@ -20,6 +20,10 @@ from collections import defaultdict
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from dkc.debver import DebianVersion
 from dkc.sourcepackage import validate_source_bundle
+from dkc.tarmetadata import (  # noqa: E402
+    require_package_archive_evidence,
+    require_source_archive_evidence,
+)
 
 
 FLAVORS = ("v2", "v3", "v4")
@@ -60,6 +64,40 @@ def load_json(path: pathlib.Path) -> dict[str, object]:
     if not isinstance(value, dict):
         fail(f"JSON evidence is not an object: {path}")
     return value
+
+
+def require_source_archive_metadata(
+    report: dict[str, object], identity: dict[str, object], flavor: str
+) -> None:
+    """Require the producer's exact downstream source-tar metadata proof."""
+
+    try:
+        require_source_archive_evidence(
+            report.get("debian_archive_metadata"),
+            identity.get("publication_source_date_epoch"),
+            f"{flavor} source archive evidence",
+        )
+    except ValueError:
+        fail(f"{flavor} source archive lacks deterministic metadata evidence")
+
+
+def require_package_archive_metadata(
+    attestation: dict[str, object],
+    packages: dict[str, object],
+    identity: dict[str, object],
+    flavor: str,
+) -> None:
+    """Require timestamp/owner/type inspection of every binary package tar."""
+
+    try:
+        require_package_archive_evidence(
+            attestation.get("package_archive_metadata"),
+            packages,
+            identity.get("publication_source_date_epoch"),
+            f"{flavor} package archive evidence",
+        )
+    except ValueError:
+        fail(f"{flavor} package archives lack deterministic metadata evidence")
 
 
 def compare_source_reports(
@@ -902,6 +940,9 @@ def audit_one_flavor(arguments: list[str]) -> int:
         for name, digest in attested_packages.items()
     ):
         fail(f"{args.flavor} attestation has a malformed package digest map")
+    require_package_archive_metadata(
+        attestation, attested_packages, identity, args.flavor
+    )
 
     expected = expected_for_flavor(identity, args.flavor)
     found: set[str] = set()
@@ -1068,11 +1109,6 @@ def main() -> int:
         source_report_sha256[flavor] = hashlib.sha256(
             current_source_report_bytes
         ).hexdigest()
-        if source_report is None:
-            source_report = current_source_report
-        source_upload_metadata[flavor] = compare_source_reports(
-            source_report, current_source_report, flavor
-        )
         if (
             current_source_report.get("status") != "PASS"
             or current_source_report.get("reconstruction") != "PASS"
@@ -1081,6 +1117,12 @@ def main() -> int:
             or current_source_report.get("version") != package_version
         ):
             fail(f"{flavor} source-package report is not accepted")
+        require_source_archive_metadata(current_source_report, identity, flavor)
+        if source_report is None:
+            source_report = current_source_report
+        source_upload_metadata[flavor] = compare_source_reports(
+            source_report, current_source_report, flavor
+        )
         source_root = root / "source"
         if not source_root.is_dir() or source_root.is_symlink():
             fail(f"{flavor} export lacks a plain source bundle directory")
@@ -1123,6 +1165,9 @@ def main() -> int:
             for name, digest in attested_packages.items()
         ):
             fail(f"{flavor} attestation has a malformed package digest map")
+        require_package_archive_metadata(
+            attestation, attested_packages, identity, flavor
+        )
 
         expected = expected_for_flavor(identity, flavor)
         found: set[str] = set()

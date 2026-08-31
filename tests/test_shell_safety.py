@@ -1105,8 +1105,22 @@ def test_publication_changelog_drives_the_reproducible_timestamp() -> None:
     identity = (ROOT / "scripts" / "in-container" / "prepare-build-identity.py").read_text()
     run = (ROOT / "scripts" / "in-container" / "run-one-build.sh").read_text()
     assert 'f"dkc-linux ({package_version}) trixie; urgency=medium' in identity
+    assert "publication_epoch_after_source" in identity
+    assert "require_epoch_not_future" in identity
     assert "publication_source_date_epoch" in identity
     assert 'dpkg-parsechangelog -l"$source/debian/changelog" -STimestamp' in run
+
+
+def test_every_binary_and_source_entry_point_normalizes_generated_metadata() -> None:
+    source = (ROOT / "scripts/in-container/build-source-package.sh").read_text()
+    run = (ROOT / "scripts/in-container/run-one-build.sh").read_text()
+    rebuild = (ROOT / "debian-overlay/source/rebuild-flavor").read_text()
+    marker = "--normalize-public-metadata"
+    for script in (source, run, rebuild):
+        build = re.search(r"(?m)^[ \t]*(?:exec )?dpkg-buildpackage\b", script)
+        assert build is not None
+        assert script.index("debian/control-real") < script.index(marker)
+        assert script.index(marker) < build.start()
 
 
 def test_build_image_proves_bindgen_loaded_the_selected_libclang() -> None:

@@ -21,6 +21,10 @@ from .evidence import verify_evidence_directory
 from .records import DiscoveryDecision
 from .release_gate import load_discovery_decision
 from .serialize import dumps, sha256_of
+from .tarmetadata import (
+    require_package_archive_evidence,
+    require_source_archive_evidence,
+)
 from .validationpolicy import validation_policy_digest
 
 __all__ = [
@@ -192,6 +196,29 @@ def _verify_semantics(
     ):
         raise ValueError("publication identity lacks the flavor kernel release")
     kernel_release = releases[identity.flavor]
+    source_report = _read_json(
+        flavor_root / "evidence/source-package/source-package.json",
+        "source-package report",
+    )
+    _require_fields(
+        source_report,
+        {
+            "status": "PASS",
+            "reconstruction": "PASS",
+            "build_input_digest": build_input_digest,
+        },
+        "source-package report",
+    )
+    try:
+        require_source_archive_evidence(
+            source_report.get("debian_archive_metadata"),
+            publication.get("publication_source_date_epoch"),
+            "source-package archive evidence",
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "source-package report lacks archive metadata evidence"
+        ) from exc
 
     provenance = _read_environment(
         flavor_root / "evidence/build-image-provenance.env", "build image provenance"
@@ -236,6 +263,17 @@ def _verify_semantics(
     packages = attestation.get("packages")
     if not isinstance(packages, dict) or not packages:
         raise ValueError("kernel attestation contains no package inventory")
+    try:
+        require_package_archive_evidence(
+            attestation.get("package_archive_metadata"),
+            packages,
+            publication.get("publication_source_date_epoch"),
+            "kernel attestation package archive evidence",
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "kernel attestation lacks package archive metadata evidence"
+        ) from exc
     observed_debs = {path.name: path for path in (flavor_root / "artifacts").glob("*.deb")}
     if set(observed_debs) != set(packages):
         raise ValueError("cached binary package set differs from its attestation")

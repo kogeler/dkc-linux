@@ -158,6 +158,24 @@ the complete normalized Kconfig for all three
 flavors, derives one publication-wide identity from their hashes, selects one
 flavor, builds its exact package subset, and runs:
 
+The publication timestamp is derived without wall-clock rounding: it is
+exactly one second after the authenticated Debian changelog timestamp. Identity
+preparation fails before compilation if that epoch is still ahead of the build
+clock. After every content generator and flavor transform, the complete source
+tree is recursively normalized to that epoch, including directories and
+symlinks, with public 0644/0755 modes. This makes `SOURCE_DATE_EPOCH` a ceiling
+that is already in the past instead of relying on `tar --clamp-mtime` or
+`dpkg-deb` to make a future timestamp reproducible.
+
+Acceptance streams every archive header, not just the outer-file checksum. The
+downstream Debian tar must have deterministic tree order and every member must
+use the exact publication epoch, root ownership, a normalized public mode, a
+safe unique path, and no PAX or special-file metadata. The same exact timestamp,
+ownership, mode, path, and type policy is applied to both the control and data
+tar streams of every binary package. The resulting bounded member-count and
+mtime evidence is required again by result finalization, selftest staging,
+release-cache restore, and cross-flavor package convergence.
+
 - source-declared Rust/bindgen/LLVM minimum checks and a byte-identical
   preflight-versus-Debian final configuration check;
 - final configuration, package, BTF, LLVM, and Kbuild-command attestation;
@@ -434,6 +452,9 @@ For a production build decision, v2 and v3 run on independent standard
 `ubuntu-26.04` runners. Each job computes one semantic Actions cache key from the
 authenticated Debian source, downstream revision/build policy, flavor, and LTO
 mode, plus the tracked validation policy for attestation, selftests, and QEMU.
+The archive-normalization implementation is part of that build policy, so a
+change to the epoch or tar contract cannot restore a result accepted under an
+older contract.
 Image digests remain provenance and do not invalidate an accepted result. A
 fully verified exact hit skips QEMU setup, compilation, selftest construction,
 and VM execution. There is no prefix restore or compatibility path. On a miss,

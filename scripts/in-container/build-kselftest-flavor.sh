@@ -62,6 +62,10 @@ import sys
 
 from dkc.debver import DebianVersion
 from dkc.sourcepackage import validate_source_bundle
+from dkc.tarmetadata import (
+    require_package_archive_evidence,
+    require_source_archive_evidence,
+)
 
 flavor_root, flavor, llvm_text, kind, profile_path = sys.argv[1:]
 flavor_root = pathlib.Path(flavor_root)
@@ -79,12 +83,21 @@ source_report = json.loads(
 )
 digest = identity.get("build_input_digest")
 kernel_release = identity.get("kernel_releases", {}).get(flavor)
+publication_epoch = identity.get("publication_source_date_epoch")
 if (
     not isinstance(digest, str)
     or not re.fullmatch(r"[0-9a-f]{64}", digest)
     or source_report.get("build_input_digest") != digest
 ):
     raise SystemExit("kernel and source evidence have different build identities")
+try:
+    require_source_archive_evidence(
+        source_report.get("debian_archive_metadata"),
+        publication_epoch,
+        "source package archive evidence",
+    )
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 if (
     attestation.get("schema_version") != 2
     or attestation.get("status") != "PASS"
@@ -94,6 +107,18 @@ if (
     or attestation.get("llvm_major") != int(llvm_text)
 ):
     raise SystemExit("kernel attestation does not match the requested test build")
+attested_packages = attestation.get("packages")
+if not isinstance(attested_packages, dict):
+    raise SystemExit("kernel attestation has no package inventory")
+try:
+    require_package_archive_evidence(
+        attestation.get("package_archive_metadata"),
+        attested_packages,
+        publication_epoch,
+        "kernel package archive evidence",
+    )
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 package_names = identity.get("package_names", {})
 expected_binaries = set(package_names.get("versioned", [])) | set(
     package_names.get("meta", [])

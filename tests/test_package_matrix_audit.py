@@ -45,6 +45,7 @@ def _identity() -> dict[str, object]:
         "build_input_digest": "f" * 64,
         "abi": abi,
         "package_version": "7.1.7-1+dkc13.1",
+        "publication_source_date_epoch": 1_760_000_000,
         "lto_mode": "thin",
         "kernel_releases": {
             flavor: f"{abi}-{flavor}-amd64" for flavor in audit.FLAVORS
@@ -309,6 +310,13 @@ def _build_synthetic_source_bundle(
     report.update(
         {
             "build_input_digest": identity["build_input_digest"],
+            "debian_archive_metadata": {
+                "epoch": identity["publication_source_date_epoch"],
+                "maximum_mtime": identity["publication_source_date_epoch"],
+                "member_count": 1,
+                "minimum_mtime": identity["publication_source_date_epoch"],
+                "status": "PASS",
+            },
             "reconstruction": "PASS",
             "source_tree_entries": 1,
             "source_tree_manifest_sha256": hashlib.sha256(b"fixture\n").hexdigest(),
@@ -445,6 +453,33 @@ def _build_synthetic_matrix(
                         "required" if identity["lto_mode"] == "none" else "forbidden"
                     ),
                     "packages": digests,
+                    "package_archive_metadata": {
+                        "epoch": identity["publication_source_date_epoch"],
+                        "packages": {
+                            name: {
+                                "control": {
+                                    "maximum_mtime": identity[
+                                        "publication_source_date_epoch"
+                                    ],
+                                    "member_count": 1,
+                                    "minimum_mtime": identity[
+                                        "publication_source_date_epoch"
+                                    ],
+                                },
+                                "data": {
+                                    "maximum_mtime": identity[
+                                        "publication_source_date_epoch"
+                                    ],
+                                    "member_count": 1,
+                                    "minimum_mtime": identity[
+                                        "publication_source_date_epoch"
+                                    ],
+                                },
+                            }
+                            for name in digests
+                        },
+                        "status": "PASS",
+                    },
                 },
                 indent=2,
                 sort_keys=True,
@@ -618,6 +653,7 @@ def test_source_upload_metadata_may_record_distinct_build_time(
     ).to_dict()
     for key in (
         "build_input_digest",
+        "debian_archive_metadata",
         "reconstruction",
         "source_tree_entries",
         "source_tree_manifest_sha256",
@@ -680,6 +716,59 @@ def test_reproducible_source_member_difference_is_rejected(
     result = _run_audit(tmp_path, roots)
     assert result.returncode != 0
     assert "reproducible source member differs from v2" in result.stderr
+
+
+def test_source_archive_metadata_evidence_is_required(tmp_path: pathlib.Path) -> None:
+    roots = _build_synthetic_matrix(tmp_path)
+    report_path = roots[1] / "evidence/source-package/source-package.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report.pop("debian_archive_metadata")
+    report_path.write_text(
+        json.dumps(report, separators=(",", ":"), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _write_evidence_manifest(roots[1] / "evidence")
+
+    result = _run_audit(tmp_path, roots)
+    assert result.returncode != 0
+    assert "source archive lacks deterministic metadata evidence" in result.stderr
+
+
+def test_binary_archive_metadata_evidence_is_required(tmp_path: pathlib.Path) -> None:
+    roots = _build_synthetic_matrix(tmp_path)
+    attestation_path = roots[1] / "evidence/attestation.json"
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    attestation["package_archive_metadata"]["status"] = "NOT_RUN"
+    attestation_path.write_text(
+        json.dumps(attestation, separators=(",", ":"), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _write_evidence_manifest(roots[1] / "evidence")
+
+    result = _run_audit(tmp_path, roots)
+    assert result.returncode != 0
+    assert "package archives lack deterministic metadata evidence" in result.stderr
+
+
+def test_binary_archive_metadata_must_use_the_exact_epoch(
+    tmp_path: pathlib.Path,
+) -> None:
+    roots = _build_synthetic_matrix(tmp_path)
+    attestation_path = roots[1] / "evidence/attestation.json"
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    package = next(iter(attestation["package_archive_metadata"]["packages"]))
+    attestation["package_archive_metadata"]["packages"][package]["data"][
+        "minimum_mtime"
+    ] -= 1
+    attestation_path.write_text(
+        json.dumps(attestation, separators=(",", ":"), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    _write_evidence_manifest(roots[1] / "evidence")
+
+    result = _run_audit(tmp_path, roots)
+    assert result.returncode != 0
+    assert "package archives lack deterministic metadata evidence" in result.stderr
 
 
 @pytest.mark.parametrize(("flavor", "root_index"), (("v3", 1), ("v4", 2)))

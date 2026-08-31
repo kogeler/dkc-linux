@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 
 
@@ -130,14 +131,6 @@ def format_changelog_time(epoch: int) -> str:
         f"{months[instant.month - 1]} {instant.year:04d} "
         f"{instant:%H:%M:%S} +0000"
     )
-
-
-def next_utc_date_epoch(epoch: int) -> int:
-    """Return midnight starting the first UTC date after the source entry."""
-
-    if epoch < 0:
-        raise ValueError("changelog epoch cannot be negative")
-    return (epoch // 86400 + 1) * 86400
 
 
 def parse_kernel_config(path: pathlib.Path) -> dict[str, str]:
@@ -283,6 +276,10 @@ def main() -> int:
     from dkc.flavors import load_all_flavor_policies  # noqa: PLC0415
     from dkc.naming import Identity, package_names  # noqa: PLC0415
     from dkc.serialize import dumps  # noqa: PLC0415
+    from dkc.tarmetadata import (  # noqa: PLC0415
+        publication_epoch_after_source,
+        require_epoch_not_future,
+    )
 
     inventory = json.loads((inputs / "source-inventory.json").read_text(encoding="utf-8"))
     if inventory.get("schema_version") != 2 or inventory.get("source") != "linux":
@@ -297,6 +294,13 @@ def main() -> int:
         or llvm_major < 1
     ):
         raise SystemExit("source inventory lacks a valid version, epoch, or LLVM major")
+    try:
+        publication_epoch = publication_epoch_after_source(source_epoch)
+        require_epoch_not_future(
+            publication_epoch, int(time.time()), "publication epoch"
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     dsc_sha, member_hashes = source_hashes(inputs, inventory)
 
     overlay_sha = build_policy_digest(repo)
@@ -345,7 +349,6 @@ def main() -> int:
     full_digest = build_inputs.digest()
     identity = Identity.create(source_version, revision, build_inputs.build_id())
 
-    publication_epoch = next_utc_date_epoch(source_epoch)
     record = {
         "schema_version": 1,
         "build_input_digest": full_digest,

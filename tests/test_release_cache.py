@@ -68,6 +68,7 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
     qemu = root / "qemu"
     for path in (
         flavor / "evidence",
+        flavor / "evidence/source-package",
         flavor / "artifacts",
         selftest / "evidence",
         qemu / "evidence",
@@ -80,6 +81,7 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
     package_sha = hashlib.sha256(package.read_bytes()).hexdigest()
     kernel_release = "7.1.7+dkc13.r1.g0123456789ab-v3-amd64"
     build_digest = "b" * 64
+    publication_epoch = 1_760_000_000
     (flavor / "evidence/result.env").write_text(
         "status=PASS\nflavor=v3\nlto_mode=thin\n"
     )
@@ -97,6 +99,7 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
                     "lto_mode": decision.lto_mode,
                 },
                 "kernel_releases": {"v3": kernel_release},
+                "publication_source_date_epoch": publication_epoch,
             }
         )
     )
@@ -108,6 +111,22 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
         "kbuild_audit_rc=0\n"
         "simd_audit_rc=0\n"
         "lintian_rc=0\n"
+    )
+    (flavor / "evidence/source-package/source-package.json").write_text(
+        dumps(
+            {
+                "status": "PASS",
+                "reconstruction": "PASS",
+                "build_input_digest": build_digest,
+                "debian_archive_metadata": {
+                    "epoch": publication_epoch,
+                    "maximum_mtime": publication_epoch,
+                    "member_count": 1,
+                    "minimum_mtime": publication_epoch,
+                    "status": "PASS",
+                },
+            }
+        )
     )
     for name in ("kernel-simd-audit.json", "kbuild-command-audit.json"):
         (flavor / "evidence" / name).write_text(
@@ -121,6 +140,24 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
                 "kernel_release": kernel_release,
                 "lto_mode": "thin",
                 "packages": {package.name: package_sha},
+                "package_archive_metadata": {
+                    "epoch": publication_epoch,
+                    "packages": {
+                        package.name: {
+                            "control": {
+                                "maximum_mtime": publication_epoch,
+                                "member_count": 1,
+                                "minimum_mtime": publication_epoch,
+                            },
+                            "data": {
+                                "maximum_mtime": publication_epoch,
+                                "member_count": 1,
+                                "minimum_mtime": publication_epoch,
+                            },
+                        }
+                    },
+                    "status": "PASS",
+                },
             }
         )
     )
@@ -184,6 +221,67 @@ def test_release_cache_key_binds_source_policy_and_flavor_not_image_rollover() -
         release_cache_identity(changed, flavor="v2", repository_root=ROOT).key()
         != first.key()
     )
+
+
+def test_release_cache_rejects_unattested_package_archive_metadata(
+    tmp_path: Path,
+) -> None:
+    decision_root = tmp_path / "decision"
+    decision = _decision(decision_root)
+    flavor, selftest, qemu = _accepted_results(tmp_path / "results", decision)
+    attestation_path = flavor / "evidence/attestation.json"
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    attestation["package_archive_metadata"]["status"] = "NOT_RUN"
+    attestation_path.write_text(dumps(attestation))
+    identity = release_cache_identity(decision, flavor="v3", repository_root=ROOT)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(ValueError, match="lacks package archive metadata evidence"):
+        prepare_release_cache(
+            workspace / "out/release-cache/v3",
+            flavor_result=flavor,
+            selftest_result=selftest,
+            qemu_result=qemu,
+            decision_root=decision_root,
+            flavor="v3",
+            build_image=IMAGE,
+            toolbox_image=TOOLBOX,
+            expected_key=identity.key(),
+            repository_root=ROOT,
+            cache_workspace=workspace,
+        )
+
+
+def test_release_cache_rejects_unattested_source_archive_metadata(
+    tmp_path: Path,
+) -> None:
+    decision_root = tmp_path / "decision"
+    decision = _decision(decision_root)
+    flavor, selftest, qemu = _accepted_results(tmp_path / "results", decision)
+    report_path = flavor / "evidence/source-package/source-package.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["debian_archive_metadata"]["minimum_mtime"] -= 1
+    report_path.write_text(dumps(report))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(ValueError, match="lacks archive metadata evidence"):
+        prepare_release_cache(
+            workspace / "out/release-cache/v3",
+            flavor_result=flavor,
+            selftest_result=selftest,
+            qemu_result=qemu,
+            decision_root=decision_root,
+            flavor="v3",
+            build_image=IMAGE,
+            toolbox_image=TOOLBOX,
+            expected_key=release_cache_identity(
+                decision, flavor="v3", repository_root=ROOT
+            ).key(),
+            repository_root=ROOT,
+            cache_workspace=workspace,
+        )
 
 
 @pytest.mark.parametrize("decision_kind", ["build", "qualification"])

@@ -108,6 +108,8 @@ touch --date="@${publication_epoch}" \
 (
 	cd "$prepared"
 	make -f debian/rules debian/control-real >/dev/null
+	python3 "$repo/scripts/in-container/prepare-source-tree.py" \
+		--normalize-public-metadata "$prepared" "$publication_epoch"
 	dpkg-checkbuilddeps debian/control
 	dpkg-buildpackage --build=source --no-sign -sa
 	# Compare clean source trees, not dpkg-buildpackage's transient bookkeeping.

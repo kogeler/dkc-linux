@@ -9,7 +9,15 @@ import os
 import pathlib
 import shutil
 import sys
+import time
 import tomllib
+
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from dkc.tarmetadata import (  # noqa: E402
+    normalize_tree_metadata,
+    require_epoch_not_future,
+)
 
 
 README_MARKER = "DKC downstream rebuild"
@@ -65,6 +73,13 @@ def normalize_public_modes(root: pathlib.Path) -> None:
                 )
             executable = path.stat().st_mode & 0o111
             path.chmod(0o755 if executable else 0o644)
+
+
+def normalize_public_metadata(root: pathlib.Path, epoch: int) -> None:
+    """Pin all public source modes and mtimes after content generators run."""
+
+    require_epoch_not_future(epoch, int(time.time()), "source metadata epoch")
+    normalize_tree_metadata(root, epoch)
 
 
 def restrict_source_architectures(source: pathlib.Path, repo: pathlib.Path) -> None:
@@ -182,10 +197,19 @@ def main() -> int:
     if len(sys.argv) == 3 and sys.argv[1] == "--normalize-public-modes":
         normalize_public_modes(pathlib.Path(sys.argv[2]).resolve())
         return 0
+    if len(sys.argv) == 4 and sys.argv[1] == "--normalize-public-metadata":
+        try:
+            epoch = int(sys.argv[3])
+            normalize_public_metadata(pathlib.Path(sys.argv[2]).resolve(), epoch)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
+        return 0
     if len(sys.argv) != 4:
         print(
             "usage: prepare-source-tree.py <source-root> <repo-root> <inputs-root>\n"
-            "       prepare-source-tree.py --normalize-public-modes <source-root>",
+            "       prepare-source-tree.py --normalize-public-modes <source-root>\n"
+            "       prepare-source-tree.py --normalize-public-metadata "
+            "<source-root> <epoch>",
             file=sys.stderr,
         )
         return 2
@@ -272,16 +296,10 @@ def main() -> int:
     (dkc / "embedded-inputs.sha256").write_text(
         manifest(dkc / "build-inputs"), encoding="utf-8"
     )
-    normalize_public_modes(source)
-    normalized = [
-        source / "debian/changelog",
-        source / "debian/copyright",
-        source / "debian/README.source",
-        source / "debian/README.DKC",
-        *[path for path in dkc.rglob("*") if path.is_file()],
-    ]
-    for path in normalized:
-        os.utime(path, (publication_epoch, publication_epoch), follow_symlinks=False)
+    try:
+        normalize_public_metadata(source, publication_epoch)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     return 0
 
 

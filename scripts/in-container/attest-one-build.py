@@ -24,6 +24,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from dkc.buildid import policy_config_digest  # noqa: E402
+from dkc.tarmetadata import validate_tar_stream  # noqa: E402
 
 
 LLVM_TOOL = re.compile(
@@ -64,6 +65,44 @@ def timestamp_epoch(value: str, label: str) -> int:
     if instant.tzinfo is None:
         fail(f"{label} timestamp lacks a timezone: {value!r}")
     return int(instant.timestamp())
+
+
+def deb_tar_metadata(
+    deb: pathlib.Path, option: str, epoch: int, label: str
+) -> dict[str, int]:
+    """Stream one dpkg-deb tar member through the common metadata policy."""
+
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(
+            ["dpkg-deb", option, deb],
+            stdout=subprocess.PIPE,
+            stderr=errors,
+        )
+        if process.stdout is None:
+            process.kill()
+            process.wait()
+            fail(f"cannot open dpkg-deb output for {deb.name}")
+        try:
+            metadata = validate_tar_stream(
+                process.stdout,
+                label=f"{deb.name} {label}",
+                epoch=epoch,
+                exact_mtime=True,
+                normalized_modes=True,
+            )
+        except ValueError as exc:
+            process.kill()
+            process.stdout.close()
+            process.wait()
+            fail(str(exc))
+        process.stdout.close()
+        returncode = process.wait()
+        errors.seek(0)
+        error = errors.read(4096).decode("utf-8", errors="replace").strip()
+        if returncode != 0:
+            detail = f": {error}" if error else ""
+            fail(f"dpkg-deb could not read {deb.name} {label}{detail}")
+    return dict(metadata.to_dict())
 
 
 def is_possible_private_key(path: pathlib.Path) -> bool:
@@ -702,7 +741,16 @@ def main() -> int:
         extracted = temporary / "packages"
         extracted.mkdir()
         package_fields: dict[str, dict[str, str]] = {}
+        package_archive_metadata: dict[str, dict[str, dict[str, int]]] = {}
         for deb in debs:
+            package_archive_metadata[deb.name] = {
+                "control": deb_tar_metadata(
+                    deb, "--ctrl-tarfile", publication_epoch, "control archive"
+                ),
+                "data": deb_tar_metadata(
+                    deb, "--fsys-tarfile", publication_epoch, "data archive"
+                ),
+            }
             fields_text = subprocess.check_output(
                 [
                     "dpkg-deb",
@@ -1028,6 +1076,11 @@ def main() -> int:
         "tool_invocations": dict(sorted(tool_counts.items())),
         "public_x509_files": captured_public_certificates,
         "packages": {path.name: sha256(path) for path in debs},
+        "package_archive_metadata": {
+            "epoch": publication_epoch,
+            "packages": package_archive_metadata,
+            "status": "PASS",
+        },
         "buildinfo": buildinfos[0].name,
         "changes": changes[0].name,
     }
