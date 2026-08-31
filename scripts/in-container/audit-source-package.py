@@ -68,6 +68,7 @@ def main() -> int:
         build_tree_manifest,
         validate_source_bundle,
     )
+    from dkc.tarmetadata import validate_tar_path  # noqa: PLC0415
 
     identity_bytes = identity_path.read_bytes()
     identity = json.loads(identity_bytes)
@@ -76,10 +77,14 @@ def main() -> int:
     version = identity.get("package_version")
     debian_version = identity.get("debian_source_version")
     package_names = identity.get("package_names")
+    publication_epoch = identity.get("publication_source_date_epoch")
     if (
         not isinstance(version, str)
         or not isinstance(debian_version, str)
         or not isinstance(package_names, dict)
+        or not isinstance(publication_epoch, int)
+        or isinstance(publication_epoch, bool)
+        or publication_epoch < 1
     ):
         raise SystemExit("malformed source identity")
     binary_packages = package_names.get("versioned", []) + package_names.get("meta", [])
@@ -92,6 +97,18 @@ def main() -> int:
         upstream_version=DebianVersion.parse(debian_version).upstream_release,
         expected_binary_packages=binary_packages,
     )
+    try:
+        archive_metadata = validate_tar_path(
+            bundle_root / source_bundle.debian,
+            label="downstream Debian source archive",
+            epoch=publication_epoch,
+            exact_mtime=True,
+            expected_prefix="debian",
+            require_sorted=True,
+            normalized_modes=True,
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
     embedded_identity = reconstructed / "debian/dkc/publication-identity.json"
     if embedded_identity.read_bytes() != identity_bytes:
@@ -113,6 +130,11 @@ def main() -> int:
     report.update(
         {
             "build_input_digest": identity.get("build_input_digest"),
+            "debian_archive_metadata": {
+                "epoch": publication_epoch,
+                "status": "PASS",
+                **archive_metadata.to_dict(),
+            },
             "reconstruction": "PASS",
             "source_tree_entries": len(prepared_manifest.splitlines()),
             "source_tree_manifest_sha256": sha256_bytes(prepared_manifest.encode()),

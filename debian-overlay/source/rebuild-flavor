@@ -34,5 +34,7 @@ none | thin | full) ;;
 esac
 python3 debian/dkc/prepare-flavor.py . "$flavor" "$lto_mode"
 make -f debian/rules debian/control-real >/dev/null
+python3 debian/dkc/build-inputs/scripts/in-container/prepare-source-tree.py \
+	--normalize-public-metadata "$root" "$SOURCE_DATE_EPOCH"
 dpkg-checkbuilddeps debian/control
 exec dpkg-buildpackage --build=binary --no-sign -j"$jobs"

@@ -125,6 +125,8 @@ cd "$source"
 # without refreshing control.md5sum. Our one-flavor transform is such an input,
 # so use Debian's explicit maintainer target once before dpkg-buildpackage.
 make -f debian/rules debian/control-real >/dev/null
+python3 /work/repo/scripts/in-container/prepare-source-tree.py \
+	--normalize-public-metadata "$source" "$SOURCE_DATE_EPOCH"
 dpkg-checkbuilddeps debian/control
 
 # Do not let Kconfig silently disable Rust when Debian or upstream changes a

@@ -8,6 +8,8 @@ import pathlib
 
 import pytest
 
+from dkc.tarmetadata import publication_epoch_after_source, require_epoch_not_future
+
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "in-container" / "prepare-build-identity.py"
@@ -105,12 +107,16 @@ def test_resolved_kernel_config_parser_records_disabled_symbols(
         PREPARE.parse_kernel_config(config)
 
 
-def test_publication_epoch_starts_the_next_utc_date() -> None:
+def test_publication_epoch_is_immediately_after_the_authenticated_source() -> None:
     source_epoch = 1_786_077_877
-    publication_epoch = PREPARE.next_utc_date_epoch(source_epoch)
-    assert publication_epoch == 1_786_147_200
-    assert publication_epoch > source_epoch
-    assert publication_epoch % 86400 == 0
+    publication_epoch = publication_epoch_after_source(source_epoch)
+    assert publication_epoch == source_epoch + 1
+    require_epoch_not_future(publication_epoch, publication_epoch, "publication epoch")
+
+
+def test_future_publication_epoch_is_rejected_before_packaging() -> None:
+    with pytest.raises(ValueError, match="ahead of the build clock"):
+        require_epoch_not_future(1_786_077_878, 1_786_077_877, "publication epoch")
 
 
 @pytest.mark.parametrize("mode", PREPARE.LTO_MODES)

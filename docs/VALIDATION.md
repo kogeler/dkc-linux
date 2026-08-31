@@ -27,6 +27,12 @@ The suite covers:
 - source-bound release-cache identity independent of image rollover, complete
   restored-file verification, exact-key-only restore, tamper rejection,
   run/attempt-isolated pull-request transport, and exact main-ref cleanup;
+- publication epochs derived immediately after the authenticated source time,
+  future-epoch rejection, complete source-tree mode/mtime normalization, and
+  full tar-header validation for the downstream source archive plus both inner
+  archives of every binary package, including rejection of stale/future mtimes,
+  unsafe or duplicate paths, unstable ownership, special entries, PAX metadata,
+  and non-public modes;
 - workflow trigger, acyclic dependency graph, declared job-output use,
   producer-attempt artifact routing, unique YAML mappings, secret boundaries,
   cache/KVM, build/maintenance/qualification/no-op convergence, pre-sign
