@@ -14,6 +14,7 @@ GITHUB_RELEASE_CACHE_QEMU_RESULT ?= $(DKC_ROOT)/out/qemu-boot/$(DKC_RUN_ID)
 GITHUB_RELEASE_CACHE_KEY_V2 ?=
 GITHUB_RELEASE_CACHE_KEY_V3 ?=
 GITHUB_FLAVOR_EVIDENCE_RESULT ?= $(DKC_ROOT)/out/github-evidence/flavor/$(FLAVOR)/$(DKC_RUN_ID)
+GITHUB_FLAVOR_FAILURE_EVIDENCE_RESULT ?= $(DKC_ROOT)/out/github-evidence/flavor-failure/$(FLAVOR)/$(DKC_RUN_ID)
 GITHUB_PR_APT_EVIDENCE_RESULT ?= $(DKC_ROOT)/out/github-evidence/apt/$(DKC_RUN_ID)
 GITHUB_PR_APT_QUALIFICATION_OUTCOME ?=
 GITHUB_PR_APT_UNSIGNED_RESULT ?= $(DKC_ROOT)/out/apt-unsigned/$(DKC_RUN_ID)
@@ -117,6 +118,15 @@ github-flavor-evidence: ## Prepare compact self-verifying reports from one accep
 		--cache '$(GITHUB_RELEASE_CACHE_ROOT)' \
 		--output '$(GITHUB_FLAVOR_EVIDENCE_RESULT)' \
 		--flavor '$(FLAVOR)'
+
+.PHONY: github-flavor-failure-evidence
+github-flavor-failure-evidence: ## Prepare a bounded report from an unfinished flavor qualification
+	@$(DKC_ROOT)/scripts/github-ci.py flavor-failure-evidence \
+		--output '$(GITHUB_FLAVOR_FAILURE_EVIDENCE_RESULT)' \
+		--flavor '$(FLAVOR)' \
+		--flavor-result '$(GITHUB_RELEASE_CACHE_FLAVOR_RESULT)' \
+		--selftest-result '$(GITHUB_RELEASE_CACHE_SELFTEST_RESULT)' \
+		--qemu-result '$(GITHUB_RELEASE_CACHE_QEMU_RESULT)'
 
 .PHONY: github-pull-request-apt-evidence
 github-pull-request-apt-evidence: ## Prepare one bounded artifact from disposable APT qualification

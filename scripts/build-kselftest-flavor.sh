@@ -8,27 +8,19 @@ dkc::refuse_root
 dkc::require_cmd podman tar realpath
 dkc::install_cleanup_trap
 
-[ "$#" -eq 7 ] || dkc::die \
-	"usage: build-kselftest-flavor.sh <image> <llvm-major> <flavor> <flavor-result> <profile> <kind> <update-latest>"
+[ "$#" -eq 6 ] || dkc::die \
+	"usage: build-kselftest-flavor.sh <image> <llvm-major> <flavor> <flavor-result> <kind> <update-latest>"
 image="$1"
 llvm_major="$2"
 flavor="$3"
 flavor_result="$(realpath "$4")"
-profile="$(realpath "$5")"
-kind="$6"
-update_latest="$7"
+kind="$5"
+update_latest="$6"
 
 [[ "$llvm_major" =~ ^[0-9]+$ ]] || dkc::die "invalid LLVM major"
 [[ "$flavor" =~ ^v[234]$ ]] || dkc::die "flavor must be v2, v3, or v4"
 [[ "$kind" =~ ^[a-z][a-z0-9-]*$ ]] || dkc::die "unsafe kselftest result kind"
 [[ "$update_latest" =~ ^[01]$ ]] || dkc::die "UPDATE_LATEST must be 0 or 1"
-case "$profile" in
-"${DKC_ROOT}/config/"*) ;;
-*) dkc::die "kselftest profile must be inside config/" ;;
-esac
-if [ ! -f "$profile" ] || [ -L "$profile" ]; then
-	dkc::die "kselftest profile is not a plain file"
-fi
 if [ ! -d "$flavor_result/artifacts" ] || [ ! -d "$flavor_result/evidence" ]; then
 	dkc::die "accepted flavor result is incomplete"
 fi
@@ -38,7 +30,6 @@ podman image exists "$image" || dkc::die "build image is missing; run: make buil
 [ "$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null)" = true ] ||
 	dkc::die "rootless podman is required"
 
-profile_relative="${profile#"${DKC_ROOT}"/}"
 stage="${DKC_RUN_DIR}/kselftest-${kind}-${flavor}"
 mkdir -p "$stage/output"
 dkc::register_resource path "$stage"
@@ -76,11 +67,10 @@ if dkc::archive_worktree |
 		cd /work/repo
 		exec scripts/in-container/build-kselftest-flavor.sh \
 			/input/flavor /output "$@"
-	' sh "$flavor" "$llvm_major" "$profile_relative" "$kind" >"$log" 2>&1; then
+	' sh "$flavor" "$llvm_major" "$kind" >"$log" 2>&1; then
 	status=PASS
 else
 	rc=$?
-	tail -n 160 "$log" >&2 || true
 fi
 
 mkdir -p "$stage/output/evidence"

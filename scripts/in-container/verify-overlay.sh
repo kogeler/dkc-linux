@@ -25,11 +25,6 @@ DEBIAN_TAR_URL="${7:?debian tar url required}"
 DEBIAN_TAR_SHA256="${8:?debian tar sha256 required}"
 DEBIAN_TAR_SIZE="${9:?debian tar size required}"
 LLVM_MAJOR="${10:?llvm major required}"
-PATCH_DIR="${11:-/work/src/debian-overlay/patches}"
-
-# shellcheck disable=SC1091  # provided by the repository
-. /work/src/config/build-profiles
-export DEB_BUILD_PROFILES="${DKC_BUILD_PROFILES}"
 
 # The work area must be under /work, not /tmp: the container mounts /tmp
 # noexec, and Debian's control generator executes helper scripts from the
@@ -89,6 +84,27 @@ fetch "$DEBIAN_TAR_URL" "$DEBIAN_TAR_SHA256" "$DEBIAN_TAR_SIZE" "$debian"
 dpkg-source -x "$dsc" source >/dev/null
 cd source
 
+# The reviewed overlay, build profiles and audit policy belong to the source
+# profile of this exact Debian source, never to whichever series is newest.
+source_version="$(dpkg-parsechangelog -SVersion)"
+PROFILE_DIR="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
+	/work/src "$source_version" directory)"
+PATCH_DIR="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
+	/work/src "$source_version" overlay-directory)"
+DKC_BUILD_PROFILES="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
+	/work/src "$source_version" build-profiles)"
+export DEB_BUILD_PROFILES="${DKC_BUILD_PROFILES}"
+# Debian's own name for the compiler this source selects. The overlay replaces
+# it with LLVM, so no generated relation may still reference it afterwards.
+stock_compiler="$(python3 -c \
+	'import pathlib,sys,tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())["build"]["c_compiler"])' \
+	debian/config/defines.toml)"
+[[ "$stock_compiler" =~ ^gcc-[0-9]+$ ]] || {
+	echo "unexpected Debian compiler selection: ${stock_compiler}" >&2
+	exit 1
+}
+echo "source profile: ${PROFILE_DIR#/work/src/}, Debian compiler: ${stock_compiler}"
+
 fail=0
 note() { printf '  %-46s %s\n' "$1" "$2"; }
 assert_zero() {
@@ -112,13 +128,13 @@ assert_nonzero() {
 
 echo "=== stock source, before the overlay ==="
 python3 debian/bin/gencontrol.py >/dev/null 2>&1
-note "gcc-15-for-host in generated control" "$(grep -c 'gcc-[0-9]*-for-host' debian/control || true)"
+note "${stock_compiler}-for-host in generated control" "$(grep -c 'gcc-[0-9]*-for-host' debian/control || true)"
 
 echo
 echo "=== applying the overlay ==="
 for patch in "$PATCH_DIR"/*.patch; do
 	echo "  $(basename "$patch")"
-	patch -p1 --batch --forward --silent <"$patch"
+	patch -p1 --batch --forward --silent --fuzz=0 <"$patch"
 done
 
 echo
@@ -134,7 +150,7 @@ assert_zero "no fabricated -for-host dependency" \
 assert_zero "no GNU-triplet-prefixed clang" \
 	"$(grep -c 'linux-gnu-clang' debian/control || true)"
 assert_zero "no stale Sid-only gcc dependency" \
-	"$(grep -c 'gcc-15' debian/control || true)"
+	"$(grep -c "$stock_compiler" debian/control || true)"
 assert_nonzero "headers depend on the real clang package" \
 	"$(grep -c "clang-${LLVM_MAJOR}" debian/control || true)"
 
@@ -423,10 +439,17 @@ else
 	note "obsolete documentation overrides are absent" "FAIL"
 	fail=$((fail + 1))
 fi
-if grep -R -q 'meta-package' \
-	debian/templates/image.meta.control.in \
-	debian/templates/headers.meta.control.in \
-	debian/templates/image-dbg.meta.control.in; then
+# Debian renames these templates between packaging generations; check whichever
+# spelling this source ships.
+mapfile -t meta_templates < <(
+	find debian/templates -maxdepth 1 -type f \
+		\( -name 'image.meta.control.*' -o -name 'headers.meta.control.*' \
+		-o -name 'image-dbg.meta.control.*' \) | sort
+)
+if [ "${#meta_templates[@]}" -ne 3 ]; then
+	note "package synopses use current metapackage spelling" "FAIL: templates"
+	fail=$((fail + 1))
+elif grep -R -q 'meta-package' "${meta_templates[@]}"; then
 	note "package synopses use current metapackage spelling" "FAIL"
 	fail=$((fail + 1))
 else
@@ -544,6 +567,67 @@ for path in image_scripts:
         raise SystemExit(f"{path.name} non-removal hook contract differs")
 print("  generated image and binary lifecycle scripts hand off removal hooks exactly once: ok")
 PY
+
+# Debian 13 clients have linux-base 4.12, whose bootloader and initramfs hooks
+# read the kernel, its configuration and its System.map from /boot. Newer
+# Debian generations install them below the modules directory and rely on
+# linux-base 4.17 hooks that Debian 13 does not have.
+DEBIAN_13_LINUX_BASE=4.12.1
+python3 - "$DEBIAN_13_LINUX_BASE" <<'PAYLOAD'
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+floor = sys.argv[1]
+# Other Debian architectures keep their own flavours in this unrestricted tree;
+# only the selected amd64 product packages are the DKC payload contract.
+selected = set(os.environ["DKC_SELECTED_PACKAGES"].splitlines())
+payloads = {
+    "dkc-linux-binary-": ("boot/vmlinu*-*",),
+    "dkc-linux-base-": ("boot/config-*", "boot/System.map-*"),
+}
+for prefix, expected in payloads.items():
+    installs = sorted(
+        path
+        for path in pathlib.Path("debian").glob(f"{prefix}*.install.amd64")
+        if path.name.removesuffix(".install.amd64") in selected
+    )
+    if len(installs) != 3:
+        raise SystemExit(
+            f"expected three selected {prefix}*.install.amd64 files, found {len(installs)}"
+        )
+    for path in installs:
+        lines = path.read_text(encoding="utf-8").split()
+        for payload in expected:
+            if payload not in lines:
+                raise SystemExit(f"{path.name} does not ship {payload} for Debian 13")
+
+control = pathlib.Path("debian/control").read_text(encoding="utf-8")
+required = set()
+for paragraph in control.split("\n\n"):
+    package = re.search(r"(?m)^Package: (dkc-linux-image-[0-9][^\n]*)$", paragraph)
+    pre_depends = re.search(r"(?m)^Pre-Depends: ([^\n]*)$", paragraph)
+    if package is None:
+        continue
+    if pre_depends is None:
+        raise SystemExit(f"{package.group(1)} lost its linux-base Pre-Depends")
+    relation = re.search(r"linux-base \(>= ([^)]+)\)", pre_depends.group(1))
+    if relation is None:
+        raise SystemExit(f"{package.group(1)} does not pre-depend on linux-base")
+    required.add(relation.group(1))
+if len(required) != 1:
+    raise SystemExit(f"image packages require inconsistent linux-base versions: {sorted(required)}")
+demanded = required.pop()
+if subprocess.run(
+    ["dpkg", "--compare-versions", floor, "ge", demanded], check=False
+).returncode:
+    raise SystemExit(
+        f"image packages require linux-base {demanded}, which Debian 13 ({floor}) cannot satisfy"
+    )
+print(f"  kernel payload stays in /boot and linux-base (>= {demanded}) is satisfiable on Debian 13: ok")
+PAYLOAD
 
 echo
 echo "=== the toolchain actually reaches Kbuild ==="
@@ -774,6 +858,72 @@ if [ "$(grep -c '^        KBUILD_CFLAGS += $(X86_CFLAGS_NO_SIMD)$' arch/x86/Make
 else
 	note "no-SIMD policy occurs before and after baseline" "ok"
 fi
+
+echo
+echo "=== exact-source kselftest profile ==="
+# The selftest bundle is built hours later, from an accepted flavor. Its exact
+# selection and configuration requirements can be checked against this source
+# and the configurations above right now, so an upstream rename or a disabled
+# requirement fails here instead of after a complete kernel build.
+PYTHONPATH=/work/src python3 - "$PROFILE_DIR" "$work" <<'KSELFTEST'
+import pathlib
+import re
+import sys
+
+from dkc.sourceprofile import load_profile
+
+profile_dir, work = (pathlib.Path(value) for value in sys.argv[1:3])
+selftest = load_profile(profile_dir).kselftest
+root = pathlib.Path("tools/testing/selftests")
+wrappers = pathlib.Path("/work/src/tests/integration/kselftest-wrappers")
+
+absent = [target for target in selftest.targets if not (root / target).is_dir()]
+if absent:
+    raise SystemExit(f"selected kselftest collections are absent from this source: {absent}")
+
+declared: dict[str, set[str]] = {}
+for collection in selftest.targets:
+    directory = root / collection
+    # A collection names its tests in the Makefile, or builds them from a
+    # wildcard over its sources, so both spellings count as declared.
+    names = {path.name for path in directory.iterdir()}
+    names |= {path.stem for path in directory.iterdir()}
+    makefile = directory / "Makefile"
+    if makefile.is_file():
+        names |= set(re.findall(r"[A-Za-z0-9_./-]+", makefile.read_text(encoding="utf-8")))
+    declared[collection] = names
+
+unknown = []
+for selector in selftest.tests:
+    collection, _, test = selector.partition(":")
+    # DKC installs its own reviewed wrapper for a selector named after it.
+    if (wrappers / f"{collection.replace('/', '-')}-{test}").is_file():
+        continue
+    # Upstream builds several x86 tests in both bit widths from one source.
+    base = re.sub(r"_(?:32|64)$", "", test)
+    if {test, base} & declared[collection]:
+        continue
+    unknown.append(selector)
+if unknown:
+    raise SystemExit(f"selected kselftests are not declared by this source: {unknown}")
+
+for flavor in ("v2", "v3", "v4"):
+    configuration = (work / f"config-{flavor}/.config").read_text(encoding="utf-8").splitlines()
+    values = dict(
+        line.split("=", 1) for line in configuration if line.startswith("CONFIG_") and "=" in line
+    )
+    for symbol in selftest.required_builtin:
+        if values.get(f"CONFIG_{symbol}") != "y":
+            raise SystemExit(f"{flavor} does not build CONFIG_{symbol} in, as the profile requires")
+    for symbol in selftest.required_enabled:
+        if values.get(f"CONFIG_{symbol}") not in ("y", "m"):
+            raise SystemExit(f"{flavor} does not enable CONFIG_{symbol}, as the profile requires")
+
+print(
+    f"  {len(selftest.targets)} collections, {len(selftest.tests)} selected tests and every "
+    "Kconfig requirement exist in this source: ok"
+)
+KSELFTEST
 
 echo
 echo "=== amd64 headers package ==="

@@ -81,6 +81,14 @@ accepted flavor also exports a small seven-day artifact containing capacity,
 Kbuild/SIMD/packaging reports and detailed VM/selftest results. That artifact
 has its own exact root `evidence.sha256`; it never contains a kernel package.
 
+A flavor that does not complete exports everything the stages that ran did
+retain: build, audit and packaging evidence, the compiled selftest bundle, the
+guest console and per-test logs, the produced packages, and the replay payloads.
+The single exception is the upstream tarball, which the report names and any
+reproduction fetches by URL. The runner is discarded with its job, so without
+this the reason for a multi-hour failure would have to be reproduced rather
+than read.
+
 A dependent job restores and independently verifies both exact cache entries,
 proves the common packages byte-identical, selects their
 canonical `v2` copies, reconciles the resulting 18 unique packages, and runs

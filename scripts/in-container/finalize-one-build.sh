@@ -65,10 +65,14 @@ none | thin | full) ;;
 	exit 1
 	;;
 esac
+source_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["debian_source_version"])' \
+	/work/inputs/publication-identity.json)"
+profile_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" directory)"
 replay_check="$(mktemp /tmp/dkc-simd-replay-XXXXXX.json)"
 python3 /work/repo/scripts/in-container/audit-kernel-simd.py \
 	/dev/null "$result/artifacts" \
-	/work/repo/config/flavors/intentional-simd-symbols.toml \
+	"$profile_dir" \
 	"$replay_check" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["llvm_major"])' \
 		"$result/evidence/attestation.json")" \
 	--lto-mode "$lto_mode" \

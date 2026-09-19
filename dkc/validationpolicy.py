@@ -5,18 +5,26 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
+from .sourceprofile import select_profile
+
 __all__ = ["validation_policy_digest", "validation_policy_paths"]
 
 
-def validation_policy_paths(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
-    """Return acceptance inputs that must invalidate a qualified result."""
+def validation_policy_paths(
+    root: pathlib.Path, source_version: str
+) -> tuple[pathlib.Path, ...]:
+    """Return acceptance inputs that must invalidate a qualified result.
+
+    Only the source profile that covers `source_version` contributes its
+    series-specific audit and selftest policy.
+    """
 
     relative = [
-        "config/kselftest.env",
         "config/qemu-cpus.env",
         "config/qemu-image.env",
         "dkc/evidence.py",
         "dkc/release_cache.py",
+        "dkc/sourceprofile.py",
         "dkc/validationpolicy.py",
         "mk/vm.mk",
         "scripts/build-kselftest-flavor.sh",
@@ -39,9 +47,12 @@ def validation_policy_paths(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
         "scripts/qemu-boot.sh",
         "scripts/qemu-preflight.sh",
     ]
+    relative.extend(
+        path.relative_to(root).as_posix()
+        for path in select_profile(root, source_version).validation_policy_paths()
+    )
     for directory in (
         root / "tests/integration/dkms-fixture",
-        root / "tests/integration/kselftest-patches",
         root / "tests/integration/kselftest-wrappers",
         root / "tests/integration/qemu",
     ):
@@ -57,9 +68,9 @@ def validation_policy_paths(root: pathlib.Path) -> tuple[pathlib.Path, ...]:
     return paths
 
 
-def validation_policy_digest(root: pathlib.Path) -> str:
+def validation_policy_digest(root: pathlib.Path, source_version: str) -> str:
     digest = hashlib.sha256()
-    for path in validation_policy_paths(root):
+    for path in validation_policy_paths(root, source_version):
         relative = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(8, "big"))
         digest.update(relative)

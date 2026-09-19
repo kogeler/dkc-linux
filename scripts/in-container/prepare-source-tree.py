@@ -14,6 +14,11 @@ import tomllib
 
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from dkc.sourceprofile import (  # noqa: E402
+    SourceProfile,
+    SourceProfileError,
+    select_profile,
+)
 from dkc.tarmetadata import (  # noqa: E402
     normalize_tree_metadata,
     require_epoch_not_future,
@@ -21,37 +26,6 @@ from dkc.tarmetadata import (  # noqa: E402
 
 
 README_MARKER = "DKC downstream rebuild"
-
-
-EXPECTED_ARCHITECTURES = {
-    "alpha": ("alpha",),
-    "arc": ("arc",),
-    "arm": ("armel", "armhf"),
-    "arm64": ("arm64",),
-    "parisc": ("hppa",),
-    "loongarch": ("loong64",),
-    "m68k": ("m68k",),
-    "mips": (
-        "mips",
-        "mips64",
-        "mips64r6",
-        "mips64el",
-        "mips64r6el",
-        "mipsel",
-        "mipsn32",
-        "mipsn32el",
-        "mipsn32r6",
-        "mipsn32r6el",
-        "mipsr6",
-        "mipsr6el",
-    ),
-    "powerpc": ("powerpc", "ppc64", "ppc64el"),
-    "riscv": ("riscv64",),
-    "s390": ("s390x",),
-    "sh": ("sh4",),
-    "sparc": ("sparc64",),
-    "x86": ("amd64", "i386", "x32"),
-}
 
 
 def normalize_public_modes(root: pathlib.Path) -> None:
@@ -82,7 +56,7 @@ def normalize_public_metadata(root: pathlib.Path, epoch: int) -> None:
     normalize_tree_metadata(root, epoch)
 
 
-def restrict_source_architectures(source: pathlib.Path, repo: pathlib.Path) -> None:
+def restrict_source_architectures(source: pathlib.Path, profile: SourceProfile) -> None:
     definitions = tomllib.loads(
         (source / "debian/config/defines.toml").read_text(encoding="utf-8")
     )
@@ -100,19 +74,20 @@ def restrict_source_architectures(source: pathlib.Path, repo: pathlib.Path) -> N
         if name in actual:
             raise SystemExit(f"duplicate Debian kernel architecture: {name}")
         actual[name] = architectures
-    if actual != EXPECTED_ARCHITECTURES:
+    if actual != dict(profile.kernel_architectures):
         raise SystemExit(
-            "Debian architecture inventory changed; review the amd64-only source policy"
+            "Debian architecture inventory differs from source profile "
+            f"{profile.profile_id}; review the amd64-only source policy"
         )
 
     local = source / "debian/config.local/defines.toml"
     if local.exists():
         raise SystemExit("source unexpectedly contains debian/config.local/defines.toml")
     local.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(repo / "debian-overlay/source/amd64-only-defines.toml", local)
+    local.write_text(profile.architecture_restriction(), encoding="utf-8")
 
 
-def extend_copyright(path: pathlib.Path, repo: pathlib.Path) -> None:
+def extend_copyright(path: pathlib.Path, repo: pathlib.Path, source_version: str) -> None:
     from dkc.buildpolicy import build_policy_paths  # noqa: PLC0415
 
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -136,7 +111,7 @@ def extend_copyright(path: pathlib.Path, repo: pathlib.Path) -> None:
         "debian/dkc/build-profiles",
         "debian/dkc/prepare-flavor.py",
     ]
-    for source in build_policy_paths(repo):
+    for source in build_policy_paths(repo, source_version):
         relative = source.relative_to(repo).as_posix()
         if relative.startswith("debian-overlay/") or relative == (
             "scripts/in-container/generate-overlay-patches.py"
@@ -171,12 +146,14 @@ def extend_copyright(path: pathlib.Path, repo: pathlib.Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def copy_policy_inputs(repo: pathlib.Path, destination: pathlib.Path) -> str:
+def copy_policy_inputs(
+    repo: pathlib.Path, destination: pathlib.Path, source_version: str
+) -> str:
     sys.path.insert(0, str(repo))
     from dkc.buildpolicy import build_policy_digest, build_policy_paths  # noqa: PLC0415
 
-    digest = build_policy_digest(repo)
-    for source in build_policy_paths(repo):
+    digest = build_policy_digest(repo, source_version)
+    for source in build_policy_paths(repo, source_version):
         relative = source.relative_to(repo)
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -219,11 +196,13 @@ def main() -> int:
     if identity.get("source_package") != "dkc-linux":
         raise SystemExit("publication identity does not describe dkc-linux")
     package_version = identity.get("package_version")
+    source_version = identity.get("debian_source_version")
     publication_epoch = identity.get("publication_source_date_epoch")
     lto_mode = identity.get("lto_mode")
     build_inputs = identity.get("build_inputs")
     if (
         not isinstance(package_version, str)
+        or not isinstance(source_version, str)
         or not isinstance(publication_epoch, int)
         or publication_epoch < 1
         or lto_mode not in ("none", "thin", "full")
@@ -237,8 +216,12 @@ def main() -> int:
         raise SystemExit("source tree already contains debian/dkc")
     build_policy = dkc / "build-inputs"
     build_policy.mkdir(parents=True)
-    restrict_source_architectures(source, repo)
-    actual_policy_digest = copy_policy_inputs(repo, build_policy)
+    try:
+        profile = select_profile(repo, source_version)
+    except SourceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    restrict_source_architectures(source, profile)
+    actual_policy_digest = copy_policy_inputs(repo, build_policy, source_version)
     if build_inputs.get("overlay_sha256") != actual_policy_digest:
         raise SystemExit("embedded build-policy inputs differ from the publication identity")
 
@@ -249,7 +232,7 @@ def main() -> int:
             inputs / f"policy-config-{flavor}.json",
             dkc / f"policy-config-{flavor}.json",
         )
-    shutil.copyfile(repo / "config/build-profiles", dkc / "build-profiles")
+    (dkc / "build-profiles").write_text(profile.build_profiles_file(), encoding="utf-8")
     shutil.copyfile(repo / "scripts/in-container/prepare-flavor.py", dkc / "prepare-flavor.py")
     shutil.copyfile(repo / "debian-overlay/source/rebuild-flavor", dkc / "rebuild-flavor")
     shutil.copyfile(repo / "debian-overlay/source/README.DKC", source / "debian/README.DKC")
@@ -291,7 +274,7 @@ def main() -> int:
         + "debian/dkc/publication-identity.json for the exact common identity.\n",
         encoding="utf-8",
     )
-    extend_copyright(source / "debian/copyright", repo)
+    extend_copyright(source / "debian/copyright", repo, source_version)
 
     (dkc / "embedded-inputs.sha256").write_text(
         manifest(dkc / "build-inputs"), encoding="utf-8"

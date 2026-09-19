@@ -37,6 +37,10 @@ none | thin | full) ;;
 	exit 2
 	;;
 esac
+profile_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" directory)"
+overlay_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" overlay-directory)"
 
 available_cpus="$(nproc)"
 [[ "$available_cpus" =~ ^[1-9][0-9]*$ ]] || {
@@ -89,8 +93,8 @@ trap 'record_controller_error "$?" "$LINENO"' ERR
 
 echo "[$label] extracting the verified source inventory with network disabled" >&2
 dpkg-source -x "/work/inputs/$dsc_name" "$prepared_source" >/dev/null
-for overlay in /work/repo/debian-overlay/patches/*.patch; do
-	patch -d "$prepared_source" -p1 --batch --forward --silent <"$overlay"
+for overlay in "$overlay_dir"/*.patch; do
+	patch -d "$prepared_source" -p1 --batch --forward --silent --fuzz=0 <"$overlay"
 done
 python3 /work/repo/scripts/in-container/prepare-build-identity.py \
 	"$prepared_source" /work/repo /work/inputs "$dkc_revision" "$lto_mode"
@@ -371,8 +375,7 @@ else
 fi
 sample_resources true
 if [ "$build_rc" -ne 0 ]; then
-	tail -n 160 "$evidence/build.log" >&2
-	echo "[$label] dpkg-buildpackage failed with rc=${build_rc}" >&2
+	echo "[$label] dpkg-buildpackage failed with rc=${build_rc}; the complete output is retained as build.log in this flavor's evidence" >&2
 	exit "$build_rc"
 fi
 
@@ -407,12 +410,11 @@ if timeout --signal=TERM --kill-after=30s 30m \
 	python3 /work/repo/scripts/in-container/audit-kernel-simd.py \
 	"$source/debian/build/build_amd64_none_${flavor}-amd64/vmlinux" \
 	"$artifacts" \
-	/work/repo/config/flavors/intentional-simd-symbols.toml \
+	"$profile_dir" \
 	"$evidence/kernel-simd-audit.json" "$llvm_major" \
 	--lto-mode "$lto_mode" \
 	--system-map "$source/debian/build/build_amd64_none_${flavor}-amd64/System.map" \
 	--build-root "$source/debian/build/build_amd64_none_${flavor}-amd64" \
-	--fpu-object-policy /work/repo/config/flavors/intentional-fpu-objects.toml \
 	--write-derived-fpu-inventory \
 	"$evidence/attestation-replay/derived-fpu-symbols.json" \
 	--observations-output \
@@ -444,7 +446,7 @@ if [ "$attestation_rc" -ne 0 ]; then
 	kbuild_audit_rc=125
 elif python3 /work/repo/scripts/in-container/audit-kbuild-commands.py \
 	"$evidence/kbuild-commands.tsv.xz" \
-	"/work/repo/config/flavors/${flavor}.toml" \
+	"/work/repo/config/flavors/${flavor}.toml" "$profile_dir" \
 	"$evidence/kbuild-command-audit.json" "$lto_mode"; then
 	kbuild_audit_rc=0
 else
@@ -469,8 +471,7 @@ else
 fi
 sample_resources true
 if [ "$lintian_rc" -ne 0 ]; then
-	tail -n 100 "$evidence/lintian.txt" >&2
-	echo "[$label] lintian failed to audit packages, rc=${lintian_rc}" >&2
+	echo "[$label] lintian failed to audit packages, rc=${lintian_rc}; its report is retained as lintian.txt in this flavor's evidence" >&2
 fi
 verification_end_epoch="$(date +%s)"
 cat >"$evidence/post-build-gates.env" <<EOF

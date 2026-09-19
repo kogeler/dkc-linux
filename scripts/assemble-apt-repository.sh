@@ -115,7 +115,6 @@ if dkc::archive_worktree |
 	status=PASS
 else
 	rc=$?
-	tail -n 160 "$log" >&2 || true
 fi
 
 if [ "$status" = FAIL ]; then

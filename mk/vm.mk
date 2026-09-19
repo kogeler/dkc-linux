@@ -8,7 +8,6 @@ QEMU_TIMEOUT_SECONDS ?= 2400
 QEMU_MEMORY_MIB ?= 4096
 QEMU_CPUS ?= 2
 FLAVOR_RESULT ?= $(DKC_ROOT)/out/flavors/$(FLAVOR)/latest
-KSELFTEST_PROFILE ?= $(DKC_ROOT)/config/kselftest.env
 KSELFTEST_KIND ?= qualification
 KSELFTEST_RESULT ?= $(DKC_ROOT)/out/kselftest/$(KSELFTEST_KIND)/$(FLAVOR)/latest
 
@@ -16,7 +15,7 @@ KSELFTEST_RESULT ?= $(DKC_ROOT)/out/kselftest/$(KSELFTEST_KIND)/$(FLAVOR)/latest
 kselftest-flavor: build-image ## Build an exact-source selftest bundle without rebuilding kernel packages
 	@$(DKC_ROOT)/scripts/build-kselftest-flavor.sh \
 		'$(BUILD_IMAGE)' '$(LLVM_MAJOR)' '$(FLAVOR)' '$(FLAVOR_RESULT)' \
-		'$(KSELFTEST_PROFILE)' '$(KSELFTEST_KIND)' '$(UPDATE_LATEST)'
+		'$(KSELFTEST_KIND)' '$(UPDATE_LATEST)'
 
 .PHONY: vm-base-image
 vm-base-image: ## Fetch and checksum-verify the immutable Debian 13 cloud image

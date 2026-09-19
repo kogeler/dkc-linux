@@ -10,8 +10,7 @@ dkc::prepare_storage_connection() {
 		if [ -L "$stage" ] || [ ! -d "$stage" ]; then
 			dkc::die "storage connection stage must be a real directory"
 		fi
-		[ "$(stat -c '%u' "$stage")" -eq "$(id -u)" ] || dkc::die \
-			"storage connection stage must be owned by the current user"
+		dkc::require_scratch_owner "$stage" "storage connection stage"
 		chmod 0700 "$stage"
 	else
 		mkdir -m 0700 "$stage"

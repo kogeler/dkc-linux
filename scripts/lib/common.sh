@@ -135,22 +135,62 @@ dkc::refuse_root() {
 # reads this file and re-verifies ownership labels before removing anything.
 dkc::_resource_file() { printf '%s/resources.tsv' "$DKC_RUN_DIR"; }
 
+# Scratch ownership is a security property, not a formality: a directory that
+# another account can replace between a check and a write could redirect a
+# build. Some filesystems cannot represent the caller's identity at all. An
+# NFS export that maps every client account to one anonymous owner is the
+# common case, and there even a file this process just created is reported as
+# somebody else's. Ask the filesystem what identity it assigns to a file we
+# create in that exact directory, rather than assuming it can answer with ours.
+dkc::_creator_uid() {
+	local directory="$1" probe owner
+	probe="$(mktemp "${directory}/.dkc-identity-XXXXXX" 2>/dev/null)" || return 1
+	owner="$(stat -c '%u' "$probe" 2>/dev/null)" || {
+		rm -f -- "$probe"
+		return 1
+	}
+	rm -f -- "$probe"
+	printf '%s' "$owner"
+}
+
+# Accept a scratch path owned by this user, or by the single account that this
+# filesystem gives every file we create beside it. Anything else is another
+# account's directory and is fatal.
+dkc::require_scratch_owner() {
+	local path="$1" label="$2" owner creator directory
+	owner="$(stat -c '%u' "$path")"
+	if [ "$owner" -eq "$(id -u)" ]; then
+		return 0
+	fi
+	if [ -d "$path" ] && [ ! -L "$path" ]; then
+		directory="$path"
+	else
+		directory="$(dirname -- "$path")"
+	fi
+	creator="$(dkc::_creator_uid "$directory")" ||
+		dkc::die "${label} is not writable by the current user"
+	[ "$creator" -eq "$owner" ] ||
+		dkc::die "${label} must be owned by the current user"
+	if [ -z "${_dkc_identity_warned:-}" ]; then
+		_dkc_identity_warned=1
+		dkc::warn "this filesystem reports every file created here as uid ${creator};" \
+			"scratch ownership cannot be enforced, only its permissions"
+	fi
+}
+
 dkc::run_dir_init() {
-	local owner resource_file last_run
+	local resource_file last_run
 	mkdir -p "$DKC_RUN_ROOT"
 	if [ -L "$DKC_RUN_ROOT" ] || [ ! -d "$DKC_RUN_ROOT" ]; then
 		dkc::die "run scratch root must be a real directory"
 	fi
-	owner="$(stat -c '%u' "$DKC_RUN_ROOT")"
-	[ "$owner" -eq "$(id -u)" ] || dkc::die \
-		"run scratch root must be owned by the current user"
+	dkc::require_scratch_owner "$DKC_RUN_ROOT" "run scratch root"
 	chmod 0700 "$DKC_RUN_ROOT"
 	if [ -e "$DKC_RUN_DIR" ] || [ -L "$DKC_RUN_DIR" ]; then
 		if [ -L "$DKC_RUN_DIR" ] || [ ! -d "$DKC_RUN_DIR" ]; then
 			dkc::die "run scratch path must be a real directory"
 		fi
-		[ "$(stat -c '%u' "$DKC_RUN_DIR")" -eq "$(id -u)" ] || dkc::die \
-			"run scratch path must be owned by the current user"
+		dkc::require_scratch_owner "$DKC_RUN_DIR" "run scratch path"
 		chmod 0700 "$DKC_RUN_DIR"
 	else
 		mkdir -m 0700 "$DKC_RUN_DIR"
@@ -160,8 +200,7 @@ dkc::run_dir_init() {
 		if [ -L "$resource_file" ] || [ ! -f "$resource_file" ]; then
 			dkc::die "run resource journal must be a regular non-symlink file"
 		fi
-		[ "$(stat -c '%u' "$resource_file")" -eq "$(id -u)" ] || dkc::die \
-			"run resource journal must be owned by the current user"
+		dkc::require_scratch_owner "$resource_file" "run resource journal"
 		chmod 0600 "$resource_file"
 	else
 		(umask 077 && : >"$resource_file")
@@ -171,8 +210,7 @@ dkc::run_dir_init() {
 		if [ -L "$last_run" ] || [ ! -f "$last_run" ]; then
 			dkc::die "last-run marker must be a regular non-symlink file"
 		fi
-		[ "$(stat -c '%u' "$last_run")" -eq "$(id -u)" ] || dkc::die \
-			"last-run marker must be owned by the current user"
+		dkc::require_scratch_owner "$last_run" "last-run marker"
 		chmod 0600 "$last_run"
 	fi
 	(umask 077 && printf '%s\n' "$DKC_RUN_ID" >"$last_run")

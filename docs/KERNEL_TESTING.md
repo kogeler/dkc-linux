@@ -2,8 +2,9 @@
 
 This document defines the short kernel-runtime test gate, explains its unusual
 fixtures, and records the evidence required before changing it. It is the
-maintainer reference for `config/kselftest.env`, the selftest-only build task,
-and the QEMU guest runner.
+maintainer reference for the `kselftest` section of the source profile that
+covers the built kernel, the selftest-only build task, and the QEMU guest
+runner.
 
 ## What the gate proves
 
@@ -66,9 +67,12 @@ and extracts the immutable bundle.
 
 ## Current qualification profile
 
-`config/kselftest.env` is the authoritative machine-readable selection. The
-current profile has 25 mandatory-build collections and 35 explicit
-`collection:test` selectors. The complete collection directories are present
+The `kselftest` section of `config/source-profiles/<series>/validation.toml` is
+the authoritative machine-readable selection for that kernel series, and the
+build renders it into the `profile.env` recorded with every bundle. Each current
+profile has 25 mandatory-build collections and 35 explicit `collection:test`
+selectors; a series that moved a collection upstream, such as `openat2` under
+`filesystems/` in Linux 7.2, records its own spelling. The complete collection directories are present
 in the portable tree, but the guest runs only those selectors.
 
 The profile uses two independent limits:
@@ -180,17 +184,53 @@ capacity, not a slow kernel assertion.
 
 Linux upstream fixed this exact problem by increasing the buffer to 1 MiB in
 [commit c7fdbc2c2f26](https://github.com/torvalds/linux/commit/c7fdbc2c2f26b9c397eb3aad2fdc54dbd85f68e1).
-`tests/integration/kselftest-patches/0001-uevent-receive-buffer.patch` carries
-that one-line change for the pinned source. The corrected test passed repeated
+`tests/integration/kselftest-patches/7.1/0001-uevent-receive-buffer.patch`
+carries that one-line change for the 7.1 source; Linux 7.2 already includes the
+fix, so its profile does not carry the patch. The corrected test passed repeated
 runs on both the stock and candidate kernels.
 
-The build applies the patch with zero fuzz and records its SHA-256 in
-`kselftest-source-patches.sha256`. A source update that has already incorporated
-the fix, or changed the surrounding code, must fail the old patch application.
-Review the new upstream source, remove or replace the patch deliberately, and
-repeat the stock/candidate check. This patch is derived from Linux and follows
+The build applies each patch of the source profile with zero fuzz and records
+its SHA-256 in `kselftest-source-patches.sha256`. A source update that has
+already incorporated a fix, or changed the surrounding code, must fail the old
+patch application. Review the new upstream source, carry the patch into the new
+profile or leave it behind deliberately, and repeat the stock/candidate check. This patch is derived from Linux and follows
 the per-path license policy in `LICENSES/README.md`; the root MIT license does
 not relicense it.
+
+### `futex:run.sh` on Linux 7.2
+
+Linux 7.2 adds `futex/functional/robust_list.c`, which asserts on a futex word
+declared `_Atomic(unsigned int)`. The harness compares operand signedness with
+`is_signed_var()`, and Clang rejects that comparison on an atomic type, so the
+whole selected `futex` collection fails to build with the project toolchain
+while GCC accepts it.
+
+`tests/integration/kselftest-patches/7.2/0001-futex-robust-list-atomic-assert.patch`
+reads each asserted value with `atomic_load()`, which the file already uses for
+its other atomic accesses. The assertion semantics are unchanged: dereferencing
+an `_Atomic` object is itself a sequentially consistent load, so this changes the
+static type of the comparison and nothing the test observes. Do not disable the
+collection or drop the robust-list cases instead; they cover the same
+robust-futex unlock path that this series added.
+
+### `landlock:fs_test` on Linux 7.2
+
+Linux 7.2 adds `audit_layout1.make_char`, which creates a character device with
+device number `(0, 0)` and expects the Landlock audit record to name
+`fs.make_char`. `WHITEOUT_DEV` is also `(0, 0)`, and `get_mode_access()` in
+`security/landlock/fs.c` deliberately reports a whiteout as `fs.make_reg`, so
+the kernel emits `blockers=fs.make_reg` and its own test fails: 439 of 440
+assertions passed, `audit_layout1.make_char` did not. The test and the kernel
+disagree inside one source; nothing in the DKC toolchain, configuration or
+packaging is involved.
+
+Upstream repaired the test in
+[commit 173b1bd87308](https://github.com/torvalds/linux/commit/173b1bd8730825e1f6862dbd07856e7d68447a41),
+which creates an actual character device instead.
+`tests/integration/kselftest-patches/7.2/0002-landlock-audit-make-char-chardev.patch`
+carries that one-line change for this source, so the assertion tests what the
+kernel actually reports. Do not omit `landlock:fs_test` instead: the remaining
+439 assertions are the Landlock filesystem coverage of this gate.
 
 ## Rules for changing the profile
 

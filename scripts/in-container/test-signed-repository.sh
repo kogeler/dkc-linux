@@ -144,12 +144,11 @@ EOF
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
 if ! apt-get update -o Debug::pkgAcquire::Worker=true \
 	>"$evidence/apt-update.log" 2>&1; then
-	tail -n 120 "$evidence/apt-update.log" >&2
+	printf 'apt could not read the signed repository; apt-update.log is retained\n' >&2
 	exit 1
 fi
 if ! grep -Eq 'by-hash(%2f|/)SHA256' "$evidence/apt-update.log"; then
-	printf 'apt did not request the advertised by-hash indexes\n' >&2
-	tail -n 120 "$evidence/apt-update.log" >&2
+	printf 'apt did not request the advertised by-hash indexes; apt-update.log is retained\n' >&2
 	exit 1
 fi
 release_meta_packages=(
@@ -206,7 +205,7 @@ done
 # indexes, with Debian network sources removed and networking disabled.
 if ! apt-get install -y --no-install-recommends "${release_image_metas[@]}" \
 	>"$evidence/apt-install-release-kernels.log" 2>&1; then
-	tail -n 120 "$evidence/apt-install-release-kernels.log" >&2
+	printf 'release kernels did not install; apt-install-release-kernels.log is retained\n' >&2
 	exit 1
 fi
 dpkg-query -W -f='${binary:Package}\t${db:Status-Status}\n' |

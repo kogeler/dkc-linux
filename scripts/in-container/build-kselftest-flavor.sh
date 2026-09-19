@@ -3,16 +3,15 @@
 
 set -Eeuo pipefail
 
-[ "$#" -eq 6 ] || {
-	printf 'usage: build-kselftest-flavor.sh <flavor-result> <output> <flavor> <llvm-major> <profile> <kind>\n' >&2
+[ "$#" -eq 5 ] || {
+	printf 'usage: build-kselftest-flavor.sh <flavor-result> <output> <flavor> <llvm-major> <kind>\n' >&2
 	exit 2
 }
 flavor_root="$1"
 output="$2"
 flavor="$3"
 llvm_major="$4"
-profile_relative="$5"
-kind="$6"
+kind="$5"
 
 case "$flavor" in
 v2 | v3 | v4) ;;
@@ -25,16 +24,10 @@ esac
 	printf 'invalid LLVM major\n' >&2
 	exit 2
 }
-[[ "$profile_relative" =~ ^config/[A-Za-z0-9._-]+$ ]] || {
-	printf 'unsafe kselftest profile path\n' >&2
-	exit 2
-}
 [[ "$kind" =~ ^[a-z][a-z0-9-]*$ ]] || {
 	printf 'unsafe kselftest result kind\n' >&2
 	exit 2
 }
-profile="/work/repo/$profile_relative"
-[ -f "$profile" ] && [ ! -L "$profile" ]
 [ -d "$flavor_root/artifacts" ] && [ -d "$flavor_root/evidence" ]
 [ -d "$flavor_root/source" ]
 [ ! -e "$output/evidence" ]
@@ -51,6 +44,17 @@ grep -qx "flavor=${flavor}" "$flavor_root/evidence/result.env"
 	cd "$flavor_root/artifacts"
 	sha256sum --check "$flavor_root/evidence/artifacts.sha256" >/dev/null
 )
+
+# The selftest selection and its source patches belong to the source profile of
+# the accepted kernel, never to whichever series the repository targets next.
+source_version="$(python3 -c \
+	'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["debian_source_version"])' \
+	"$flavor_root/evidence/publication-identity.json")"
+profile=/work/kselftest-profile.env
+PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" kselftest-environment >"$profile"
+kselftest_patch_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" kselftest-patch-directory)"
 
 python3 - "$flavor_root" "$flavor" "$llvm_major" "$kind" "$profile" <<'PY'
 import hashlib
@@ -188,16 +192,25 @@ dpkg-source --extract "$flavor_root/source/$dsc" /work/source-tree >/dev/null
 
 patch_manifest="$evidence/kselftest-source-patches.sha256"
 : >"$patch_manifest"
-for source_patch in /work/repo/tests/integration/kselftest-patches/*.patch; do
-	[ -f "$source_patch" ] && [ ! -L "$source_patch" ]
+# A profile may legitimately need no patch when its upstream source already
+# carries every fix; the manifest then records that exactly nothing was applied.
+source_patches=()
+if [ -d "$kselftest_patch_dir" ]; then
+	mapfile -t source_patches < <(find "$kselftest_patch_dir" -mindepth 1 -maxdepth 1 -print | sort)
+fi
+for source_patch in "${source_patches[@]}"; do
+	if [ ! -f "$source_patch" ] || [ -L "$source_patch" ] || [[ "$source_patch" != *.patch ]]; then
+		printf 'unexpected kselftest source patch entry: %s\n' "$source_patch" >&2
+		exit 1
+	fi
 	(
 		cd /work/repo
 		sha256sum "${source_patch#/work/repo/}"
 	) >>"$patch_manifest"
 	patch --batch --fuzz=0 --directory=/work/source-tree --strip=1 <"$source_patch"
 done
-[ -s "$patch_manifest" ] || {
-	printf 'no kselftest source compatibility patches were applied\n' >&2
+[ "$(wc -l <"$patch_manifest")" -eq "${#source_patches[@]}" ] || {
+	printf 'kselftest source patch manifest differs from the source profile\n' >&2
 	exit 1
 }
 

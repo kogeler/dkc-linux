@@ -15,10 +15,13 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
-import tomllib
 from collections import Counter
 from dataclasses import dataclass
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from dkc.sourceprofile import SourceProfile, SourceProfileError, load_profile  # noqa: E402
 
 
 REGISTER = re.compile(
@@ -58,7 +61,6 @@ INSTRUCTION = re.compile(r"^\s*([0-9a-fA-F]+):\s+([^\s]+)(?:\s+(.*))?$")
 SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9_+.,@~-]+$")
 THIN_LTO_INTERNAL_SUFFIX = re.compile(r"^(?P<base>.+)\.llvm\.[0-9]+$")
 FULL_LTO_INTERNAL_SUFFIX = re.compile(r"^(?P<base>.+)\.[0-9]+$")
-SOURCE_VERSION = "7.1.7-1"
 
 
 @dataclass(frozen=True)
@@ -107,20 +109,11 @@ class SymbolMap:
 
 def derive_fpu_symbols(
     build_root: pathlib.Path,
-    policy_path: pathlib.Path,
+    profile: SourceProfile,
     llvm_major: int,
 ) -> tuple[dict[tuple[str, str, str], AllowEntry], int]:
-    raw = tomllib.loads(policy_path.read_text(encoding="utf-8"))
-    if set(raw) != {"schema_version", "source_version", "final_artifact", "objects"}:
-        raise SystemExit("intentional FPU object policy has unexpected fields")
-    if raw["schema_version"] != 1 or raw["source_version"] != SOURCE_VERSION:
-        raise SystemExit("intentional FPU object policy is not pinned to linux 7.1.7-1")
-    artifact = raw["final_artifact"]
-    objects = raw["objects"]
-    if artifact != "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko":
-        raise SystemExit("intentional FPU policy names an unreviewed final artifact")
-    if not isinstance(objects, list) or len(objects) != 66 or len(objects) != len(set(objects)):
-        raise SystemExit("intentional FPU policy must identify exactly 66 unique objects")
+    artifact = profile.fpu.final_artifact
+    objects = profile.fpu.objects
 
     tool = f"llvm-nm-{llvm_major}"
     result: dict[tuple[str, str, str], AllowEntry] = {}
@@ -153,6 +146,7 @@ def write_derived_fpu_inventory(
     entries: dict[tuple[str, str, str], AllowEntry],
     object_count: int,
     llvm_major: int,
+    profile: SourceProfile,
 ) -> None:
     records = [
         {
@@ -167,7 +161,7 @@ def write_derived_fpu_inventory(
         {
             "schema_version": 1,
             "status": "COMPLETE",
-            "source_version": SOURCE_VERSION,
+            "source_version": profile.reviewed_source_version,
             "llvm_major": llvm_major,
             "object_count": object_count,
             "symbols": records,
@@ -176,7 +170,7 @@ def write_derived_fpu_inventory(
 
 
 def load_derived_fpu_inventory(
-    path: pathlib.Path, llvm_major: int
+    path: pathlib.Path, llvm_major: int, profile: SourceProfile
 ) -> tuple[dict[tuple[str, str, str], AllowEntry], int]:
     raw = read_json(path)
     if not isinstance(raw, dict) or set(raw) != {
@@ -191,9 +185,9 @@ def load_derived_fpu_inventory(
     if (
         raw["schema_version"] != 1
         or raw["status"] != "COMPLETE"
-        or raw["source_version"] != SOURCE_VERSION
+        or raw["source_version"] != profile.reviewed_source_version
         or raw["llvm_major"] != llvm_major
-        or raw["object_count"] != 66
+        or raw["object_count"] != len(profile.fpu.objects)
         or not isinstance(raw["symbols"], list)
     ):
         raise SystemExit("derived FPU inventory identity is invalid")
@@ -216,22 +210,14 @@ def load_derived_fpu_inventory(
 
 
 def load_allowlist(
-    path: pathlib.Path, lto_mode: str | None = None
+    profile: SourceProfile, lto_mode: str | None = None
 ) -> tuple[str, dict[tuple[str, str, str], AllowEntry]]:
     if lto_mode not in {None, "none", "thin", "full"}:
         raise SystemExit(f"invalid SIMD policy LTO mode: {lto_mode!r}")
-    raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    if set(raw) != {"schema_version", "source_version", "entry"}:
-        raise SystemExit("SIMD allowlist has unexpected top-level fields")
-    if raw["schema_version"] != 1 or raw["source_version"] != SOURCE_VERSION:
-        raise SystemExit("SIMD allowlist is not pinned to linux 7.1.7-1")
     result: dict[tuple[str, str, str], AllowEntry] = {}
     ordered_keys: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str, str]] = set()
-    entries = raw["entry"]
-    if not isinstance(entries, list):
-        raise SystemExit("SIMD allowlist entry must be an array of tables")
-    for item in entries:
+    for item in profile.simd_allowlist:
         if not isinstance(item, dict) or set(item) not in (
             {"artifact", "symbol", "reason"},
             {"artifact", "section", "reason"},
@@ -266,7 +252,7 @@ def load_allowlist(
         ordered_keys.append(entry.key)
     if ordered_keys != sorted(ordered_keys):
         raise SystemExit("SIMD allowlist entries must be sorted by artifact and selector")
-    return raw["source_version"], result
+    return profile.reviewed_source_version, result
 
 
 def materialize_module(path: pathlib.Path, work: pathlib.Path) -> pathlib.Path:
@@ -547,31 +533,32 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("vmlinux", type=pathlib.Path)
     parser.add_argument("artifacts", type=pathlib.Path)
-    parser.add_argument("allowlist", type=pathlib.Path)
+    parser.add_argument("source_profile", type=pathlib.Path)
     parser.add_argument("report", type=pathlib.Path)
     parser.add_argument("llvm_major", type=int)
     parser.add_argument("--lto-mode", choices=("none", "thin", "full"), required=True)
     parser.add_argument("--system-map", type=pathlib.Path)
     parser.add_argument("--build-root", type=pathlib.Path)
-    parser.add_argument("--fpu-object-policy", type=pathlib.Path)
     parser.add_argument("--derived-fpu-inventory", type=pathlib.Path)
     parser.add_argument("--write-derived-fpu-inventory", type=pathlib.Path)
     parser.add_argument("--observations-input", type=pathlib.Path)
     parser.add_argument("--observations-output", type=pathlib.Path)
     args = parser.parse_args()
 
-    _source_version, allowlist = load_allowlist(args.allowlist, args.lto_mode)
+    try:
+        profile = load_profile(args.source_profile)
+    except SourceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    _source_version, allowlist = load_allowlist(profile, args.lto_mode)
     derived_keys: set[tuple[str, str, str]] = set()
     derived_object_count = 0
-    if (args.build_root is None) != (args.fpu_object_policy is None):
-        raise SystemExit("--build-root and --fpu-object-policy must be supplied together")
     if args.build_root is not None and args.derived_fpu_inventory is not None:
         raise SystemExit("build-root derivation and a derived inventory are mutually exclusive")
     if args.write_derived_fpu_inventory is not None and args.build_root is None:
         raise SystemExit("--write-derived-fpu-inventory requires --build-root")
-    if args.build_root is not None and args.fpu_object_policy is not None:
+    if args.build_root is not None:
         derived, derived_object_count = derive_fpu_symbols(
-            args.build_root, args.fpu_object_policy, args.llvm_major
+            args.build_root, profile, args.llvm_major
         )
         if args.write_derived_fpu_inventory is not None:
             write_derived_fpu_inventory(
@@ -579,10 +566,11 @@ def main() -> int:
                 derived,
                 derived_object_count,
                 args.llvm_major,
+                profile,
             )
     elif args.derived_fpu_inventory is not None:
         derived, derived_object_count = load_derived_fpu_inventory(
-            args.derived_fpu_inventory, args.llvm_major
+            args.derived_fpu_inventory, args.llvm_major, profile
         )
     else:
         derived = {}
@@ -696,9 +684,12 @@ def main() -> int:
     }
     write_json(args.report, report)
     if unexpected or unused:
+        # Every offending artifact and symbol is named in the report, which is
+        # retained and exported as evidence; the log keeps the verdict.
         raise SystemExit(
             "SIMD audit FAIL: "
-            f"{len(unexpected)} unreviewed exact symbol(s), {len(unused)} stale allowlist entry(s)"
+            f"{len(unexpected)} unreviewed exact symbol(s), {len(unused)} stale "
+            f"allowlist entry(s); exact entries are in {args.report.name}"
         )
     print(
         f"SIMD audit PASS: vmlinux + {module_count} modules, "

@@ -148,7 +148,6 @@ build_log="$evidence/kselftest-build.log"
 if ! timeout --signal=TERM --kill-after=30s 15m \
 	make -C "$source_root" O="$selftest_object" ARCH=x86 \
 	LLVM="-${llvm_major}" headers >"$build_log" 2>&1; then
-	tail -n 100 "$build_log" >&2
 	printf 'kernel UAPI header preparation for kselftest failed\n' >&2
 	exit 1
 fi
@@ -158,8 +157,7 @@ if ! timeout --signal=TERM --kill-after=30s 15m \
 	CC="clang-${llvm_major}" HOSTCC="clang-${llvm_major}" \
 	TARGETS="$DKC_KSELFTEST_TARGETS" SKIP_TARGETS= FORCE_TARGETS=1 \
 	install INSTALL_PATH="$install_root" >>"$build_log" 2>&1; then
-	tail -n 140 "$build_log" >&2
-	printf 'selected kselftest collections did not all build\n' >&2
+	printf 'selected kselftest collections did not all build; the complete output is retained as kselftest-build.log\n' >&2
 	exit 1
 fi
 

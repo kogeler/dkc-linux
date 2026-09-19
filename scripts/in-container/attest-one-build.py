@@ -1008,8 +1008,11 @@ def main() -> int:
     for match in re.finditer(r"(?:^|\n)(?:clang|lld|llvm)-(\d+) ", installed):
         if int(match.group(1)) != llvm_major:
             fail(".buildinfo names an unexpected LLVM compiler/tool major")
-    if re.search(r"(?:^|\n)gcc-15 ", installed):
-        fail(".buildinfo names forbidden gcc-15")
+    # Debian 13 ships GCC 14. Any newer versioned GCC in the recorded build
+    # environment can only be the Sid compiler that the overlay replaced.
+    for match in re.finditer(r"(?:^|\n)gcc-(\d+) ", installed):
+        if int(match.group(1)) > 14:
+            fail(f".buildinfo names forbidden {match.group(0).strip()}")
 
     changes_fields = parse_deb822(changes[0])
     for key, expected in (("Source", "dkc-linux"), ("Version", package_version)):

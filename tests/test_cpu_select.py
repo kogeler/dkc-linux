@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 
 from dkc.flavors import load_all_flavor_policies
+from dkc.sourceprofile import select_profile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SELECTOR = ROOT / "scripts" / "dkc-cpu-select"
@@ -24,7 +25,9 @@ def _run(name: str, *arguments: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_selector_requirements_equal_the_build_policies() -> None:
-    policies = load_all_flavor_policies(ROOT / "config" / "flavors")
+    policies = load_all_flavor_policies(
+        ROOT / "config" / "flavors", select_profile(ROOT, "7.2.6-1").fpu
+    )
     for flavor, policy in policies.items():
         result = subprocess.run(
             [str(SELECTOR), "--requirements", flavor],

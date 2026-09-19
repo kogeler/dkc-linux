@@ -12,13 +12,16 @@ from dkc.flavors import (
     load_all_flavor_policies,
     load_flavor_policy,
 )
+from dkc.sourceprofile import select_profile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 POLICY_DIR = ROOT / "config" / "flavors"
+FPU_7_1 = select_profile(ROOT, "7.1.7-1").fpu
+FPU_7_2 = select_profile(ROOT, "7.2.6-1").fpu
 
 
 def test_all_flavor_policies_are_valid_and_nested() -> None:
-    policies = load_all_flavor_policies(POLICY_DIR)
+    policies = load_all_flavor_policies(POLICY_DIR, FPU_7_1)
     assert tuple(policies) == ("v2", "v3", "v4")
     for flavor, policy in policies.items():
         assert policy.compiler_march == f"x86-64-{flavor}"
@@ -27,6 +30,8 @@ def test_all_flavor_policies_are_valid_and_nested() -> None:
         assert policy.intentional_fpu_artifact == "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
         assert policy.rust_target_feature_flag.startswith("-Ctarget-feature=-sse,")
         assert len(policy.intentional_fpu_objects) == 66
+    for flavor, policy in load_all_flavor_policies(POLICY_DIR, FPU_7_2).items():
+        assert len(policy.intentional_fpu_objects) == 69
 
 
 def test_policy_file_name_and_declared_flavor_cannot_disagree(tmp_path: pathlib.Path) -> None:
@@ -34,15 +39,12 @@ def test_policy_file_name_and_declared_flavor_cannot_disagree(tmp_path: pathlib.
     path = tmp_path / "v2.toml"
     path.write_text(text)
     with pytest.raises(FlavorPolicyError, match="matching flavor"):
-        load_flavor_policy(path)
+        load_flavor_policy(path, FPU_7_1)
 
 
 def test_no_simd_set_cannot_be_weakened(tmp_path: pathlib.Path) -> None:
     text = (POLICY_DIR / "v2.toml").read_text().replace(', "-mno-avx"', "")
     path = tmp_path / "v2.toml"
     path.write_text(text)
-    (tmp_path / "intentional-fpu-objects.toml").write_text(
-        (POLICY_DIR / "intentional-fpu-objects.toml").read_text()
-    )
     with pytest.raises(FlavorPolicyError, match="no-SIMD"):
-        load_flavor_policy(path)
+        load_flavor_policy(path, FPU_7_1)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pathlib
-import re
 
 import pytest
 
@@ -14,9 +13,11 @@ from dkc.builddeps import (
     filter_dependencies,
     parse_field,
 )
+from dkc.sourceprofile import select_profile
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "control-linux-7.1.7-1.txt"
-PROFILES_FILE = pathlib.Path(__file__).parent.parent / "config" / "build-profiles"
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+FIXTURE_SOURCE_VERSION = "7.1.7-1"
 
 
 @pytest.fixture(scope="module")
@@ -39,9 +40,7 @@ def declared(control: str) -> list:
 
 @pytest.fixture(scope="module")
 def configured_profiles() -> frozenset[str]:
-    match = re.search(r'DKC_BUILD_PROFILES="([^"]*)"', PROFILES_FILE.read_text())
-    assert match, "config/build-profiles must define DKC_BUILD_PROFILES"
-    return frozenset(match.group(1).split())
+    return frozenset(select_profile(ROOT, FIXTURE_SOURCE_VERSION).build_profiles)
 
 
 # --------------------------------------------------------------------------

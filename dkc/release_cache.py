@@ -95,7 +95,9 @@ def release_cache_identity(
         source_dsc_sha256=decision.source_dsc_sha256,
         dkc_revision=decision.dkc_revision,
         build_policy_sha256=decision.build_policy_sha256,
-        validation_policy_sha256=validation_policy_digest(repository_root),
+        validation_policy_sha256=validation_policy_digest(
+            repository_root, decision.source_version
+        ),
         lto_mode=decision.lto_mode,
     )
 

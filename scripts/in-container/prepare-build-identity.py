@@ -274,6 +274,7 @@ def main() -> int:
         build_policy_digest,
     )
     from dkc.flavors import load_all_flavor_policies  # noqa: PLC0415
+    from dkc.sourceprofile import SourceProfileError, select_profile  # noqa: PLC0415
     from dkc.naming import Identity, package_names  # noqa: PLC0415
     from dkc.serialize import dumps  # noqa: PLC0415
     from dkc.tarmetadata import (  # noqa: PLC0415
@@ -303,10 +304,14 @@ def main() -> int:
         raise SystemExit(str(exc)) from exc
     dsc_sha, member_hashes = source_hashes(inputs, inventory)
 
-    overlay_sha = build_policy_digest(repo)
+    try:
+        profile = select_profile(repo, source_version)
+    except SourceProfileError as exc:
+        raise SystemExit(str(exc)) from exc
+    overlay_sha = build_policy_digest(repo, source_version)
     apply_lto_policy(source, lto_mode)
 
-    policies = load_all_flavor_policies(repo / "config/flavors")
+    policies = load_all_flavor_policies(repo / "config/flavors", profile.fpu)
     resolved_configs = resolve_policy_configs(source, llvm_major)
     flavor_hashes: dict[str, str] = {}
     flavor_policy: dict[str, str] = {}

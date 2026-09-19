@@ -1,7 +1,10 @@
 # Debian packaging overlay
 
 The minimal, machine-reviewable DKC delta applied to the verified Debian Sid
-`src:linux` source.
+`src:linux` source. One patch series per upstream kernel series lives under
+`patches/<series>/` and belongs to the matching source profile in
+`config/source-profiles/`; see
+[../config/source-profiles/README.md](../config/source-profiles/README.md).
 
 Rules:
 
@@ -12,10 +15,13 @@ Rules:
 - every change carries a reason, a security/reproducibility impact note, and a
   revalidation trigger for the next Debian source revision.
 
-The patch series selects the versioned Debian LLVM toolchain, drives every
+The patch series keeps the Debian 13 kernel image layout where a newer Debian
+generation moved it, selects the versioned Debian LLVM toolchain, drives every
 Kbuild entry point with it, disables the initial product's random module-signing
 stage, adds the reviewed x86-64-v2/v3/v4 baselines, and places every generated
-kernel binary in the `dkc-linux-*` namespace. The release matrix currently
+kernel binary in the `dkc-linux-*` namespace. Patches are generated in series
+order, each against the result of the previous ones, and `0000` is absent for a
+series that already installs the kernel where Debian 13 expects it. The release matrix currently
 publishes v2/v3 only. The publication ABI and source version
 are derived from the complete build-input digest at build time; they are not
 hard-coded into a generated patch.

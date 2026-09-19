@@ -28,8 +28,7 @@ run_logged() {
 	if "$@" >>"$log" 2>&1; then
 		return 0
 	fi
-	echo "package client failed during: $label" >&2
-	tail -n 120 "$log" >&2
+	echo "package client failed during: ${label}; its complete output is retained in this client's evidence log" >&2
 	return 1
 }
 
@@ -285,7 +284,8 @@ else
 		cp /usr/src/dkc-fixture-1.0/Makefile /usr/src/dkc-fixture-1.0/dkc_fixture.c "$plain/"
 		module_log="/evidence/plain-${krel}.log"
 		if ! make -C "$build" M="$plain" V=1 modules >"$module_log" 2>&1; then
-			tail -n 100 "$module_log" >&2
+			printf 'plain external module build failed; %s is retained\n' \
+				"${module_log##*/}" >&2
 			exit 1
 		fi
 		grep -Eq "(^|[ /])clang-${llvm_major}([[:space:]]|$)" "$module_log"
