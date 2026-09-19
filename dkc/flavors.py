@@ -8,6 +8,7 @@ import tomllib
 from dataclasses import dataclass
 
 from .naming import FLAVORS
+from .sourceprofile import FpuObjectPolicy
 
 __all__ = [
     "C_NO_SIMD_FLAGS",
@@ -43,7 +44,6 @@ _EXPECTED = {
     "v4": ("x86-64-v4", "CONFIG_DKC_X86_64_BASELINE_V4"),
 }
 _CPU_FLAG_RE = re.compile(r"^[a-z0-9_]+$")
-_OBJECT_RE = re.compile(r"^[A-Za-z0-9_+./-]+\.o$")
 
 
 class FlavorPolicyError(ValueError):
@@ -79,8 +79,8 @@ def _strings(data: object, field: str) -> tuple[str, ...]:
     return values
 
 
-def load_flavor_policy(path: pathlib.Path) -> FlavorPolicy:
-    """Load one policy and bind its external allowlist without globs."""
+def load_flavor_policy(path: pathlib.Path, fpu: FpuObjectPolicy) -> FlavorPolicy:
+    """Load one policy and bind the source profile's exact FPU objects."""
     try:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as exc:
@@ -95,7 +95,6 @@ def load_flavor_policy(path: pathlib.Path) -> FlavorPolicy:
         "cpu_flags",
         "c_no_simd_flags",
         "rust_no_simd_features",
-        "intentional_fpu_allowlist",
     }
     if set(raw) != required:
         raise FlavorPolicyError(
@@ -126,33 +125,8 @@ def load_flavor_policy(path: pathlib.Path) -> FlavorPolicy:
     if rust_no_simd != RUST_NO_SIMD_FEATURES:
         raise FlavorPolicyError("Rust no-SIMD features differ from the reviewed kernel set")
 
-    allowlist_name = raw["intentional_fpu_allowlist"]
-    if not isinstance(allowlist_name, str) or pathlib.PurePath(allowlist_name).name != allowlist_name:
-        raise FlavorPolicyError("intentional_fpu_allowlist must be a sibling file name")
-    allowlist_path = path.parent / allowlist_name
-    try:
-        allowlist = tomllib.loads(allowlist_path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise FlavorPolicyError(f"cannot read {allowlist_path}: {exc}") from exc
-    if set(allowlist) != {"schema_version", "source_version", "final_artifact", "objects"}:
-        raise FlavorPolicyError("intentional FPU allowlist has unexpected fields")
-    if allowlist["schema_version"] != 1 or allowlist["source_version"] != "7.1.7-1":
-        raise FlavorPolicyError("intentional FPU allowlist is not pinned to linux 7.1.7-1")
-    objects = _strings(allowlist["objects"], "intentional FPU objects")
-    artifact = allowlist["final_artifact"]
-    if (
-        artifact != "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
-        or pathlib.PurePosixPath(artifact).is_absolute()
-        or ".." in pathlib.PurePosixPath(artifact).parts
-    ):
-        raise FlavorPolicyError("intentional FPU final artifact is not the reviewed amdgpu module")
-    if tuple(sorted(objects)) != objects:
-        raise FlavorPolicyError("intentional FPU objects must be sorted")
-    if any(not _OBJECT_RE.fullmatch(obj) or ".." in pathlib.PurePosixPath(obj).parts for obj in objects):
-        raise FlavorPolicyError("intentional FPU allowlist contains an unsafe object path")
-
     schema = raw["schema_version"]
-    if schema != 1:
+    if schema != 2:
         raise FlavorPolicyError(f"unsupported flavor policy schema {schema!r}")
     return FlavorPolicy(
         schema_version=schema,
@@ -163,13 +137,17 @@ def load_flavor_policy(path: pathlib.Path) -> FlavorPolicy:
         cpu_flags=cpu_flags,
         c_no_simd_flags=c_no_simd,
         rust_no_simd_features=rust_no_simd,
-        intentional_fpu_artifact=artifact,
-        intentional_fpu_objects=objects,
+        intentional_fpu_artifact=fpu.final_artifact,
+        intentional_fpu_objects=fpu.objects,
     )
 
 
-def load_all_flavor_policies(directory: pathlib.Path) -> dict[str, FlavorPolicy]:
-    policies = {flavor: load_flavor_policy(directory / f"{flavor}.toml") for flavor in FLAVORS}
+def load_all_flavor_policies(
+    directory: pathlib.Path, fpu: FpuObjectPolicy
+) -> dict[str, FlavorPolicy]:
+    policies = {
+        flavor: load_flavor_policy(directory / f"{flavor}.toml", fpu) for flavor in FLAVORS
+    }
     for lower, higher in zip(FLAVORS, FLAVORS[1:]):
         missing = set(policies[lower].cpu_flags) - set(policies[higher].cpu_flags)
         if missing:

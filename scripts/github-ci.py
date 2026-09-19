@@ -22,6 +22,7 @@ from dkc.github import (
     write_workflow_assignments,
 )
 from dkc.github_artifacts import (
+    prepare_failure_evidence,
     prepare_flavor_evidence,
     prepare_pull_request_repository_evidence,
 )
@@ -120,6 +121,12 @@ def main() -> int:
     flavor_evidence.add_argument("--cache", type=Path, required=True)
     flavor_evidence.add_argument("--output", type=Path, required=True)
     flavor_evidence.add_argument("--flavor", required=True)
+    failure_evidence = subparsers.add_parser("flavor-failure-evidence")
+    failure_evidence.add_argument("--output", type=Path, required=True)
+    failure_evidence.add_argument("--flavor", required=True)
+    failure_evidence.add_argument("--flavor-result", type=Path, required=True)
+    failure_evidence.add_argument("--selftest-result", type=Path, required=True)
+    failure_evidence.add_argument("--qemu-result", type=Path, required=True)
     repository_evidence = subparsers.add_parser("pull-request-repository-evidence")
     repository_evidence.add_argument("--unsigned", type=Path, required=True)
     repository_evidence.add_argument("--signature", type=Path, required=True)
@@ -205,6 +212,15 @@ def main() -> int:
     elif args.command == "flavor-evidence":
         prepare_flavor_evidence(args.cache, args.output, flavor=args.flavor)
         print(f"PASS bounded flavor evidence prepared for {args.flavor}")
+    elif args.command == "flavor-failure-evidence":
+        prepare_failure_evidence(
+            args.output,
+            flavor=args.flavor,
+            flavor_result=args.flavor_result,
+            selftest_result=args.selftest_result,
+            qemu_result=args.qemu_result,
+        )
+        print(f"PASS bounded failure evidence prepared for {args.flavor}")
     elif args.command == "pull-request-repository-evidence":
         prepare_pull_request_repository_evidence(
             args.output,

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate the packaging overlay against the current Debian kernel source.
 #
-# Runs inside the build container. Emits a tar of the patch directory on stdout
-# so the caller can unpack it over the repository, because the container has no
-# write access to it.
+# Runs inside the build container. Emits a tar of one source-profile patch
+# directory on stdout so the caller can unpack it over the repository, because
+# the container has no write access to it.
 #
 # Every edit is anchored on exact text from the Debian source. When Debian
 # changes one of those lines the generator fails and names the anchor, which is
@@ -73,17 +73,14 @@ source_root="${source_roots[0]}"
 test -f "${source_root}/arch/x86/Makefile"
 tar -C "$source_root" -xf "${work}/debian.tar.xz"
 
-out="${work}/patches"
+# The patches belong to the source profile that covers this exact version, so
+# regeneration can never silently overwrite another kernel series' overlay.
+source_version="$(dpkg-parsechangelog -l"${source_root}/debian/changelog" -SVersion)"
+profile_id="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
+	/work/src "$source_version" id)"
+out="${work}/patches/${profile_id}"
 mkdir -p "$out"
-for name in \
-	0001-select-llvm-toolchain.patch \
-	0002-drive-kbuild-with-llvm.patch \
-	0003-disable-random-module-signing.patch \
-	0004-x86-64-flavours.patch \
-	0005-dkc-package-namespace.patch; do
-	python3 /work/src/scripts/in-container/generate-overlay-patches.py \
-		"$source_root" "$LLVM_MAJOR" "$name" >"${out}/${name}"
-	printf 'generated %s (%s lines)\n' "$name" "$(wc -l <"${out}/${name}")" >&2
-done
+python3 /work/src/scripts/in-container/generate-overlay-patches.py \
+	"$source_root" "$LLVM_MAJOR" "$out"
 
-tar --create --file=- --directory="$out" .
+tar --create --file=- --directory="${work}/patches" "$profile_id"

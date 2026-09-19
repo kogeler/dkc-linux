@@ -124,6 +124,10 @@ PY
 identity="$evidence/publication-identity.json"
 lto_mode="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["lto_mode"])' \
 	"$identity")"
+source_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["debian_source_version"])' \
+	"$identity")"
+profile_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" directory)"
 case "$lto_mode" in none | thin | full) ;; *)
 	echo "publication identity has an invalid LTO mode" >&2
 	exit 1
@@ -138,12 +142,12 @@ python3 /work/repo/scripts/in-container/attest-one-build.py \
 
 python3 /work/repo/scripts/in-container/audit-kbuild-commands.py \
 	"$output/evidence/kbuild-commands.tsv.xz" \
-	"/work/repo/config/flavors/${flavor}.toml" \
+	"/work/repo/config/flavors/${flavor}.toml" "$profile_dir" \
 	"$output/evidence/kbuild-command-audit.json" "$lto_mode"
 
 simd_common=(
 	"$artifacts"
-	/work/repo/config/flavors/intentional-simd-symbols.toml
+	"$profile_dir"
 	"$output/evidence/kernel-simd-audit.json"
 	"$llvm_major"
 	--lto-mode "$lto_mode"

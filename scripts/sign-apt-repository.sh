@@ -180,7 +180,6 @@ if dkc::archive_worktree |
 	status=PASS
 else
 	rc=$?
-	tail -n 120 "$log" >&2 || true
 fi
 
 if find "$stage/output" -type f \

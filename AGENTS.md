@@ -63,6 +63,7 @@ documentation.
 | User installation, CPU flavor choice, upgrades, rollback | [README.md](README.md), [docs/USER_INSTALL.md](docs/USER_INSTALL.md) |
 | Local images, source selection, kernel builds, ThinLTO, attestations | [docs/BUILD.md](docs/BUILD.md), [config/flavors/README.md](config/flavors/README.md) |
 | Debian packaging overlay and compatibility | [debian-overlay/README.md](debian-overlay/README.md), [debian-overlay/COMPATIBILITY.md](debian-overlay/COMPATIBILITY.md) |
+| Per-series source policy: overlay, SIMD, audits, selftests | [config/source-profiles/README.md](config/source-profiles/README.md) |
 | KVM boot and kernel selftests | [docs/KERNEL_TESTING.md](docs/KERNEL_TESTING.md) |
 | GitHub workflow graph, job handoffs, release caches, hosted capacity | [.github/workflows/README.md](.github/workflows/README.md), [docs/CI_CAPACITY.md](docs/CI_CAPACITY.md) |
 | Lifecycle decisions, signing, publication, recovery | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PUBLISHING.md](docs/PUBLISHING.md) |

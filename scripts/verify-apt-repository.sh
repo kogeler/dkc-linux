@@ -134,8 +134,7 @@ if dkc::archive_worktree |
 	:
 else
 	rc=$?
-	tail -n 120 "$stage/output/evidence/merge.log" >&2 || true
-	dkc::warn "APT signature handoff verification failed with rc=${rc}"
+	dkc::warn "APT signature handoff verification failed with rc=${rc}; merge.log is retained in the repository evidence"
 	export_verify_failure "$rc"
 fi
 

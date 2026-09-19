@@ -1064,7 +1064,7 @@ def test_selected_kbuild_target_declares_and_checks_its_python_helper() -> None:
 def test_kernel_removal_hook_runs_after_the_binary_payload_is_removed() -> None:
     generator = (ROOT / "scripts" / "in-container" / "generate-overlay-patches.py").read_text()
     audit = (ROOT / "scripts" / "in-container" / "audit-package-matrix.py").read_text()
-    assert 'add_file(root, "debian/templates/binary.postrm.in", BINARY_POSTRM)' in generator
+    assert '"debian/templates/binary.postrm.in": BINARY_POSTRM,' in generator
     assert generator.count("linux-run-hooks image postrm") >= 3
     assert 'if [ "$1" = remove ]; then' in generator
     assert "does not defer removal hooks to the binary package" in audit

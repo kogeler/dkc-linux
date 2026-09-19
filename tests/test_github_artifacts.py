@@ -8,6 +8,7 @@ import pytest
 
 from dkc.evidence import verify_evidence_directory
 from dkc.github_artifacts import (
+    prepare_failure_evidence,
     prepare_flavor_evidence,
     prepare_pull_request_repository_evidence,
 )
@@ -189,3 +190,87 @@ def test_flavor_artifact_rejects_an_invalid_payload_map(tmp_path: Path) -> None:
     (cache / "cache.json").write_text(json.dumps(manifest) + "\n")
     with pytest.raises(ValueError, match="invalid payload path"):
         prepare_flavor_evidence(cache, tmp_path / "output", flavor="v3")
+
+
+def _failed_results(root: Path) -> tuple[Path, Path, Path]:
+    """A retained failure set shaped like the one a real flavor job leaves."""
+
+    flavor = root / "flavors/v3/run"
+    selftest = root / "kselftest/qualification/v3/run"
+    qemu = root / "qemu-boot/run"
+    _write(flavor / "evidence/result.env", "status=FAIL\nflavor=v3\n")
+    _write(flavor / "evidence/post-build-gates.env", "kbuild_audit_rc=1\n")
+    _write(flavor / "evidence/kbuild-command-audit.json", '{"status": "FAIL"}\n')
+    _write(flavor / "evidence/artifacts.sha256", "complete artifact manifest\n")
+    _write(flavor / "evidence/build.log.xz", "compressed build log\n")
+    _write(flavor / "evidence/attestation-replay/vmlinux.zst", "replay payload\n")
+    _write(flavor / "artifacts/dkc-linux-modules-7.2.6-v3-amd64.deb", "package\n")
+    _write(flavor / "source/dkc-linux_7.2.6-1+dkc13.1.dsc", "source control\n")
+    _write(flavor / "source/dkc-linux_7.2.6.orig.tar.xz", "public upstream tarball\n")
+    _write(selftest / "evidence/result.env", "status=FAIL\n")
+    _write(selftest / "evidence/kselftest.tar.xz", "selftest bundle\n")
+    _write(qemu / "evidence/result.env", "status=FAIL\n")
+    _write(qemu / "v3/evidence/serial.log.xz", "console\n")
+    _write(qemu / "v3/guest/result.env", "status=FAIL\nfinal_stage=running\n")
+    _write(qemu / "v3/guest/events.log", "DKC_VM_EVENT status=FAIL line=287 rc=1\n")
+    _write(qemu / "v3/guest/kselftest-summary.env", "status=FAIL\nfail=2\n")
+    _write(qemu / "v3/guest/kselftest-failures.log", "not ok 12 selftests: futex\n")
+    _write(qemu / "v3/guest/kselftest-per-test-logs.tar.xz", "per-test logs\n")
+    return flavor, selftest, qemu
+
+
+def test_failure_report_carries_everything_each_stage_retained(tmp_path: Path) -> None:
+    flavor, selftest, qemu = _failed_results(tmp_path / "out")
+    bundle = prepare_failure_evidence(
+        tmp_path / "evidence",
+        flavor="v3",
+        flavor_result=flavor,
+        selftest_result=selftest,
+        qemu_result=qemu,
+    )
+    verify_evidence_directory(bundle)
+    names = {
+        path.relative_to(bundle).as_posix()
+        for path in bundle.rglob("*")
+        if path.is_file()
+    }
+    retained = {
+        f"{stage}/{path.relative_to(root).as_posix()}"
+        for stage, root in (("flavor", flavor), ("selftest", selftest), ("qemu", qemu))
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+    # Nothing is selected in advance: every retained file travels except the
+    # upstream tarball, which the report names.
+    omitted = "flavor/source/dkc-linux_7.2.6.orig.tar.xz"
+    assert names == (retained - {omitted}) | {"bundle.json", "evidence.sha256", "omitted.tsv"}
+    assert (bundle / "omitted.tsv").read_text(encoding="utf-8").startswith(f"{omitted}\t")
+    document = json.loads((bundle / "bundle.json").read_text(encoding="utf-8"))
+    assert document["kind"] == "flavor-failure"
+    assert document["stages"] == ["flavor", "qemu", "selftest"]
+    assert document["omitted"] == 1
+
+
+def test_failure_report_names_the_stage_that_never_started(tmp_path: Path) -> None:
+    flavor, selftest, qemu = _failed_results(tmp_path / "out")
+    shutil.rmtree(selftest)
+    shutil.rmtree(qemu)
+    bundle = prepare_failure_evidence(
+        tmp_path / "evidence",
+        flavor="v3",
+        flavor_result=flavor,
+        selftest_result=selftest,
+        qemu_result=qemu,
+    )
+    document = json.loads((bundle / "bundle.json").read_text(encoding="utf-8"))
+    assert document["stages"] == ["flavor"]
+
+    shutil.rmtree(flavor)
+    with pytest.raises(ValueError, match="no failed qualification stage"):
+        prepare_failure_evidence(
+            tmp_path / "other",
+            flavor="v3",
+            flavor_result=flavor,
+            selftest_result=selftest,
+            qemu_result=qemu,
+        )

@@ -16,3 +16,16 @@ and a stricter boot baseline without currently demonstrated release value.
   inventory, clean-client tests, and documentation.
 - Do not configure or select a self-hosted runner for this project yet.
 - Keep software-emulated VM results outside the release qualification path.
+
+## Linux 7.2 machine-code policy confirmation
+
+The `7.2` source profile carries the reviewed Linux 7.1 final-artifact SIMD
+symbols with the artifact paths of 7.2, where RAID6 moved from `lib/raid6` to
+`lib/raid/raid6`, plus the three AMD display FRL translation units that 7.2 adds
+to the exact `CC_FLAGS_FPU` object list. Both lists are derived from the 7.2
+sources, not yet from a 7.2 reference build.
+
+- Build and attest one 7.2 flavor, then reconcile `simd_allowlist` with the
+  exact unexpected and unused entries the SIMD audit reports.
+- Keep every entry exact: the audit fails on a stale entry as loudly as on an
+  unreviewed symbol, which is what makes this reconciliation reviewable.

@@ -7,7 +7,9 @@ import json
 import os
 import shutil
 import tempfile
+import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,7 @@ from .evidence import verify_evidence_directory
 from .serialize import dumps
 
 __all__ = [
+    "prepare_failure_evidence",
     "prepare_flavor_evidence",
     "prepare_pull_request_repository_evidence",
 ]
@@ -143,8 +146,15 @@ def _write_inventory(root: Path) -> None:
     )
 
 
-def _copy_bounded(files: Mapping[str, Path], target: Path) -> None:
-    if not files or len(files) > _MAX_FILES:
+def _copy_bounded(
+    files: Mapping[str, Path],
+    target: Path,
+    *,
+    max_files: int = _MAX_FILES,
+    max_file_bytes: int = _MAX_FILE_BYTES,
+    max_total_bytes: int = _MAX_TOTAL_BYTES,
+) -> None:
+    if not files or len(files) > max_files:
         raise ValueError("artifact evidence has an invalid file count")
     total = 0
     for raw_destination, source in sorted(files.items()):
@@ -152,10 +162,10 @@ def _copy_bounded(files: Mapping[str, Path], target: Path) -> None:
         if source.is_symlink() or not source.is_file():
             raise ValueError("artifact evidence source is not a regular file")
         size = source.stat().st_size
-        if size > _MAX_FILE_BYTES:
+        if size > max_file_bytes:
             raise ValueError("artifact evidence file exceeds its size limit")
         total += size
-        if total > _MAX_TOTAL_BYTES:
+        if total > max_total_bytes:
             raise ValueError("artifact evidence exceeds its total size limit")
         output = target / destination
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -169,6 +179,9 @@ def _prepare_bundle(
     *,
     files: Mapping[str, Path],
     metadata: Mapping[str, Any],
+    max_files: int = _MAX_FILES,
+    max_file_bytes: int = _MAX_FILE_BYTES,
+    max_total_bytes: int = _MAX_TOTAL_BYTES,
 ) -> Path:
     output = Path(os.path.abspath(output))
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +189,13 @@ def _prepare_bundle(
         raise ValueError("artifact evidence parent is a symbolic link")
     temporary = Path(tempfile.mkdtemp(prefix=f".{output.name}-", dir=output.parent))
     try:
-        _copy_bounded(files, temporary)
+        _copy_bounded(
+            files,
+            temporary,
+            max_files=max_files,
+            max_file_bytes=max_file_bytes,
+            max_total_bytes=max_total_bytes,
+        )
         document = {"schema": _BUNDLE_SCHEMA, **metadata}
         (temporary / "bundle.json").write_text(dumps(document), encoding="utf-8")
         _write_inventory(temporary)
@@ -367,3 +386,97 @@ def prepare_pull_request_repository_evidence(
             "producer_manifests_omitted": True,
         },
     )
+
+
+@dataclass(frozen=True)
+class _FailureStage:
+    """One retained qualification stage of a flavor that did not complete."""
+
+    name: str
+    root: Path
+
+
+# The upstream tarball is byte-identical to the public Debian source and is
+# fetched by URL during any reproduction, so copying its 150 MiB into every
+# failure report would buy nothing. Everything else a stage retained travels.
+_FAILURE_OMITTED = re.compile(r"^source/[^/]+\.orig\.tar\.[a-z0-9]+$")
+_FAILURE_MAX_FILES = 8192
+_FAILURE_MAX_FILE_BYTES = 512 * 1024 * 1024
+_FAILURE_MAX_TOTAL_BYTES = 1024 * 1024 * 1024
+
+
+def prepare_failure_evidence(
+    output: Path,
+    *,
+    flavor: str,
+    flavor_result: Path,
+    selftest_result: Path,
+    qemu_result: Path,
+) -> Path:
+    """Export the complete retained account of an unfinished qualification.
+
+    A failing build, selftest bundle, or VM run records its evidence, packages
+    and replay payloads on the machine that produced it, and a hosted runner is
+    discarded with its job. Everything those stages retained therefore travels,
+    so a reader never has to rerun a qualification that takes hours to see a
+    file that was not selected in advance. The report names its one omission.
+    """
+
+    if flavor not in ("v2", "v3", "v4"):
+        raise ValueError("failure evidence is limited to known flavors")
+    stages = (
+        _FailureStage("flavor", flavor_result),
+        _FailureStage("selftest", selftest_result),
+        _FailureStage("qemu", qemu_result),
+    )
+
+    files: dict[str, Path] = {}
+    omissions: list[tuple[str, int]] = []
+    present: list[str] = []
+    for stage in stages:
+        if stage.root.is_symlink():
+            raise ValueError(f"{stage.name} result is a symbolic link")
+        if not stage.root.is_dir():
+            continue
+        present.append(stage.name)
+        for path in sorted(stage.root.rglob("*")):
+            if path.is_symlink():
+                raise ValueError(f"{stage.name} result contains a symbolic link")
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                raise ValueError(f"{stage.name} result contains a special file")
+            relative = path.relative_to(stage.root).as_posix()
+            if _FAILURE_OMITTED.fullmatch(relative):
+                omissions.append((f"{stage.name}/{relative}", path.stat().st_size))
+                continue
+            files[f"{stage.name}/{relative}"] = path
+    if not present:
+        raise ValueError("no failed qualification stage retained any evidence")
+
+    staging = Path(tempfile.mkdtemp(prefix=".dkc-failure-report-"))
+    try:
+        report = staging / "omitted.tsv"
+        report.write_text(
+            "".join(
+                f"{destination}\t{size}\tfetched by URL during reproduction\n"
+                for destination, size in sorted(omissions)
+            ),
+            encoding="utf-8",
+        )
+        files["omitted.tsv"] = report
+        return _prepare_bundle(
+            output,
+            files=files,
+            metadata={
+                "kind": "flavor-failure",
+                "flavor": flavor,
+                "stages": sorted(present),
+                "omitted": len(omissions),
+            },
+            max_files=_FAILURE_MAX_FILES,
+            max_file_bytes=_FAILURE_MAX_FILE_BYTES,
+            max_total_bytes=_FAILURE_MAX_TOTAL_BYTES,
+        )
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)

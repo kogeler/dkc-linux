@@ -1,0 +1,120 @@
+# Linux 7.1 source compatibility profile: acceptance inputs.
+#
+# Every value in this file is specific to the 7.1 upstream series and decides
+# whether a built flavor is accepted. Changing it invalidates qualified results
+# without changing the kernel publication identity. Optional selftest source
+# patches live in tests/integration/kselftest-patches/7.1/.
+schema_version = 1
+kernel_series = "7.1"
+
+[kbuild_audit]
+# Coverage floors for the saved Kbuild command inventory of one flavor.
+minimum_records = 30000
+minimum_normal_c = 19000
+minimum_special_c = 50
+minimum_kernel_rust = 10
+
+# Linux 7.1 deliberately removes CC_FLAGS_LTO from these normal 64-bit C
+# objects. They execute before ordinary kernel relocation, are linked as
+# userspace vDSOs or standalone purgatory code, avoid an LLVM suspend/resume
+# inlining bug, or probe the module ELF format. Keep this exact and require
+# both absence of a positive LTO flag and presence of -fno-lto: an upstream
+# addition or deletion must trigger review rather than silently widening the
+# exception.
+lto_excluded_c_targets = [
+  "arch/x86/boot/startup/gdt_idt.o",
+  "arch/x86/boot/startup/map_kernel.o",
+  "arch/x86/boot/startup/sev-startup.o",
+  "arch/x86/boot/startup/sme.o",
+  "arch/x86/entry/vdso/vdso32/vclock_gettime.o",
+  "arch/x86/entry/vdso/vdso32/vgetcpu.o",
+  "arch/x86/entry/vdso/vdso64/vclock_gettime.o",
+  "arch/x86/entry/vdso/vdso64/vgetcpu.o",
+  "arch/x86/entry/vdso/vdso64/vgetrandom.o",
+  "arch/x86/power/cpu.o",
+  "arch/x86/purgatory/purgatory.o",
+  "arch/x86/purgatory/sha256.o",
+  "arch/x86/purgatory/string.o",
+  "scripts/mod/empty.o",
+]
+
+# Enabling kernel LTO disables BTF for this source/toolchain combination. That
+# removes the 37 host-C records used to build tools/bpf/resolve_btfids, so the
+# host-tool coverage floor describes the two deliberately different build
+# graphs instead of assuming that BTF is always enabled.
+[kbuild_audit.minimum_host_c]
+none = 50
+thin = 40
+full = 40
+
+[kselftest]
+# Bounded exact-source kernel selftest profile used in every flavor VM.
+#
+# Every target must build. Only the explicit collection:test entries run in the
+# guest; this keeps broad subsystem coverage without running benchmarks,
+# destructive tests, or hardware-specific suites.
+kind = "qualification"
+targets = [
+  "capabilities", "clone3", "core", "filesystems/epoll", "futex", "ipc",
+  "landlock", "membarrier", "mincore", "mount_setattr", "net/af_unix",
+  "openat2", "pidfd", "proc", "ptrace", "rlimits", "rseq", "seccomp", "signal",
+  "splice", "syscall_user_dispatch", "timens", "timers", "uevent", "x86",
+]
+tests = [
+  "capabilities:test_execve",
+  "clone3:clone3_clear_sighand",
+  "clone3:clone3_set_tid",
+  "core:close_range_test",
+  "core:unshare_test",
+  "filesystems/epoll:epoll_wakeup_test",
+  "futex:run.sh",
+  "ipc:msgque",
+  "landlock:fs_test",
+  "membarrier:membarrier_test_multi_thread",
+  "mincore:mincore_selftest",
+  "mount_setattr:mount_setattr_test",
+  "net/af_unix:scm_rights",
+  "net/af_unix:scm_pidfd",
+  "openat2:resolve_test",
+  "pidfd:pidfd_open_test",
+  "pidfd:pidfd_wait",
+  "pidfd:pidfd_info_test",
+  "proc:proc-maps-race",
+  "proc:proc-self-syscall",
+  "ptrace:get_syscall_info",
+  "ptrace:peeksiginfo",
+  "ptrace:vmaccess-only",
+  "rlimits:rlimits-per-userns",
+  "rseq:basic_percpu_ops_test",
+  "seccomp:seccomp_bpf",
+  "signal:sas",
+  "splice:default_file_splice_read.sh",
+  "syscall_user_dispatch:sud_test",
+  "timens:timens",
+  "timers:posix_timers",
+  "uevent:uevent_filtering",
+  "x86:sigreturn_64",
+  "x86:corrupt_xstate_header_64",
+  "x86:avx_64",
+]
+
+# These tests require AVX/OSXSAVE, which begins at the v3 baseline. They are
+# built into every portable tree but are recorded as baseline-omitted on v2.
+v3_tests = ["x86:corrupt_xstate_header_64", "x86:avx_64"]
+
+# A selected test may run for at most three minutes. The complete profile has
+# an independent fifteen-minute ceiling, including slow software-emulated VMs.
+per_test_timeout = 180
+aggregate_timeout = 900
+
+# Builtin requirements are exact. Enabled requirements accept either y or m;
+# the guest can load the corresponding shipped module before the profile runs.
+required_builtin = [
+  "AF_UNIX_OOB", "AUDIT", "CGROUPS", "CGROUP_SCHED", "CHECKPOINT_RESTORE",
+  "EPOLL", "EVENTFD", "EXPERT", "FUTEX", "GENERIC_ENTRY", "INET", "IPC_NS",
+  "IPV6", "KEYS", "MPTCP", "MPTCP_IPV6", "NET", "NET_NS", "PID_NS",
+  "POSIX_TIMERS", "PROC_FS", "RSEQ", "SECCOMP", "SECCOMP_FILTER", "SECURITY",
+  "SECURITY_LANDLOCK", "SHMEM", "SIGNALFD", "SYSFS", "SYSVIPC", "TIME_NS",
+  "TIMERFD", "TMPFS", "TMPFS_XATTR", "UNIX", "USER_NS", "UTS_NS", "X86_64",
+]
+required_enabled = ["OVERLAY_FS", "UNIX_DIAG"]

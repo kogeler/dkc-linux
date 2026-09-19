@@ -68,6 +68,11 @@ on_error() {
 	trap - ERR
 	set +e
 	event "status=FAIL line=${line} rc=${rc}"
+	if [ -f "${DKC_TEST_RESULTS}/kselftest-summary.env" ]; then
+		# One line, not a dump: the exact failing selectors and their per-test
+		# logs travel in the retained results.
+		event "kselftest $(tr '\n' ' ' <"${DKC_TEST_RESULTS}/kselftest-summary.env")"
+	fi
 	write_result FAIL
 	for log in "${DKC_TEST_RESULTS}"/*.log; do
 		[ -f "$log" ] || continue

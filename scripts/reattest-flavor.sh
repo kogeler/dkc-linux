@@ -67,11 +67,13 @@ if dkc::archive_worktree |
 	status=PASS
 else
 	rc=$?
-	tail -n 160 "$log" >&2 || true
 fi
 
 mkdir -p "$stage/output/evidence"
 cp "$log" "$stage/output/evidence/reattest.log"
+if [ "$status" = FAIL ]; then
+	dkc::warn "post-build reattestation failed with rc=${rc}; reattest.log is retained in its evidence"
+fi
 if [ "$status" = FAIL ]; then
 	cat >"$stage/output/evidence/result.env" <<EOF
 status=FAIL

@@ -61,6 +61,29 @@ checks the complete packaging overlay, toolchain wiring, generated package
 graph, and build-dependency closure on that same tree. It therefore needs
 network access. `make fast` is offline once the toolbox image exists.
 
+## Source profiles
+
+Everything that is only true for one upstream kernel series lives in that
+series' profile under `config/source-profiles/<series>/`: the Debian build
+profiles and architecture inventory, the reviewed `CC_FLAGS_FPU` objects and
+SIMD symbols, the Kbuild command-audit floors and exceptions, and the kselftest
+selection. The matching packaging overlay is `debian-overlay/patches/<series>/`.
+Discovery selects exactly one profile for the authenticated source version, so a
+new series is an added profile rather than an edit to the reviewed policy of the
+series already published.
+
+Regenerate one profile's overlay against its source with:
+
+```sh
+make overlay-patches
+```
+
+The target writes only the profile that covers `DKC_SOURCE_VERSION`. A source
+that no profile covers stops discovery, preflight, and the build with the exact
+version it could not place; see
+[config/source-profiles/README.md](../config/source-profiles/README.md) for the
+steps that add one.
+
 ## One flavor
 
 ```sh

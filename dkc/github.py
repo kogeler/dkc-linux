@@ -223,7 +223,9 @@ def prepare_pull_request_qualification(
         source_version=str(source["source_version"]),
         source_dsc_sha256=descriptor["sha256"],
         dkc_revision=dkc_revision,
-        build_policy_sha256=build_policy_digest(repository_root),
+        build_policy_sha256=build_policy_digest(
+            repository_root, str(source["source_version"])
+        ),
         lto_mode=lto_mode,
         retention_mode=retention_mode,
         retention_max_bytes=retention_max_bytes,

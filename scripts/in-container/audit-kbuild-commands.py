@@ -21,44 +21,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from dkc.flavors import FlavorPolicy, load_flavor_policy  # noqa: E402
-
-MINIMUM_COUNTS = {
-    "records": 30_000,
-    "normal_c": 19_000,
-    "special_c": 50,
-    "kernel_rust": 10,
-}
-
-# Enabling kernel LTO disables BTF for this source/toolchain combination.  That
-# removes the 37 host-C records used to build tools/bpf/resolve_btfids, so the
-# host-tool coverage floor must describe the two deliberately different build
-# graphs instead of assuming that BTF is always enabled.
-MINIMUM_HOST_C = {"none": 50, "thin": 40, "full": 40}
-
-# Linux 7.1.7 deliberately removes CC_FLAGS_LTO from these normal 64-bit C
-# objects.  They execute before ordinary kernel relocation, are linked as
-# userspace vDSOs or standalone purgatory code, avoid an LLVM suspend/resume
-# inlining bug, or probe the module ELF format.  Keep this exact and require
-# both absence of a positive LTO flag and presence of -fno-lto: an upstream
-# addition or deletion must trigger review rather than silently widening the
-# exception.
-LTO_EXCLUDED_C_TARGETS = frozenset(
-    {
-        "arch/x86/boot/startup/gdt_idt.o",
-        "arch/x86/boot/startup/map_kernel.o",
-        "arch/x86/boot/startup/sev-startup.o",
-        "arch/x86/boot/startup/sme.o",
-        "arch/x86/entry/vdso/vdso32/vclock_gettime.o",
-        "arch/x86/entry/vdso/vdso32/vgetcpu.o",
-        "arch/x86/entry/vdso/vdso64/vclock_gettime.o",
-        "arch/x86/entry/vdso/vdso64/vgetcpu.o",
-        "arch/x86/entry/vdso/vdso64/vgetrandom.o",
-        "arch/x86/power/cpu.o",
-        "arch/x86/purgatory/purgatory.o",
-        "arch/x86/purgatory/sha256.o",
-        "arch/x86/purgatory/string.o",
-        "scripts/mod/empty.o",
-    }
+from dkc.sourceprofile import (  # noqa: E402
+    KbuildAuditPolicy,
+    SourceProfileError,
+    load_profile,
 )
 
 
@@ -150,7 +116,10 @@ def _rust_feature_states(options: list[tuple[str, int]]) -> dict[str, tuple[str,
 
 
 def audit(
-    path: pathlib.Path, policy: FlavorPolicy, lto_mode: str = "none"
+    path: pathlib.Path,
+    policy: FlavorPolicy,
+    kbuild: KbuildAuditPolicy,
+    lto_mode: str = "none",
 ) -> dict[str, object]:
     expected_lto_flags = {
         "none": [],
@@ -285,7 +254,7 @@ def audit(
                 reject(target, "c-baseline", f"march flags are {marches!r}, expected {[expected_march]!r}")
                 continue
             lto_flags = [token for token in tokens if token == "-flto" or token.startswith("-flto=")]
-            lto_excluded = lto_mode != "none" and target in LTO_EXCLUDED_C_TARGETS
+            lto_excluded = lto_mode != "none" and target in kbuild.lto_excluded_c_targets
             expected_target_lto = [] if lto_excluded else expected_lto_flags[lto_mode]
             if lto_flags != expected_target_lto:
                 reject(
@@ -336,9 +305,9 @@ def audit(
     for target in stale:
         reject(target, "stale-fpu-allowlist", "allowlisted object was not compiled with CC_FLAGS_FPU")
     if lto_mode != "none":
-        for target in sorted(LTO_EXCLUDED_C_TARGETS - seen_lto_exclusions):
+        for target in sorted(kbuild.lto_excluded_c_targets - seen_lto_exclusions):
             reject(target, "stale-lto-exclusion", "reviewed LTO exclusion was not observed")
-    minimum_counts = {**MINIMUM_COUNTS, "host_c": MINIMUM_HOST_C[lto_mode]}
+    minimum_counts = {**kbuild.minimum_counts, "host_c": kbuild.minimum_host_c[lto_mode]}
     for name, minimum in minimum_counts.items():
         if counts[name] < minimum:
             reject("inventory", "coverage", f"{name}={counts[name]} is below {minimum}")
@@ -349,7 +318,9 @@ def audit(
         "flavor": policy.flavor,
         "compiler_march": policy.compiler_march,
         "lto_mode": lto_mode,
-        "lto_excluded_c_expected": len(LTO_EXCLUDED_C_TARGETS) if lto_mode != "none" else 0,
+        "lto_excluded_c_expected": (
+            len(kbuild.lto_excluded_c_targets) if lto_mode != "none" else 0
+        ),
         "lto_excluded_c_seen": len(seen_lto_exclusions),
         "counts": dict(sorted(counts.items())),
         "intentional_fpu_objects_expected": len(policy.intentional_fpu_objects),
@@ -360,24 +331,37 @@ def audit(
 
 
 def main() -> int:
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 6:
         print(
             "usage: audit-kbuild-commands.py <commands.tsv[.xz]> "
-            "<policy.toml> <report.json> <none|thin|full>",
+            "<flavor-policy.toml> <source-profile-dir> <report.json> <none|thin|full>",
             file=sys.stderr,
         )
         return 2
-    commands, policy_path, report_path = map(pathlib.Path, sys.argv[1:4])
-    lto_mode = sys.argv[4]
-    policy = load_flavor_policy(policy_path)
+    commands, policy_path, profile_path, report_path = map(pathlib.Path, sys.argv[1:5])
+    lto_mode = sys.argv[5]
     try:
-        report = audit(commands, policy, lto_mode)
+        profile = load_profile(profile_path)
+    except SourceProfileError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    policy = load_flavor_policy(policy_path, profile.fpu)
+    try:
+        report = audit(commands, policy, profile.kbuild_audit, lto_mode)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if report["status"] != "PASS":
-        print(f"Kbuild command audit FAIL: {len(report['errors'])} recorded violations", file=sys.stderr)
+        errors = report["errors"]
+        assert isinstance(errors, list)
+        # Each violation names its target and reason in the retained report,
+        # which is exported as evidence; the log keeps the verdict.
+        print(
+            f"Kbuild command audit FAIL: {len(errors)} recorded violations; "
+            f"each one is in {report_path.name}",
+            file=sys.stderr,
+        )
         return 1
     print(
         "Kbuild command audit PASS: "

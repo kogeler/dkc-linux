@@ -54,7 +54,9 @@ def main() -> int:
         source_version=str(source["source_version"]),
         source_dsc_sha256=dsc["sha256"],
         dkc_revision=args.dkc_revision,
-        build_policy_sha256=build_policy_digest(pathlib.Path.cwd()),
+        build_policy_sha256=build_policy_digest(
+            pathlib.Path.cwd(), str(source["source_version"])
+        ),
         lto_mode=args.lto_mode,
         retention_mode=args.retention_mode,
         retention_max_bytes=retention_max_bytes,

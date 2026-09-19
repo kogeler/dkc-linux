@@ -9,6 +9,7 @@ from dataclasses import replace
 import pytest
 
 from dkc.flavors import load_flavor_policy
+from dkc.sourceprofile import KbuildAuditPolicy, select_profile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "in-container" / "audit-kbuild-commands.py"
@@ -31,22 +32,17 @@ def _audit(
             for target, command in commands
         )
     )
+    profile = select_profile(ROOT, "7.2.6-1")
     policy = replace(
-        load_flavor_policy(ROOT / "config" / "flavors" / "v3.toml"),
+        load_flavor_policy(ROOT / "config" / "flavors" / "v3.toml", profile.fpu),
         intentional_fpu_objects=(),
     )
-    old = audit_module.MINIMUM_COUNTS
-    old_host = audit_module.MINIMUM_HOST_C
-    old_exclusions = audit_module.LTO_EXCLUDED_C_TARGETS
-    audit_module.MINIMUM_COUNTS = {name: 0 for name in old}
-    audit_module.MINIMUM_HOST_C = {name: 0 for name in old_host}
-    audit_module.LTO_EXCLUDED_C_TARGETS = lto_exclusions
-    try:
-        return audit_module.audit(path, policy, lto_mode)
-    finally:
-        audit_module.MINIMUM_COUNTS = old
-        audit_module.MINIMUM_HOST_C = old_host
-        audit_module.LTO_EXCLUDED_C_TARGETS = old_exclusions
+    kbuild = KbuildAuditPolicy(
+        minimum_counts={name: 0 for name in profile.kbuild_audit.minimum_counts},
+        minimum_host_c={name: 0 for name in profile.kbuild_audit.minimum_host_c},
+        lto_excluded_c_targets=lto_exclusions,
+    )
+    return audit_module.audit(path, policy, kbuild, lto_mode)
 
 
 def _normal(*extra: str) -> str:

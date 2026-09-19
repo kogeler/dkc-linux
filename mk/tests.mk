@@ -36,13 +36,21 @@ release-preflight: build-image ## Verify source, overlay, toolchain, package gra
 		'$(LLVM_MAJOR)'
 
 .PHONY: overlay-patches
-overlay-patches: build-image ## Regenerate the packaging overlay against the current source (needs network)
-	@$(CONTAINER_RUN) --net --image '$(BUILD_IMAGE)' --name regen -- \
+overlay-patches: build-image ## Regenerate the selected source profile's packaging overlay (needs network)
+	@set -Eeuo pipefail; \
+	staging="$$(mktemp -d "$${TMPDIR:-/tmp}/dkc-overlay-XXXXXX")"; \
+	trap 'rm -rf -- "$$staging"' EXIT; \
+	$(CONTAINER_RUN) --net --image '$(BUILD_IMAGE)' --name regen -- \
 		scripts/in-container/refresh-overlay-patches.sh \
 		'$(DKC_ORIG_TAR_URL)' '$(DKC_ORIG_TAR_SHA256)' \
 		'$(DKC_DEBIAN_TAR_URL)' '$(DKC_DEBIAN_TAR_SHA256)' '$(LLVM_MAJOR)' \
-		| tar --extract --file=- --directory=$(DKC_ROOT)/debian-overlay/patches --no-same-owner
-	@echo 'overlay patches regenerated'
+		| tar --extract --file=- --directory="$$staging" --no-same-owner; \
+	profile="$$(find "$$staging" -mindepth 1 -maxdepth 1 -type d -printf '%f\n')"; \
+	test "$$(printf '%s' "$$profile" | wc -l)" -eq 0 -a -n "$$profile"; \
+	mkdir -p "$(DKC_ROOT)/debian-overlay/patches/$$profile"; \
+	rm -f -- "$(DKC_ROOT)/debian-overlay/patches/$$profile"/*.patch; \
+	mv "$$staging/$$profile"/*.patch "$(DKC_ROOT)/debian-overlay/patches/$$profile/"; \
+	echo "overlay patches regenerated for source profile $$profile"
 
 .PHONY: closure-proof
 closure-proof: build-image ## Resolve every installed package to an allowed Debian origin (needs network)

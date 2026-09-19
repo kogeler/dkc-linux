@@ -1,0 +1,47 @@
+--- a/debian/rules.real
++++ b/debian/rules.real
+@@ -43,7 +43,14 @@
+ setup_env += DISTRIBUTION_OFFICIAL_BUILD=1 DISTRIBUTOR="$(DEB_VENDOR)" DISTRIBUTION_VERSION="$(SOURCEVERSION)" KBUILD_BUILD_TIMESTAMP="@$(SOURCE_DATE_EPOCH)" KBUILD_BUILD_VERSION_TIMESTAMP="$(DEB_VENDOR) $(SOURCEVERSION) ($(SOURCE_DATE_UTC_ISO))" KBUILD_BUILD_USER="$(word 1,$(subst @, ,$(MAINTAINER)))" KBUILD_BUILD_HOST="$(word 2,$(subst @, ,$(MAINTAINER)))"
+ setup_env += KBUILD_VERBOSE=$(if $(filter terse,$(DEB_BUILD_OPTIONS)),0,1)
+ 
++# LLVM=-<major> belongs on the command line, not in .kernelvariables:
++# the kernel binds CC, LD, AR and the rest from $(LLVM) near the top of
++# its Makefile, while Debian includes .kernelvariables about 130 lines
++# further down. A command-line variable is visible from the start of
++# parsing, and MAKE_CLEAN wraps every Kbuild entry point, so setting it
++# once here covers configuration, kernel, modules and headers alike.
+ MAKE_CLEAN = $(setup_env) $(MAKE) \
++	$(if $(LLVM_MAJOR),LLVM=-$(LLVM_MAJOR)) \
+ 	KCFLAGS=-fdebug-prefix-map=$(CURDIR)/= \
+ 	KAFLAGS=-fdebug-prefix-map=$(CURDIR)/= \
+ 	KRUSTFLAGS=--remap-path-prefix=$(CURDIR)/= \
+@@ -148,7 +155,28 @@
+ 	echo 'override ARCH = $(KERNEL_ARCH)' >> '$(DIR)/.kernelvariables'
+ 	echo 'override KERNELRELEASE = $(ABINAME)$(LOCALVERSION_IMAGE)' >> '$(DIR)/.kernelvariables'
+ 	echo 'CCACHE = ccache' >> '$(DIR)/.kernelvariables'
+-ifeq (./,$(dir $(C_COMPILER)))
++ifdef LLVM_MAJOR
++# .kernelvariables is included too late for LLVM= to select the toolchain,
++# so every tool is set by name. That is also what an out-of-tree build
++# needs: a plain `make -C /usr/lib/modules/<rel>/build M=$$PWD modules`
++# passes no LLVM= and would otherwise use GNU tools against a kernel
++# built with Clang. No GNU triplet is prepended, because
++# x86_64-linux-gnu-clang-N does not exist.
++	echo 'LLVM = -$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'LLVM_PREFIX = ' >> '$(DIR)/.kernelvariables'
++	echo 'LLVM_SUFFIX = -$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'CC = $$(if $$(DEBIAN_KERNEL_USE_CCACHE),$$(CCACHE)) clang-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'HOSTCC = clang-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'HOSTCXX = clang++-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'LD = ld.lld-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'AR = llvm-ar-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'NM = llvm-nm-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'OBJCOPY = llvm-objcopy-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'OBJDUMP = llvm-objdump-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'READELF = llvm-readelf-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'STRIP = llvm-strip-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++	echo 'LLVM_LINK = llvm-link-$(LLVM_MAJOR)' >> '$(DIR)/.kernelvariables'
++else ifeq (./,$(dir $(C_COMPILER)))
+ 	echo 'CC = $$(if $$(DEBIAN_KERNEL_USE_CCACHE),$$(CCACHE)) $$(CROSS_COMPILE)$(C_COMPILER)' >> '$(DIR)/.kernelvariables'
+ else
+ # To allow for cross-compiles, we want to split up the configured

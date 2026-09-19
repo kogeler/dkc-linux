@@ -2,16 +2,24 @@
 """Generate the DKC packaging overlay against a given Debian kernel source.
 
 The overlay is defined here as exact anchored edits, and the `.patch` files
-under `debian-overlay/patches/` are its output. Both are committed: the patches
-are what a reviewer reads, this file is what regenerates them when Debian
-publishes a new source version.
+under `debian-overlay/patches/<source-profile>/` are its output. Both are
+committed: the patches are what a reviewer reads, this file is what regenerates
+them for every supported Debian packaging generation.
 
 That matters because the anchors are the revalidation trigger. If Debian changes
 one of these lines, generation fails loudly with the anchor that no longer
 matches, instead of a patch applying with fuzz into something subtly different.
 
-Runs inside the build container. Writes the patches to stdout as a single
-stream, one `--- a/… +++ b/…` section per file.
+An edit that Debian spells differently in different packaging generations is a
+`OneOf` of reviewed spellings. Exactly one spelling must match; none or several
+is an error. `Absent` names a generation in which the edit has nothing to do.
+Keeping every reviewed spelling lets one generator regenerate the overlay of an
+older kernel series after a newer one has been added.
+
+Patches form an ordered series and each one is generated against the result of
+the previous ones, exactly as `patch` applies them.
+
+Runs inside the build container and writes one file per non-empty patch.
 """
 
 from __future__ import annotations
@@ -19,6 +27,129 @@ from __future__ import annotations
 import difflib
 import pathlib
 import sys
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Absent:
+    """A generation in which `marker` does not exist, so the edit is a no-op."""
+
+    marker: str
+
+
+class OneOf:
+    """Reviewed spellings of one edit across Debian packaging generations."""
+
+    def __init__(self, *variants: tuple[str, str] | Absent) -> None:
+        if len(variants) < 2:
+            raise ValueError("OneOf needs at least two reviewed spellings")
+        self.variants = variants
+
+
+class FileVariants:
+    """One logical file that Debian renamed between packaging generations."""
+
+    def __init__(self, *groups: tuple[str, list]) -> None:
+        if len(groups) < 2:
+            raise ValueError("FileVariants needs at least two reviewed file names")
+        self.groups = groups
+
+
+# --------------------------------------------------------------------------
+# Patch 0: keep the Debian 13 kernel image layout
+# --------------------------------------------------------------------------
+
+# Debian 7.2 installs vmlinuz, config and System.map below the modules
+# directory and relies on linux-base >= 4.17 hooks to copy them into /boot.
+# Debian 13 ships linux-base 4.12, whose bootloader and initramfs hooks expect
+# the files in /boot. Restoring the established layout keeps every Debian 13
+# client, and every package test, on the same contract as older generations.
+LAYOUT_GENCONTROL = (
+    "debian/bin/gencontrol.py",
+    [OneOf(
+        (
+            "        makeflags['IMAGE_FILE'] = config.build.kernel_file\n\n",
+            "        makeflags['IMAGE_FILE'] = config.build.kernel_file\n"
+            "        makeflags['IMAGE_INSTALL_STEM'] = config.build.kernel_stem\n\n",
+        ),
+        (
+            "        makeflags['IMAGE_FILE'] = config.build.kernel_file\n"
+            "        makeflags['IMAGE_INSTALL_STEM'] = config.build.kernel_stem\n",
+            "        makeflags['IMAGE_FILE'] = config.build.kernel_file\n"
+            "        makeflags['IMAGE_INSTALL_STEM'] = config.build.kernel_stem\n",
+        ),
+    )],
+)
+
+_BOOT_IMAGE_BLOCK = (
+    "\tinstall -D -m644 '$(DIR)/$(IMAGE_FILE)' $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)\n"
+    "ifeq ($(IMAGE_FILE),vmlinux)\n"
+    "# This is the unprocessed ELF image, so we need to strip debug symbols\n"
+    "\t$(CROSS_COMPILE)strip --strip-debug $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)\n"
+    "endif\n"
+    "\n"
+    "\tsed '/CONFIG_\\(MODULE_SIG_\\(ALL\\|KEY\\)\\|SYSTEM_TRUSTED_KEYS\\|BUILD_SALT\\)[ =]/d' $(DIR)/.config \\\n"
+    "\t\t> $(OUTPUT_DIR)/boot/config-$(REAL_VERSION)\n"
+    "\techo \"ffffffffffffffff B The real System.map is in the linux-image-$(REAL_VERSION)-dbg package\" \\\n"
+    "\t\t> $(OUTPUT_DIR)/boot/System.map-$(REAL_VERSION)\n"
+    "\n"
+    "\tinstall -D -m644 $(OUTPUT_DIR)/boot/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION) $(OUTPUT_DIR)/lib/modules/$(REAL_VERSION)/vmlinuz.unsigned\n"
+)
+
+LAYOUT_RULES = (
+    "debian/rules.real",
+    [OneOf(
+        (
+            "\tinstall -D -m644 '$(DIR)/$(IMAGE_FILE)' $(OUTPUT_DIR_LIB)/vmlinuz\n"
+            "ifeq ($(IMAGE_FILE),vmlinux)\n"
+            "# This is the unprocessed ELF image, so we need to strip debug symbols\n"
+            "\t$(CROSS_COMPILE)strip --strip-debug $(OUTPUT_DIR_LIB)/vmlinuz\n"
+            "endif\n"
+            "\n"
+            "\tsed '/CONFIG_\\(MODULE_SIG_\\(ALL\\|KEY\\)\\|SYSTEM_TRUSTED_KEYS\\|BUILD_SALT\\)[ =]/d' $(DIR)/.config \\\n"
+            "\t\t> $(OUTPUT_DIR_LIB)/config\n"
+            "\techo \"ffffffffffffffff B The real System.map is in the linux-image-$(REAL_VERSION)-dbg package\" \\\n"
+            "\t\t> $(OUTPUT_DIR_LIB)/System.map\n"
+            "\n"
+            "\tinstall -D -m644 $(OUTPUT_DIR_LIB)/vmlinuz $(OUTPUT_DIR_LIB)/vmlinuz.unsigned\n",
+            "# Debian 13 linux-base has no hook that copies a kernel from its modules\n"
+            "# directory, so keep the image, configuration and System.map in /boot.\n"
+            + _BOOT_IMAGE_BLOCK,
+        ),
+        (_BOOT_IMAGE_BLOCK, _BOOT_IMAGE_BLOCK),
+    )],
+)
+
+LAYOUT_TEMPLATES = [
+    (
+        "debian/templates/base.install.j2",
+        [OneOf(
+            (
+                "lib/modules/{{abiname}}{{localversion}}/config                   usr/lib/modules/{{abiname}}{{localversion}}\n"
+                "lib/modules/{{abiname}}{{localversion}}/System.map               usr/lib/modules/{{abiname}}{{localversion}}\n",
+                "boot/config-*\nboot/System.map-*\n",
+            ),
+            ("boot/config-*\nboot/System.map-*\n", "boot/config-*\nboot/System.map-*\n"),
+        )],
+    ),
+    (
+        "debian/templates/binary.install.j2",
+        [OneOf(
+            (
+                "lib/modules/{{abiname}}{{localversion}}/vmlinuz  usr/lib/modules/{{abiname}}{{localversion}}\n",
+                "boot/vmlinu*-*\n",
+            ),
+            ("boot/vmlinu*-*\n", "boot/vmlinu*-*\n"),
+        )],
+    ),
+    (
+        "debian/templates/image.control.in",
+        [OneOf(
+            ("Pre-Depends: linux-base (>= 4.17~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
+            ("Pre-Depends: linux-base (>= 4.12~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
+        )],
+    ),
+]
 
 # --------------------------------------------------------------------------
 # Patch 1: select the LLVM toolchain in the generated dependencies
@@ -36,9 +167,9 @@ CONFIG_SCHEMA = (
 
 DEFINES = (
     "debian/config/defines.toml",
-    [(
-        "c_compiler = 'gcc-15'\n",
-        "c_compiler = 'gcc-15'\nllvm_major = @LLVM_MAJOR@\n",
+    [OneOf(
+        ("c_compiler = 'gcc-15'\n", "c_compiler = 'gcc-15'\nllvm_major = @LLVM_MAJOR@\n"),
+        ("c_compiler = 'gcc-16'\n", "c_compiler = 'gcc-16'\nllvm_major = @LLVM_MAJOR@\n"),
     )],
 )
 
@@ -113,17 +244,33 @@ GENCONTROL = (
         if (gnutype := config.build.compiler_gnutype) and not llvm_major:
             if gnutype != config.defs_debianarch.gnutype:""",
         ),
-        (
-            "        packages_headers[0].depends.merge([relation_c_compiler_host])\n",
-            "        if llvm_major:\n"
-            "            # A plain external-module build consumes every tool named in\n"
-            "            # .kernelvariables.  clang alone does not install lld or the\n"
-            "            # versioned llvm-ar/nm/objcopy tools, so the headers package\n"
-            "            # must make the complete client-side closure installable.\n"
-            "            for relation_llvm_tool in relation_llvm_tools:\n"
-            "                packages_headers[0].depends.merge([relation_llvm_tool])\n"
-            "        else:\n"
-            "            packages_headers[0].depends.merge([relation_c_compiler_host])\n",
+        OneOf(
+            (
+                "        packages_headers[0].depends.merge([relation_c_compiler_host])\n",
+                "        if llvm_major:\n"
+                "            # A plain external-module build consumes every tool named in\n"
+                "            # .kernelvariables.  clang alone does not install lld or the\n"
+                "            # versioned llvm-ar/nm/objcopy tools, so the headers package\n"
+                "            # must make the complete client-side closure installable.\n"
+                "            for relation_llvm_tool in relation_llvm_tools:\n"
+                "                packages_headers[0].depends.merge([relation_llvm_tool])\n"
+                "        else:\n"
+                "            packages_headers[0].depends.merge([relation_c_compiler_host])\n",
+            ),
+            (
+                "        for p in packages_headers:\n"
+                "            p.depends.merge([relation_c_compiler_host])\n",
+                "        for p in packages_headers:\n"
+                "            if llvm_major:\n"
+                "                # A plain external-module build consumes every tool named in\n"
+                "                # .kernelvariables.  clang alone does not install lld or the\n"
+                "                # versioned llvm-ar/nm/objcopy tools, so the headers package\n"
+                "                # must make the complete client-side closure installable.\n"
+                "                for relation_llvm_tool in relation_llvm_tools:\n"
+                "                    p.depends.merge([relation_llvm_tool])\n"
+                "            else:\n"
+                "                p.depends.merge([relation_c_compiler_host])\n",
+            ),
         ),
         (
             "        else:\n"
@@ -391,17 +538,41 @@ FLAVOUR_CONFIGS = {
 
 DKC_GENCONTROL = (
     "debian/bin/gencontrol.py",
-    [(
-        "        packages_own.extend(\n"
-        "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
-        "        )\n"
-        "        if do_meta:\n"
-        "            packages_own.extend(\n"
-        "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch)\n"
-        "            )\n\n",
-        "        # Detached debug packages are intentionally outside the product.\n"
-        "        # Omitting their control stanzas also keeps the source package's\n"
-        "        # declared binary graph identical to the published graph.\n\n",
+    [OneOf(
+        (
+            "        packages_own.extend(\n"
+            "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
+            "        )\n"
+            "        if do_meta:\n"
+            "            packages_own.extend(\n"
+            "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch)\n"
+            "            )\n\n",
+            "        # Detached debug packages are intentionally outside the product.\n"
+            "        # Omitting their control stanzas also keeps the source package's\n"
+            "        # declared binary graph identical to the published graph.\n\n",
+        ),
+        (
+            "        packages_own.extend(\n"
+            "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
+            "        )\n"
+            "\n"
+            "        if do_meta:\n"
+            "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
+            "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
+            "            packages_own.extend(\n"
+            "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n"
+            "            packages_own.extend(\n"
+            "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch))\n",
+            "        # Detached debug packages are intentionally outside the product.\n"
+            "        # Omitting their control stanzas also keeps the source package's\n"
+            "        # declared binary graph identical to the published graph.\n"
+            "\n"
+            "        if do_meta:\n"
+            "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
+            "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
+            "            packages_own.extend(\n"
+            "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n",
+        ),
     )],
 )
 
@@ -423,25 +594,28 @@ DKC_DEBIAN_RELEASE = (
             "abi_suffix = '+deb14'\n"
             "revision_regex = '\\d+(\\.\\d+)?'\n",
         ),
-        (
-            "[build]\n"
-            "c_compiler = 'gcc-15'\n",
-            "# DKC publishes the kernel, its headers, and the versioned Kbuild\n"
-            "# support package.  Debian's docs, linux-source tarball, libc UAPI\n"
-            "# headers, installer udebs, and unversioned tools are separate\n"
-            "# products and must not leak into the DKC binary matrix.\n"
-            "[packages]\n"
-            "docs = false\n"
-            "installer = false\n"
-            "libc_dev = false\n"
-            "meta = true\n"
-            "source = false\n"
-            "tools_unversioned = false\n"
-            "tools_versioned = true\n"
-            "\n"
-            "[build]\n"
-            "c_compiler = 'gcc-15'\n",
-        ),
+        OneOf(*(
+            (
+                "[build]\n"
+                f"c_compiler = '{compiler}'\n",
+                "# DKC publishes the kernel, its headers, and the versioned Kbuild\n"
+                "# support package.  Debian's docs, linux-source tarball, libc UAPI\n"
+                "# headers, installer udebs, and unversioned tools are separate\n"
+                "# products and must not leak into the DKC binary matrix.\n"
+                "[packages]\n"
+                "docs = false\n"
+                "installer = false\n"
+                "libc_dev = false\n"
+                "meta = true\n"
+                "source = false\n"
+                "tools_unversioned = false\n"
+                "tools_versioned = true\n"
+                "\n"
+                "[build]\n"
+                f"c_compiler = '{compiler}'\n",
+            )
+            for compiler in ("gcc-15", "gcc-16")
+        )),
     ],
 )
 
@@ -560,16 +734,29 @@ esac
             "",
         )],
     ),
-    (
-        "debian/templates/image.meta.control.in",
-        [
-            ("Package: linux-image@source_suffix@@localversion@", "Package: dkc-linux-image@source_suffix@@localversion@"),
-            ("INSTALLDOCS_LINK_DOC=linux-base@source_suffix@@localversion@", "INSTALLDOCS_LINK_DOC=dkc-linux-base@source_suffix@@localversion@"),
-            (" linux-base@source_suffix@@localversion@", " dkc-linux-base@source_suffix@@localversion@"),
-            (" linux-image-@abiname@@localversion@", " dkc-linux-image-@abiname@@localversion@"),
-            ("linux-latest-modules-", "dkc-linux-latest-modules-"),
-            (" (meta-package)", " (metapackage)"),
-        ],
+    FileVariants(
+        (
+            "debian/templates/image.meta.control.in",
+            [
+                ("Package: linux-image@source_suffix@@localversion@", "Package: dkc-linux-image@source_suffix@@localversion@"),
+                ("INSTALLDOCS_LINK_DOC=linux-base@source_suffix@@localversion@", "INSTALLDOCS_LINK_DOC=dkc-linux-base@source_suffix@@localversion@"),
+                (" linux-base@source_suffix@@localversion@", " dkc-linux-base@source_suffix@@localversion@"),
+                (" linux-image-@abiname@@localversion@", " dkc-linux-image-@abiname@@localversion@"),
+                ("linux-latest-modules-", "dkc-linux-latest-modules-"),
+                (" (meta-package)", " (metapackage)"),
+            ],
+        ),
+        (
+            "debian/templates/image.meta.control.j2",
+            [
+                ("Package: linux-image{{source_suffix}}{{localversion}}", "Package: dkc-linux-image{{source_suffix}}{{localversion}}"),
+                ("INSTALLDOCS_LINK_DOC=linux-base{{source_suffix}}{{localversion}}", "INSTALLDOCS_LINK_DOC=dkc-linux-base{{source_suffix}}{{localversion}}"),
+                (" linux-base{{source_suffix}}{{localversion}}", " dkc-linux-base{{source_suffix}}{{localversion}}"),
+                (" linux-image-{{abiname}}{{localversion}}", " dkc-linux-image-{{abiname}}{{localversion}}"),
+                ("linux-latest-modules-", "dkc-linux-latest-modules-"),
+                (" (meta-package)", " (metapackage)"),
+            ],
+        ),
     ),
     (
         "debian/templates/image.meta.bug-presubj.in",
@@ -606,15 +793,39 @@ esac
             (" linux-headers-@abiname@-(flavour) package", " dkc-linux-headers-@abiname@-(flavour) package"),
         ],
     ),
+    FileVariants(
+        (
+            "debian/templates/headers.meta.control.in",
+            [
+                ("Package: linux-headers@source_suffix@@localversion@", "Package: dkc-linux-headers@source_suffix@@localversion@"),
+                ("INSTALLDOCS_LINK_DOC=linux-base@source_suffix@@localversion@", "INSTALLDOCS_LINK_DOC=dkc-linux-base@source_suffix@@localversion@"),
+                (" linux-base@source_suffix@@localversion@", " dkc-linux-base@source_suffix@@localversion@"),
+                (" linux-headers-@abiname@@localversion@", " dkc-linux-headers-@abiname@@localversion@"),
+                (" (module development meta-package)", " (module development metapackage)"),
+            ],
+        ),
+        (
+            "debian/templates/headers.meta.control.j2",
+            [
+                ("Package: linux-headers{{source_suffix}}{{localversion}}", "Package: dkc-linux-headers{{source_suffix}}{{localversion}}"),
+                ("INSTALLDOCS_LINK_DOC=linux-base{{source_suffix}}{{localversion}}", "INSTALLDOCS_LINK_DOC=dkc-linux-base{{source_suffix}}{{localversion}}"),
+                (" linux-base{{source_suffix}}{{localversion}}", " dkc-linux-base{{source_suffix}}{{localversion}}"),
+                (" linux-headers-{{abiname}}{{localversion}}", " dkc-linux-headers-{{abiname}}{{localversion}}"),
+                (" (module development meta-package)", " (module development metapackage)"),
+            ],
+        ),
+    ),
     (
-        "debian/templates/headers.meta.control.in",
-        [
-            ("Package: linux-headers@source_suffix@@localversion@", "Package: dkc-linux-headers@source_suffix@@localversion@"),
-            ("INSTALLDOCS_LINK_DOC=linux-base@source_suffix@@localversion@", "INSTALLDOCS_LINK_DOC=dkc-linux-base@source_suffix@@localversion@"),
-            (" linux-base@source_suffix@@localversion@", " dkc-linux-base@source_suffix@@localversion@"),
-            (" linux-headers-@abiname@@localversion@", " dkc-linux-headers-@abiname@@localversion@"),
-            (" (module development meta-package)", " (module development metapackage)"),
-        ],
+        "debian/templates/headers.tests-control.in",
+        [OneOf(
+            (
+                "Depends: linux-headers-@abiname@@localversion@\n",
+                "Depends: dkc-linux-headers-@abiname@@localversion@\n",
+            ),
+            # Older generations derive the test dependency from the renamed
+            # generated package instead of naming it in the template.
+            Absent("Depends:"),
+        )],
     ),
     (
         "debian/templates/headers.meta.maintscript.in",
@@ -922,6 +1133,11 @@ LLVM_TOOLS = [
 ]
 
 PATCHES = {
+    "0000-debian-13-kernel-image-layout.patch": [
+        LAYOUT_GENCONTROL,
+        LAYOUT_RULES,
+        *LAYOUT_TEMPLATES,
+    ],
     "0001-select-llvm-toolchain.patch": [CONFIG_SCHEMA, DEFINES, GENCONTROL],
     "0002-drive-kbuild-with-llvm.patch": [RULES_REAL],
     "0003-disable-random-module-signing.patch": [
@@ -942,6 +1158,13 @@ PATCHES = {
     ],
 }
 
+NEW_FILES = {
+    "0004-x86-64-flavours.patch": FLAVOUR_CONFIGS,
+    "0005-dkc-package-namespace.patch": {
+        "debian/templates/binary.postrm.in": BINARY_POSTRM,
+    },
+}
+
 
 def kernelvariables_block(llvm_major: int) -> str:
     lines = []
@@ -953,74 +1176,105 @@ def kernelvariables_block(llvm_major: int) -> str:
     return "".join(lines)
 
 
-def apply_edits(root: pathlib.Path, path: str, edits: list, llvm_major: int) -> str:
-    """Apply anchored edits to one file and return its unified diff."""
-    target = root / path
-    original = target.read_text()
-    updated = original
-    for anchor, replacement in edits:
-        if anchor not in updated:
-            raise SystemExit(
-                f"anchor no longer present in {path}; the Debian source changed "
-                f"and the overlay must be reviewed:\n---\n{anchor[:200]}\n---"
-            )
-        # Explicit markers rather than str.format: the replacements contain
-        # literal braces from the Python and Make code they insert, which
-        # format() would try to interpret as fields.
-        rendered = replacement.replace(
-            "@KERNELVARIABLES@", kernelvariables_block(llvm_major)
-        ).replace("@LLVM_MAJOR@", str(llvm_major))
-        updated = updated.replace(anchor, rendered, 1)
-
-    return "".join(
-        difflib.unified_diff(
-            original.splitlines(keepends=True),
-            updated.splitlines(keepends=True),
-            fromfile=f"a/{path}",
-            tofile=f"b/{path}",
-        )
-    )
+def _variant_matches(text: str, variant: tuple[str, str] | Absent) -> bool:
+    if isinstance(variant, Absent):
+        return variant.marker not in text
+    return text.count(variant[0]) == 1
 
 
-def add_file(root: pathlib.Path, path: str, content: str) -> str:
-    """Return a creation diff, refusing to hide an upstream file collision."""
-    target = root / path
-    if target.exists():
+def apply_edit(path: str, text: str, edit: object, llvm_major: int) -> str:
+    """Apply one exact edit, choosing the single matching reviewed spelling."""
+    variants = edit.variants if isinstance(edit, OneOf) else (edit,)
+    matches = [variant for variant in variants if _variant_matches(text, variant)]
+    if len(matches) != 1:
+        first = variants[0]
+        anchor = first.marker if isinstance(first, Absent) else first[0]
+        problem = "no longer matches exactly once" if not matches else "is ambiguous"
         raise SystemExit(
-            f"new overlay file {path} now exists upstream; review the collision"
+            f"anchor {problem} in {path}; the Debian source changed and the "
+            f"overlay must be reviewed:\n---\n{anchor[:200]}\n---"
         )
+    variant = matches[0]
+    if isinstance(variant, Absent):
+        return text
+    anchor, replacement = variant
+    # Explicit markers rather than str.format: the replacements contain
+    # literal braces from the Python and Make code they insert, which
+    # format() would try to interpret as fields.
+    rendered = replacement.replace(
+        "@KERNELVARIABLES@", kernelvariables_block(llvm_major)
+    ).replace("@LLVM_MAJOR@", str(llvm_major))
+    return text.replace(anchor, rendered, 1)
+
+
+def unified_diff(path: str, before: str | None, after: str) -> str:
     return "".join(
         difflib.unified_diff(
-            [],
-            content.splitlines(keepends=True),
-            fromfile="/dev/null",
+            [] if before is None else before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile="/dev/null" if before is None else f"a/{path}",
             tofile=f"b/{path}",
         )
     )
+
+
+def generate(root: pathlib.Path, llvm_major: int) -> dict[str, str]:
+    """Return every non-empty patch of the ordered series for one source tree."""
+    tree: dict[str, str] = {}
+
+    def current(path: str) -> str:
+        if path not in tree:
+            tree[path] = (root / path).read_text()
+        return tree[path]
+
+    patches: dict[str, str] = {}
+    for name, groups in PATCHES.items():
+        chunks = []
+        for group in groups:
+            if isinstance(group, FileVariants):
+                present = [item for item in group.groups if (root / item[0]).is_file()]
+                if len(present) != 1:
+                    names = ", ".join(item[0] for item in group.groups)
+                    raise SystemExit(
+                        f"exactly one reviewed file name must exist: {names}"
+                    )
+                group = present[0]
+            path, edits = group
+            before = current(path)
+            after = before
+            for edit in edits:
+                after = apply_edit(path, after, edit, llvm_major)
+            tree[path] = after
+            chunks.append(unified_diff(path, before, after))
+        for path, content in sorted(NEW_FILES.get(name, {}).items()):
+            if (root / path).exists() or path in tree:
+                raise SystemExit(
+                    f"new overlay file {path} now exists upstream; review the collision"
+                )
+            tree[path] = content
+            chunks.append(unified_diff(path, None, content))
+        if patch := "".join(chunks):
+            patches[name] = patch
+    return patches
 
 
 def main() -> int:
     if len(sys.argv) != 4:
-        print("usage: generate-overlay-patches.py <source-root> <llvm-major> <patch-name>",
-              file=sys.stderr)
+        print(
+            "usage: generate-overlay-patches.py <source-root> <llvm-major> <output-dir>",
+            file=sys.stderr,
+        )
         return 2
     root = pathlib.Path(sys.argv[1])
     llvm_major = int(sys.argv[2])
-    name = sys.argv[3]
-
-    if name not in PATCHES:
-        print(f"unknown patch {name!r}; known: {sorted(PATCHES)}", file=sys.stderr)
+    output = pathlib.Path(sys.argv[3])
+    if not output.is_dir() or any(output.iterdir()):
+        print("output directory must exist and be empty", file=sys.stderr)
         return 2
 
-    for path, edits in PATCHES[name]:
-        sys.stdout.write(apply_edits(root, path, edits, llvm_major))
-    if name == "0004-x86-64-flavours.patch":
-        for path, content in sorted(FLAVOUR_CONFIGS.items()):
-            sys.stdout.write(add_file(root, path, content))
-    if name == "0005-dkc-package-namespace.patch":
-        sys.stdout.write(
-            add_file(root, "debian/templates/binary.postrm.in", BINARY_POSTRM)
-        )
+    for name, patch in generate(root, llvm_major).items():
+        (output / name).write_text(patch)
+        print(f"generated {name} ({len(patch.splitlines())} lines)", file=sys.stderr)
     return 0
 
 

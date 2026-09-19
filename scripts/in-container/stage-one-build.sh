@@ -23,6 +23,14 @@ esac
 	echo "invalid LLVM major" >&2
 	exit 2
 }
+# Fail before any download when no reviewed source profile covers the version.
+profile_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" directory)"
+overlay_dir="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" overlay-directory)"
+DKC_BUILD_PROFILES="$(PYTHONPATH=/work/repo python3 -m dkc.sourceprofile \
+	/work/repo "$source_version" build-profiles)"
+echo "source profile: ${profile_dir#/work/repo/}" >&2
 
 validate_member() {
 	local url="$1" name="$2" suffix="$3"
@@ -105,12 +113,9 @@ dpkg-source -x "$inputs/$dsc_name" "$validated_source" >/dev/null
 	echo "extracted Debian source version differs from discovery" >&2
 	exit 1
 }
-for patch in /work/repo/debian-overlay/patches/*.patch; do
-	patch -d "$validated_source" -p1 --batch --forward --silent <"$patch"
+for patch in "$overlay_dir"/*.patch; do
+	patch -d "$validated_source" -p1 --batch --forward --silent --fuzz=0 <"$patch"
 done
-# shellcheck disable=SC1091,SC2153  # repository file streamed into the container
-. /work/repo/config/build-profiles
-# shellcheck disable=SC2153  # assigned by the sourced build-profiles file
 export DEB_BUILD_PROFILES="$DKC_BUILD_PROFILES"
 (
 	cd "$validated_source"

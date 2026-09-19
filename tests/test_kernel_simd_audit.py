@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import pathlib
 import sys
@@ -10,8 +11,12 @@ from collections import Counter
 import pytest
 
 
+from dkc.sourceprofile import select_profile
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "in-container" / "audit-kernel-simd.py"
+PROFILE_7_1 = select_profile(ROOT, "7.1.7-1")
+PROFILE_7_2 = select_profile(ROOT, "7.2.6-1")
 spec = importlib.util.spec_from_file_location("audit_kernel_simd", SCRIPT)
 assert spec and spec.loader
 audit = importlib.util.module_from_spec(spec)
@@ -26,9 +31,7 @@ def test_audit_has_no_non_fatal_discovery_mode() -> None:
 
 
 def test_manual_allowlist_is_exact_sorted_and_source_versioned() -> None:
-    version, entries = audit.load_allowlist(
-        ROOT / "config/flavors/intentional-simd-symbols.toml"
-    )
+    version, entries = audit.load_allowlist(PROFILE_7_1)
     assert version == "7.1.7-1"
     assert len(entries) == 233
     assert list(entries) == sorted(entries)
@@ -43,12 +46,8 @@ def test_manual_allowlist_is_exact_sorted_and_source_versioned() -> None:
     assert ("vmlinux", "symbol", "fpu__drop") in entries
     assert ("vmlinux", "symbol", "restore_fpregs_from_fpstate") in entries
 
-    _version, thin_entries = audit.load_allowlist(
-        ROOT / "config/flavors/intentional-simd-symbols.toml", "thin"
-    )
-    _version, full_entries = audit.load_allowlist(
-        ROOT / "config/flavors/intentional-simd-symbols.toml", "full"
-    )
+    _version, thin_entries = audit.load_allowlist(PROFILE_7_1, "thin")
+    _version, full_entries = audit.load_allowlist(PROFILE_7_2, "full")
     assert len(thin_entries) == 227
     assert len(full_entries) == 233
     assert (
@@ -63,23 +62,21 @@ def test_manual_allowlist_is_exact_sorted_and_source_versioned() -> None:
     ) in full_entries
 
 
-def test_allowlist_rejects_invalid_lto_mode_sets(tmp_path: pathlib.Path) -> None:
-    for modes in ('["thin", "none"]', '[]', '["future"]', '["full", "full"]'):
-        policy = tmp_path / "policy.toml"
-        policy.write_text(
-            f'''schema_version = 1
-source_version = "7.1.7-1"
-
-[[entry]]
-artifact = "vmlinux"
-symbol = "reviewed"
-reason = "fixture"
-lto_modes = {modes}
-''',
-            encoding="utf-8",
+def test_allowlist_rejects_invalid_lto_mode_sets() -> None:
+    for modes in (["thin", "none"], [], ["future"], ["full", "full"]):
+        profile = dataclasses.replace(
+            PROFILE_7_1,
+            simd_allowlist=(
+                {
+                    "artifact": "vmlinux",
+                    "symbol": "reviewed",
+                    "reason": "fixture",
+                    "lto_modes": modes,
+                },
+            ),
         )
         with pytest.raises(SystemExit, match="invalid SIMD allowlist LTO modes"):
-            audit.load_allowlist(policy, "thin")
+            audit.load_allowlist(profile, "thin")
 
 
 def test_register_matcher_covers_all_forbidden_vector_state() -> None:
@@ -124,10 +121,7 @@ def test_implicit_fpu_and_extended_state_instructions_are_detected() -> None:
 def test_fpu_symbols_are_derived_from_exact_reviewed_objects(
     tmp_path: pathlib.Path, monkeypatch: object
 ) -> None:
-    import tomllib
-
-    policy = ROOT / "config/flavors/intentional-fpu-objects.toml"
-    objects = tomllib.loads(policy.read_text(encoding="utf-8"))["objects"]
+    objects = PROFILE_7_1.fpu.objects
     for relative in objects:
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +132,7 @@ def test_fpu_symbols_are_derived_from_exact_reviewed_objects(
         return "".join(f"{stem}_exact_{index} T {index:x} 1\n" for index in range(10))
 
     monkeypatch.setattr(audit.subprocess, "check_output", fake_nm)  # type: ignore[attr-defined]
-    entries, object_count = audit.derive_fpu_symbols(tmp_path, policy, 21)
+    entries, object_count = audit.derive_fpu_symbols(tmp_path, PROFILE_7_1, 21)
     assert object_count == 66
     assert len(entries) >= 500
     assert {
@@ -234,9 +228,7 @@ def test_full_lto_observation_replay_records_numeric_aliases() -> None:
 
 
 def test_thin_lto_symbol_aliases_resolve_to_the_existing_reviewed_policy() -> None:
-    _version, allowlist = audit.load_allowlist(
-        ROOT / "config/flavors/intentional-simd-symbols.toml"
-    )
+    _version, allowlist = audit.load_allowlist(PROFILE_7_1)
     for symbol in ("dcn_bw_pow", "dml_core_mode_programming"):
         entry = audit.AllowEntry(
             "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko",
@@ -306,7 +298,9 @@ def test_derived_fpu_inventory_round_trips_without_build_objects(
         )
         entries[entry.key] = entry
     path = tmp_path / "derived.json"
-    audit.write_derived_fpu_inventory(path, entries, 66, 21)
-    loaded, object_count = audit.load_derived_fpu_inventory(path, 21)
+    audit.write_derived_fpu_inventory(path, entries, 66, 21, PROFILE_7_1)
+    loaded, object_count = audit.load_derived_fpu_inventory(path, 21, PROFILE_7_1)
     assert loaded == entries
     assert object_count == 66
+    with pytest.raises(SystemExit, match="derived FPU inventory identity is invalid"):
+        audit.load_derived_fpu_inventory(path, 21, PROFILE_7_2)

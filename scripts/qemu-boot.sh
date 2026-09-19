@@ -193,7 +193,7 @@ if dkc::archive_worktree |
 	:
 else
 	rc=$?
-	tail -n 120 "$stage/evidence-preparation.log" >&2 || true
+	dkc::warn "VM input preparation failed; evidence-preparation.log is retained in the boot evidence"
 	dkc::die "QEMU input preparation failed with rc=${rc}"
 fi
 
@@ -278,6 +278,14 @@ run_flavor() {
 	fi
 	if [ "$qemu_rc" -ne 0 ] || [ "$guest_status" != PASS ]; then
 		dkc::warn "${flavor} boot validation failed: qemu_rc=${qemu_rc} guest=${guest_status}"
+		# One line, not a dump: the guest's own account, its console and the
+		# per-test logs all travel in the retained evidence and its artifact.
+		if [ -f "$scenario/guest/result.env" ]; then
+			dkc::warn "${flavor} guest stopped at stage $(awk -F= '$1 == "final_stage" {print $2; exit}' \
+				"$scenario/guest/result.env"); events.log and failure-tail.log are retained in the boot evidence"
+		else
+			dkc::warn "${flavor} guest produced no result; serial.log is retained in the boot evidence"
+		fi
 		flavor_status=FAIL
 	else
 		flavor_status=PASS

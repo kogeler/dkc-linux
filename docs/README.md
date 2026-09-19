@@ -46,8 +46,9 @@ retry, and public APT delivery have passed.
 - [debian-overlay/README.md](../debian-overlay/README.md) and
   [debian-overlay/COMPATIBILITY.md](../debian-overlay/COMPATIBILITY.md) — tracked
   Debian packaging changes and the compatibility gap they close.
-- [config/flavors/README.md](../config/flavors/README.md) — flavor and SIMD
-  policy.
+- [config/flavors/README.md](../config/flavors/README.md) — flavor policy.
+- [config/source-profiles/README.md](../config/source-profiles/README.md) —
+  per-series Debian source profiles: overlay, SIMD, audit, and selftest policy.
 - [LICENSES/README.md](../LICENSES/README.md) — per-path licensing and inherited
   Linux/Debian terms.
 - [schemas/README.md](../schemas/README.md) — typed machine-readable handoffs.
