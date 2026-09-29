@@ -5,6 +5,12 @@ actually been collected. The implementation, destructive storage cases, first
 hosted production lifecycle, generation-zero publication, authenticated no-op
 retry, and public APT delivery have passed.
 
+## Project
+
+- [CHANGES.md](../CHANGES.md) — versioned summary of the changes that users,
+  operators, and contributors notice, and the rules for recording them and
+  cutting a version.
+
 ## Users
 
 - [USER_INSTALL.md](USER_INSTALL.md) — trust bootstrap, flavor selection,

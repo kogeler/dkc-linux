@@ -75,6 +75,7 @@ documentation.
 | Machine-readable handoffs | [schemas/README.md](schemas/README.md) |
 | Licensing and inherited Debian/Linux obligations | [LICENSES/README.md](LICENSES/README.md) |
 | Known remaining limitations | [TODO.md](TODO.md) |
+| Recording changes and project versions | [CHANGES.md](CHANGES.md) |
 
 ## Change and verification flow
 
@@ -82,7 +83,10 @@ documentation.
 2. Read the routed documentation and the implementation/tests that define the
    behavior being changed.
 3. Make the smallest coherent change, updating documentation and tests when the
-   public contract changes.
+   public contract changes. Add an entry under `## Unreleased` in
+   [CHANGES.md](CHANGES.md) for any change users, operators, or contributors can
+   notice, following the rules at the end of that file. Never rename
+   `Unreleased` to a version without an explicit operator instruction.
 4. Run the narrowest relevant checks first, then `make fast` for changes that
    can affect the tracked project contract. Run expensive build, VM, or live
    integration targets only when the task requires their evidence.

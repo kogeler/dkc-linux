@@ -44,7 +44,9 @@ must not overlap.
    profile's overlay through `scripts/in-container/generate-overlay-patches.py`.
    Generation fails and names the anchor when an edit no longer applies; add the
    new reviewed spelling to the generator rather than letting a patch apply with
-   fuzz.
+   fuzz. Keep each anchor to the lines the edit changes: builds apply these
+   anchored edits, so text an anchor does not include may change in a later
+   Debian upload of the series without stopping the build.
 3. Run `make release-preflight` against the new source.
 4. Build, attest, and qualify one flavor, then reconcile `profile.toml` with the
    exact SIMD and FPU findings that the build reports.

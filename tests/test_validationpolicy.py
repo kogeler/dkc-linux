@@ -17,6 +17,7 @@ def test_validation_policy_is_complete_but_independent_from_container_images(
     assert {
         "config/source-profiles/7.2/validation.toml",
         "dkc/release_cache.py",
+        "dkc/sourcepatch.py",
         "dkc/validationpolicy.py",
         "scripts/in-container/audit-kernel-simd.py",
         "scripts/in-container/build-kselftest.sh",

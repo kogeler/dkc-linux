@@ -166,7 +166,8 @@ take over.
 
 Start with the [documentation index](docs/README.md) for build internals,
 testing, security, publishing, maintenance, and validation. `make help` remains
-the exact command-line reference.
+the exact command-line reference. Every noticeable change is recorded in
+[CHANGES.md](CHANGES.md), which also defines the project versioning.
 
 ## Licensing and source
 

@@ -113,9 +113,8 @@ dpkg-source -x "$inputs/$dsc_name" "$validated_source" >/dev/null
 	echo "extracted Debian source version differs from discovery" >&2
 	exit 1
 }
-for patch in "$overlay_dir"/*.patch; do
-	patch -d "$validated_source" -p1 --batch --forward --silent --fuzz=0 <"$patch"
-done
+python3 /work/repo/scripts/in-container/generate-overlay-patches.py \
+	--apply "$validated_source" "$llvm_major" "$overlay_dir"
 export DEB_BUILD_PROFILES="$DKC_BUILD_PROFILES"
 (
 	cd "$validated_source"

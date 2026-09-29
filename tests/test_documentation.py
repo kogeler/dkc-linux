@@ -77,3 +77,35 @@ def test_documented_project_make_targets_exist() -> None:
                 assert target in targets, (
                     f"{document.relative_to(ROOT)} names unknown make target {target}"
                 )
+
+
+CHANGE_GROUPS = ("Added", "Changed", "Fixed", "Removed", "Security")
+VERSION_HEADING = re.compile(r"^(\d+)\.(\d+)\.(\d+) - (\d{4}-\d{2}-\d{2})$")
+
+
+def test_changes_file_follows_its_recording_rules() -> None:
+    text = (ROOT / "CHANGES.md").read_text(encoding="utf-8")
+    assert text.startswith("# Changes\n")
+    sections: list[tuple[str, list[str]]] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            sections.append((line[3:], []))
+        elif line.startswith("### ") and sections:
+            sections[-1][1].append(line[4:])
+    titles = [title for title, _ in sections]
+    assert titles[0] == "Unreleased"
+    assert titles[-1] == "Maintaining this file"
+    releases = []
+    for title, groups in sections[1:-1]:
+        match = VERSION_HEADING.match(title)
+        assert match, f"CHANGES.md has a malformed version heading: {title!r}"
+        version = tuple(int(part) for part in match.groups()[:3])
+        releases.append((version, match[4]))
+        if version != (0, 1, 0):
+            assert groups == [group for group in CHANGE_GROUPS if group in groups], title
+    assert releases, "CHANGES.md records no version"
+    assert releases == sorted(releases, reverse=True)
+    assert len({version for version, _ in releases}) == len(releases)
+    assert sections[0][1] == [group for group in CHANGE_GROUPS if group in sections[0][1]]
+    for document in ("AGENTS.md", "README.md", "docs/README.md"):
+        assert "CHANGES.md" in (ROOT / document).read_text(encoding="utf-8"), document

@@ -24,6 +24,7 @@ def validation_policy_paths(
         "config/qemu-image.env",
         "dkc/evidence.py",
         "dkc/release_cache.py",
+        "dkc/sourcepatch.py",
         "dkc/sourceprofile.py",
         "dkc/validationpolicy.py",
         "mk/vm.mk",

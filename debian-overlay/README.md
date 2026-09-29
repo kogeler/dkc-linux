@@ -26,6 +26,16 @@ publishes v2/v3 only. The publication ABI and source version
 are derived from the complete build-input digest at build time; they are not
 hard-coded into a generated patch.
 
+The patches are the reviewed record of the overlay, not a replay script.
+`release-preflight` and every build apply the generator's anchored edits to the
+authenticated source with `generate-overlay-patches.py --apply`, and first
+require each committed patch to describe exactly the lines those edits change.
+A Debian or upstream update that only moves or rewrites neighbouring lines
+therefore still builds, and the log names the patches whose context differs
+from the reviewed source. A changed anchor, a patch that no longer matches the
+generator, a different LLVM major, or a missing or extra patch stops the build
+before the tree is modified.
+
 Binary package names and header payload paths are deliberately separate. The
 packages are DKC-namespaced, while their unique installed paths remain the
 standard `/usr/src/linux-headers-<KREL>` and

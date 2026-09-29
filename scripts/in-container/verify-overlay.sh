@@ -132,10 +132,10 @@ note "${stock_compiler}-for-host in generated control" "$(grep -c 'gcc-[0-9]*-fo
 
 echo
 echo "=== applying the overlay ==="
-for patch in "$PATCH_DIR"/*.patch; do
-	echo "  $(basename "$patch")"
-	patch -p1 --batch --forward --silent --fuzz=0 <"$patch"
-done
+# Anchored edits, checked against the committed patches: context that moved
+# since the reviewed source is tolerated, a different changed line is not.
+python3 /work/src/scripts/in-container/generate-overlay-patches.py \
+	--apply . "$LLVM_MAJOR" "$PATCH_DIR"
 
 echo
 echo "=== regenerating with Debian's own generator ==="

@@ -189,11 +189,19 @@ carries that one-line change for the 7.1 source; Linux 7.2 already includes the
 fix, so its profile does not carry the patch. The corrected test passed repeated
 runs on both the stock and candidate kernels.
 
-The build applies each patch of the source profile with zero fuzz and records
-its SHA-256 in `kselftest-source-patches.sha256`. A source update that has
-already incorporated a fix, or changed the surrounding code, must fail the old
-patch application. Review the new upstream source, carry the patch into the new
-profile or leave it behind deliberately, and repeat the stock/candidate check. This patch is derived from Linux and follows
+The build applies each patch of the source profile with
+`python3 -m dkc.sourcepatch`, records its SHA-256 in
+`kselftest-source-patches.sha256`, and records how it applied in
+`kselftest-source-patches.results` and in `source_patch_results` of
+`kselftest-build.json`. The lines a patch removes and adds must match exactly;
+its context need not. A later Debian upload of the same series therefore does
+not stop the selftest build merely because it edited code next to a fix
+(`applied-context-moved`) or already carries the fix (`already-present`, and the
+source is left untouched). The patch still fails when a line it removes has
+changed, when it matches in more than one place, or when only part of the fix is
+present. Review a moved or already-present result at the next profile update:
+drop a patch the source now carries, and repeat the stock/candidate check when
+the surrounding test code changed. This patch is derived from Linux and follows
 the per-path license policy in `LICENSES/README.md`; the root MIT license does
 not relicense it.
 
@@ -229,7 +237,8 @@ Upstream repaired the test in
 which creates an actual character device instead.
 `tests/integration/kselftest-patches/7.2/0002-landlock-audit-make-char-chardev.patch`
 carries that one-line change for this source, so the assertion tests what the
-kernel actually reports. Do not omit `landlock:fs_test` instead: the remaining
+kernel actually reports. Linux 7.2.8 includes the upstream commit, and the build
+records the patch as `already-present` there. Do not omit `landlock:fs_test` instead: the remaining
 439 assertions are the Landlock filesystem coverage of this gate.
 
 ## Rules for changing the profile
@@ -252,8 +261,9 @@ expected. Before changing the selection:
 
 An upstream test patch is acceptable only when it fixes the test fixture rather
 than weakening the behavior under test, has reviewable provenance, applies to
-the pinned source without fuzz, is included in the evidence manifest, and is
-validated on both stock and candidate kernels. A local wrapper must invoke a
+the pinned source without fuzz when it is added, is included in the evidence
+manifest, and is validated on both stock and candidate kernels. Later uploads of
+the series may move its context or already carry the fix, as described above. A local wrapper must invoke a
 real named upstream subtest and must remain visible in the profile and bundle
 manifest.
 
@@ -266,9 +276,9 @@ Periodic manual v4 maintenance follows the separate policy in
 ## Evidence to inspect
 
 A successful selftest-only build contains `kselftest-build.json`, the exact
-profile, target and selector lists, source-patch manifest, installed-file
-manifest, compressed build log, portable bundle, and an evidence checksum
-manifest. The QEMU result contains:
+profile, target and selector lists, source-patch manifest and per-patch results,
+installed-file manifest, compressed build log, portable bundle, and an evidence
+checksum manifest. The QEMU result contains:
 
 - `kselftest-summary.env` for selected, omitted, planned, executed, passed,
   skipped, nested-skipped, and failed counts;

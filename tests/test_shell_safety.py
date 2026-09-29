@@ -834,9 +834,15 @@ def test_qemu_boot_uses_immutable_overlays_and_bounded_result_disks() -> None:
     assert "/input/source" not in (
         ROOT / "scripts" / "build-kselftest-flavor.sh"
     ).read_text()
-    assert "kselftest-source-patches.sha256" in (
+    selftest_flavor = (
         ROOT / "scripts" / "in-container" / "build-kselftest-flavor.sh"
     ).read_text()
+    assert "kselftest-source-patches.sha256" in selftest_flavor
+    assert "kselftest-source-patches.results" in selftest_flavor
+    assert 'report["source_patch_results"]' in selftest_flavor
+    # patch(1) --batch silently reverts a fix the source already carries.
+    assert "python3 -m dkc.sourcepatch" in selftest_flavor
+    assert "patch --batch" not in selftest_flavor
     assert '"lto_mode": lto_mode' in (
         ROOT / "scripts" / "in-container" / "build-kselftest.sh"
     ).read_text()

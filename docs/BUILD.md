@@ -78,7 +78,11 @@ Regenerate one profile's overlay against its source with:
 make overlay-patches
 ```
 
-The target writes only the profile that covers `DKC_SOURCE_VERSION`. A source
+The target writes only the profile that covers `DKC_SOURCE_VERSION`. Preflight
+and builds apply the overlay as anchored edits and accept a newer Debian upload
+of the same series whose changes only move the patches' context; regenerate
+when the log reports that context differs and the reviewed patches should
+follow the new source. A source
 that no profile covers stops discovery, preflight, and the build with the exact
 version it could not place; see
 [config/source-profiles/README.md](../config/source-profiles/README.md) for the

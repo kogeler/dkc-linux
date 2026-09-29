@@ -115,11 +115,15 @@ would otherwise compile a module with GCC against a kernel built with Clang.
 ## Revalidation trigger
 
 The overlay is generated from anchored text by
-`scripts/in-container/generate-overlay-patches.py`. When Debian publishes a new
-`src:linux` and any anchor no longer matches, generation fails and names the
-anchor rather than applying with fuzz into a subtly different tree. An edit that
+`scripts/in-container/generate-overlay-patches.py`, and builds apply the same
+anchored edits rather than the patches' fixed context. Anchors hold only the
+lines an edit changes, so a new `src:linux` that edits neighbouring lines still
+builds. When any anchor no longer matches, the build fails and names the anchor
+rather than applying with fuzz into a subtly different tree. An edit that
 Debian spells differently between packaging generations keeps every reviewed
-spelling, so one generator still regenerates an older series' overlay.
+spelling, so one generator still regenerates an older series' overlay; the GCC
+version Debian selects, which the overlay replaces, is matched by its reviewed
+line shape instead.
 
 Re-run all three audits for every new `DEBIAN_SOURCE_VERSION`, and re-check this
 report whenever `defines.toml` changes `c_compiler`, `enable_rust`, or
