@@ -93,9 +93,8 @@ trap 'record_controller_error "$?" "$LINENO"' ERR
 
 echo "[$label] extracting the verified source inventory with network disabled" >&2
 dpkg-source -x "/work/inputs/$dsc_name" "$prepared_source" >/dev/null
-for overlay in "$overlay_dir"/*.patch; do
-	patch -d "$prepared_source" -p1 --batch --forward --silent --fuzz=0 <"$overlay"
-done
+python3 /work/repo/scripts/in-container/generate-overlay-patches.py \
+	--apply "$prepared_source" "$llvm_major" "$overlay_dir"
 python3 /work/repo/scripts/in-container/prepare-build-identity.py \
 	"$prepared_source" /work/repo /work/inputs "$dkc_revision" "$lto_mode"
 /work/repo/scripts/in-container/build-source-package.sh \

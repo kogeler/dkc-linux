@@ -191,7 +191,9 @@ dpkg-source --extract "$flavor_root/source/$dsc" /work/source-tree >/dev/null
 [ -d /work/source-tree/tools/testing/selftests ]
 
 patch_manifest="$evidence/kselftest-source-patches.sha256"
+patch_results="$evidence/kselftest-source-patches.results"
 : >"$patch_manifest"
+: >"$patch_results"
 # A profile may legitimately need no patch when its upstream source already
 # carries every fix; the manifest then records that exactly nothing was applied.
 source_patches=()
@@ -207,12 +209,20 @@ for source_patch in "${source_patches[@]}"; do
 		cd /work/repo
 		sha256sum "${source_patch#/work/repo/}"
 	) >>"$patch_manifest"
-	patch --batch --fuzz=0 --directory=/work/source-tree --strip=1 <"$source_patch"
+	# The changed lines must match exactly; context that moved since the pinned
+	# source is tolerated, and a fix the source already carries is recorded as
+	# already present instead of being reverted or applied twice.
+	patch_result="$(PYTHONPATH=/work/repo python3 -m dkc.sourcepatch \
+		/work/source-tree "$source_patch")"
+	printf '%s\t%s\n' "${source_patch#/work/repo/}" "$patch_result" >>"$patch_results"
+	printf 'kselftest source patch %s: %s\n' "${source_patch##*/}" "$patch_result" >&2
 done
-[ "$(wc -l <"$patch_manifest")" -eq "${#source_patches[@]}" ] || {
-	printf 'kselftest source patch manifest differs from the source profile\n' >&2
-	exit 1
-}
+for manifest in "$patch_manifest" "$patch_results"; do
+	[ "$(wc -l <"$manifest")" -eq "${#source_patches[@]}" ] || {
+		printf 'kselftest source patch manifest differs from the source profile\n' >&2
+		exit 1
+	}
+done
 
 SOURCE_DATE_EPOCH="$(python3 -c \
 	'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["publication_source_date_epoch"])' \
@@ -224,13 +234,13 @@ export SOURCE_DATE_EPOCH
 
 python3 - "$evidence/kselftest-build.json" "$attestation" \
 	"$flavor_root/evidence/source-package/source-package.json" \
-	"$patch_manifest" <<'PY'
+	"$patch_manifest" "$patch_results" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
 
-report_path, attestation_path, source_report_path, patch_manifest = map(
+report_path, attestation_path, source_report_path, patch_manifest, patch_results = map(
     pathlib.Path, sys.argv[1:]
 )
 report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -248,6 +258,9 @@ report["source_patch_manifest_sha256"] = hashlib.sha256(
     patch_manifest.read_bytes()
 ).hexdigest()
 report["source_patch_count"] = len(patch_manifest.read_text(encoding="utf-8").splitlines())
+report["source_patch_results"] = dict(
+    line.split("\t", 1) for line in patch_results.read_text(encoding="utf-8").splitlines()
+)
 report_path.write_text(
     json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
 )

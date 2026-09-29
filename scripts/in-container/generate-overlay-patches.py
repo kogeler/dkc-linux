@@ -19,13 +19,33 @@ older kernel series after a newer one has been added.
 Patches form an ordered series and each one is generated against the result of
 the previous ones, exactly as `patch` applies them.
 
-Runs inside the build container and writes one file per non-empty patch.
+An anchor holds only the lines an edit changes, plus the fewest unchanged lines
+that place an insertion. Neighbouring text is not reviewed policy: upstream
+stable updates routinely add lines next to an edit, and an anchor that spans
+them turns every such update into a failed build. A value Debian changes on its
+own schedule that the overlay does not depend on, such as the GCC version it
+selects, is a `LinePattern` over the reviewed shape of its line.
+
+Builds therefore apply these anchored edits (`--apply`) instead of replaying the
+committed patches, whose three lines of context would reject any neighbouring
+change. `--apply` requires every committed patch to describe exactly the lines
+the generator changes in the tree being built. Context and hunk positions may
+differ from the reviewed source; a different changed line may not, so a stale
+patch or a different Debian spelling still stops the build.
+
+Runs inside the build container:
+
+    generate-overlay-patches.py <source-root> <llvm-major> <output-dir>
+        writes one file per non-empty patch;
+    generate-overlay-patches.py --apply <source-root> <llvm-major> <patch-dir>
+        edits the tree in place after checking the committed patches.
 """
 
 from __future__ import annotations
 
 import difflib
 import pathlib
+import re
 import sys
 from dataclasses import dataclass
 
@@ -44,6 +64,19 @@ class OneOf:
         if len(variants) < 2:
             raise ValueError("OneOf needs at least two reviewed spellings")
         self.variants = variants
+
+
+@dataclass(frozen=True)
+class LinePattern:
+    """One whole line whose reviewed shape, not its exact value, is the anchor.
+
+    For a value Debian changes on its own schedule that the overlay does not
+    depend on. `regex` must match exactly one complete line; `@LINE@` in the
+    replacement stands for that line, including its newline.
+    """
+
+    regex: str
+    replacement: str
 
 
 class FileVariants:
@@ -165,12 +198,12 @@ CONFIG_SCHEMA = (
     )],
 )
 
+# Debian moves the GCC it selects on its own schedule (gcc-15 in 7.1, gcc-16 in
+# 7.2). The overlay replaces whichever one it is, and release-preflight fails if
+# any generated relation still names it, so the version is not pinned here.
 DEFINES = (
     "debian/config/defines.toml",
-    [OneOf(
-        ("c_compiler = 'gcc-15'\n", "c_compiler = 'gcc-15'\nllvm_major = @LLVM_MAJOR@\n"),
-        ("c_compiler = 'gcc-16'\n", "c_compiler = 'gcc-16'\nllvm_major = @LLVM_MAJOR@\n"),
-    )],
+    [LinePattern(r"c_compiler = 'gcc-[0-9]+'", "@LINE@llvm_major = @LLVM_MAJOR@\n")],
 )
 
 GENCONTROL = (
@@ -298,8 +331,7 @@ RULES_REAL = (
     "debian/rules.real",
     [
         (
-            "MAKE_CLEAN = $(setup_env) $(MAKE) \\\n"
-            "\tKCFLAGS=-fdebug-prefix-map=$(CURDIR)/= \\\n",
+            "MAKE_CLEAN = $(setup_env) $(MAKE) \\\n",
             "# LLVM=-<major> belongs on the command line, not in .kernelvariables:\n"
             "# the kernel binds CC, LD, AR and the rest from $(LLVM) near the top of\n"
             "# its Makefile, while Debian includes .kernelvariables about 130 lines\n"
@@ -307,14 +339,10 @@ RULES_REAL = (
             "# parsing, and MAKE_CLEAN wraps every Kbuild entry point, so setting it\n"
             "# once here covers configuration, kernel, modules and headers alike.\n"
             "MAKE_CLEAN = $(setup_env) $(MAKE) \\\n"
-            "\t$(if $(LLVM_MAJOR),LLVM=-$(LLVM_MAJOR)) \\\n"
-            "\tKCFLAGS=-fdebug-prefix-map=$(CURDIR)/= \\\n",
+            "\t$(if $(LLVM_MAJOR),LLVM=-$(LLVM_MAJOR)) \\\n",
         ),
         (
-            "ifeq (./,$(dir $(C_COMPILER)))\n"
-            "\techo 'CC = $$(if $$(DEBIAN_KERNEL_USE_CCACHE),$$(CCACHE)) "
-            "$$(CROSS_COMPILE)$(C_COMPILER)' >> '$(DIR)/.kernelvariables'\n"
-            "else\n",
+            "ifeq (./,$(dir $(C_COMPILER)))\n",
             "ifdef LLVM_MAJOR\n"
             "# .kernelvariables is included too late for LLVM= to select the toolchain,\n"
             "# so every tool is set by name. That is also what an out-of-tree build\n"
@@ -323,10 +351,7 @@ RULES_REAL = (
             "# built with Clang. No GNU triplet is prepended, because\n"
             "# x86_64-linux-gnu-clang-N does not exist.\n"
             "@KERNELVARIABLES@"
-            "else ifeq (./,$(dir $(C_COMPILER)))\n"
-            "\techo 'CC = $$(if $$(DEBIAN_KERNEL_USE_CCACHE),$$(CCACHE)) "
-            "$$(CROSS_COMPILE)$(C_COMPILER)' >> '$(DIR)/.kernelvariables'\n"
-            "else\n",
+            "else ifeq (./,$(dir $(C_COMPILER)))\n",
         ),
     ],
 )
@@ -350,36 +375,15 @@ AMD64_DEFINES = (
 # Patch 4: real x86-64-v2/v3/v4 compiler baselines
 # --------------------------------------------------------------------------
 
+# The choice follows X86_NATIVE_CPU, which upstream keeps revising (Linux 7.2.8
+# added a Rust APX dependency). Anchoring on the header of the next entry places
+# the block at the same position without pinning the dependencies or help text
+# of X86_NATIVE_CPU. The Makefile edit below still fails if the native/generic
+# split itself changes.
 KCONFIG_CPU = (
     "arch/x86/Kconfig.cpu",
     [(
-        "config X86_NATIVE_CPU\n"
-        "\tbool \"Build and optimize for local/native CPU\"\n"
-        "\tdepends on X86_64\n"
-        "\tdepends on CC_HAS_MARCH_NATIVE\n"
-        "\thelp\n"
-        "\t  Optimize for the current CPU used to compile the kernel.\n"
-        "\t  Use this option if you intend to build the kernel for your\n"
-        "\t  local machine.\n"
-        "\n"
-        "\t  Note that such a kernel might not work optimally on a\n"
-        "\t  different x86 machine.\n"
-        "\n"
-        "\t  If unsure, say N.\n",
-        "config X86_NATIVE_CPU\n"
-        "\tbool \"Build and optimize for local/native CPU\"\n"
-        "\tdepends on X86_64\n"
-        "\tdepends on CC_HAS_MARCH_NATIVE\n"
-        "\thelp\n"
-        "\t  Optimize for the current CPU used to compile the kernel.\n"
-        "\t  Use this option if you intend to build the kernel for your\n"
-        "\t  local machine.\n"
-        "\n"
-        "\t  Note that such a kernel might not work optimally on a\n"
-        "\t  different x86 machine.\n"
-        "\n"
-        "\t  If unsure, say N.\n"
-        "\n"
+        "config X86_GENERIC\n",
         "choice\n"
         "\tprompt \"DKC x86-64 compiler baseline\"\n"
         "\tdepends on X86_64 && !X86_NATIVE_CPU\n"
@@ -402,34 +406,34 @@ KCONFIG_CPU = (
         "config DKC_X86_64_BASELINE_V4\n"
         "\tbool \"x86-64-v4\"\n"
         "\n"
-        "endchoice\n",
+        "endchoice\n"
+        "\n"
+        "config X86_GENERIC\n",
     )],
 )
 
+# Each no-SIMD line is its own anchor, so the Rust target line between them is
+# not pinned. The baseline edit anchors on the generic branch only: `else`
+# proves it is the fallback of the native-CPU conditional, while the native
+# branch, which upstream changed in Linux 7.2.8, stays outside the anchor.
 X86_MAKEFILE = (
     "arch/x86/Makefile",
     [
         (
-            "KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-sse4a\n"
-            "KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json\n"
-            "KBUILD_RUSTFLAGS += -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2\n",
+            "KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-sse4a\n",
             "X86_CFLAGS_NO_SIMD := -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-sse4a\n"
             "X86_RUSTFLAGS_NO_SIMD := -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2\n"
-            "KBUILD_CFLAGS += $(X86_CFLAGS_NO_SIMD)\n"
-            "KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json\n"
+            "KBUILD_CFLAGS += $(X86_CFLAGS_NO_SIMD)\n",
+        ),
+        (
+            "KBUILD_RUSTFLAGS += -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2\n",
             "KBUILD_RUSTFLAGS += $(X86_RUSTFLAGS_NO_SIMD)\n",
         ),
         (
-            "ifdef CONFIG_X86_NATIVE_CPU\n"
-            "        KBUILD_CFLAGS += -march=native\n"
-            "        KBUILD_RUSTFLAGS += -Ctarget-cpu=native\n"
             "else\n"
             "        KBUILD_CFLAGS += -march=x86-64 -mtune=generic\n"
             "        KBUILD_RUSTFLAGS += -Ctarget-cpu=x86-64 -Ztune-cpu=generic\n"
             "endif\n",
-            "ifdef CONFIG_X86_NATIVE_CPU\n"
-            "        KBUILD_CFLAGS += -march=native\n"
-            "        KBUILD_RUSTFLAGS += -Ctarget-cpu=native\n"
             "else\n"
             "        DKC_X86_64_TARGET := x86-64\n"
             "ifeq ($(CONFIG_DKC_X86_64_BASELINE_V2),y)\n"
@@ -581,41 +585,32 @@ DKC_DEBIAN_RELEASE = (
     [
         (
             "[[debianrelease]]\n"
-            "name_regex = 'unstable'\n"
-            "abi_suffix = '+deb14'\n"
-            "revision_regex = '\\d+(\\.\\d+)?'\n",
+            "name_regex = 'unstable'\n",
             "[[debianrelease]]\n"
             "name_regex = 'trixie'\n"
             "abi_suffix = '+dkc13'\n"
             "revision_regex = '\\d+(\\.\\d+)?\\+dkc13\\.\\d+'\n"
             "\n"
             "[[debianrelease]]\n"
-            "name_regex = 'unstable'\n"
-            "abi_suffix = '+deb14'\n"
-            "revision_regex = '\\d+(\\.\\d+)?'\n",
+            "name_regex = 'unstable'\n",
         ),
-        OneOf(*(
-            (
-                "[build]\n"
-                f"c_compiler = '{compiler}'\n",
-                "# DKC publishes the kernel, its headers, and the versioned Kbuild\n"
-                "# support package.  Debian's docs, linux-source tarball, libc UAPI\n"
-                "# headers, installer udebs, and unversioned tools are separate\n"
-                "# products and must not leak into the DKC binary matrix.\n"
-                "[packages]\n"
-                "docs = false\n"
-                "installer = false\n"
-                "libc_dev = false\n"
-                "meta = true\n"
-                "source = false\n"
-                "tools_unversioned = false\n"
-                "tools_versioned = true\n"
-                "\n"
-                "[build]\n"
-                f"c_compiler = '{compiler}'\n",
-            )
-            for compiler in ("gcc-15", "gcc-16")
-        )),
+        (
+            "[build]\n",
+            "# DKC publishes the kernel, its headers, and the versioned Kbuild\n"
+            "# support package.  Debian's docs, linux-source tarball, libc UAPI\n"
+            "# headers, installer udebs, and unversioned tools are separate\n"
+            "# products and must not leak into the DKC binary matrix.\n"
+            "[packages]\n"
+            "docs = false\n"
+            "installer = false\n"
+            "libc_dev = false\n"
+            "meta = true\n"
+            "source = false\n"
+            "tools_unversioned = false\n"
+            "tools_versioned = true\n"
+            "\n"
+            "[build]\n",
+        ),
     ],
 )
 
@@ -1182,8 +1177,32 @@ def _variant_matches(text: str, variant: tuple[str, str] | Absent) -> bool:
     return text.count(variant[0]) == 1
 
 
+def _render(replacement: str, llvm_major: int) -> str:
+    # Explicit markers rather than str.format: the replacements contain
+    # literal braces from the Python and Make code they insert, which
+    # format() would try to interpret as fields.
+    return replacement.replace(
+        "@KERNELVARIABLES@", kernelvariables_block(llvm_major)
+    ).replace("@LLVM_MAJOR@", str(llvm_major))
+
+
+def _apply_line_pattern(path: str, text: str, edit: LinePattern, llvm_major: int) -> str:
+    matches = list(re.finditer(rf"^(?:{edit.regex})\n", text, re.MULTILINE))
+    if len(matches) != 1:
+        problem = "no longer matches exactly one line" if not matches else "is ambiguous"
+        raise SystemExit(
+            f"line pattern {problem} in {path}; the Debian source changed and "
+            f"the overlay must be reviewed:\n---\n{edit.regex}\n---"
+        )
+    match = matches[0]
+    rendered = _render(edit.replacement, llvm_major).replace("@LINE@", match[0])
+    return text[: match.start()] + rendered + text[match.end() :]
+
+
 def apply_edit(path: str, text: str, edit: object, llvm_major: int) -> str:
     """Apply one exact edit, choosing the single matching reviewed spelling."""
+    if isinstance(edit, LinePattern):
+        return _apply_line_pattern(path, text, edit, llvm_major)
     variants = edit.variants if isinstance(edit, OneOf) else (edit,)
     matches = [variant for variant in variants if _variant_matches(text, variant)]
     if len(matches) != 1:
@@ -1198,13 +1217,7 @@ def apply_edit(path: str, text: str, edit: object, llvm_major: int) -> str:
     if isinstance(variant, Absent):
         return text
     anchor, replacement = variant
-    # Explicit markers rather than str.format: the replacements contain
-    # literal braces from the Python and Make code they insert, which
-    # format() would try to interpret as fields.
-    rendered = replacement.replace(
-        "@KERNELVARIABLES@", kernelvariables_block(llvm_major)
-    ).replace("@LLVM_MAJOR@", str(llvm_major))
-    return text.replace(anchor, rendered, 1)
+    return text.replace(anchor, _render(replacement, llvm_major), 1)
 
 
 def unified_diff(path: str, before: str | None, after: str) -> str:
@@ -1218,13 +1231,26 @@ def unified_diff(path: str, before: str | None, after: str) -> str:
     )
 
 
-def generate(root: pathlib.Path, llvm_major: int) -> dict[str, str]:
-    """Return every non-empty patch of the ordered series for one source tree."""
+@dataclass(frozen=True)
+class EditedTree:
+    """The ordered series applied in memory to one source tree."""
+
+    patches: dict[str, str]
+    original: dict[str, str | None]
+    files: dict[str, str]
+
+
+def edit_tree(root: pathlib.Path, llvm_major: int) -> EditedTree:
+    """Apply every edit of the ordered series in memory."""
     tree: dict[str, str] = {}
+    original: dict[str, str | None] = {}
 
     def current(path: str) -> str:
         if path not in tree:
-            tree[path] = (root / path).read_text()
+            # No newline translation: an applied file keeps every byte that
+            # no edit touches.
+            tree[path] = (root / path).read_bytes().decode("utf-8")
+            original[path] = tree[path]
         return tree[path]
 
     patches: dict[str, str] = {}
@@ -1252,22 +1278,160 @@ def generate(root: pathlib.Path, llvm_major: int) -> dict[str, str]:
                     f"new overlay file {path} now exists upstream; review the collision"
                 )
             tree[path] = content
+            original[path] = None
             chunks.append(unified_diff(path, None, content))
         if patch := "".join(chunks):
             patches[name] = patch
-    return patches
+    return EditedTree(patches, original, tree)
+
+
+def generate(root: pathlib.Path, llvm_major: int) -> dict[str, str]:
+    """Return every non-empty patch of the ordered series for one source tree."""
+    return edit_tree(root, llvm_major).patches
+
+
+_HUNK_HEADER = re.compile(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+
+ChangeGroup = tuple[str, tuple[str, ...], tuple[str, ...]]
+
+
+def change_groups(patch: str) -> list[ChangeGroup]:
+    """Reduce a unified diff to its removed and added lines, in order.
+
+    Hunk positions and context lines are dropped, and every hunk is re-diffed on
+    its own, so two diffs of the same edits compare equal even when the text
+    around an edit, and with it difflib's alignment, differs between sources.
+    """
+    lines = patch.splitlines(keepends=True)
+    groups: list[ChangeGroup] = []
+    index = 0
+    while index < len(lines):
+        if not (
+            lines[index].startswith("--- ")
+            and index + 1 < len(lines)
+            and lines[index + 1].startswith("+++ ")
+        ):
+            raise ValueError(f"diff line {index + 1} is not a file header")
+        header = f"{lines[index][4:].rstrip()} {lines[index + 1][4:].rstrip()}"
+        index += 2
+        while index < len(lines) and (match := _HUNK_HEADER.match(lines[index])):
+            old_count = 1 if match[1] is None else int(match[1])
+            new_count = 1 if match[2] is None else int(match[2])
+            index += 1
+            old: list[str] = []
+            new: list[str] = []
+            while len(old) < old_count or len(new) < new_count:
+                if index >= len(lines):
+                    raise ValueError(f"truncated hunk in {header}")
+                tag, text = lines[index][:1], lines[index][1:]
+                if tag not in (" ", "-", "+"):
+                    raise ValueError(f"diff line {index + 1} is not a hunk line")
+                if tag != "+":
+                    old.append(text)
+                if tag != "-":
+                    new.append(text)
+                index += 1
+            if (len(old), len(new)) != (old_count, new_count):
+                raise ValueError(f"hunk line counts do not match in {header}")
+            matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+            groups.extend(
+                (header, tuple(old[i1:i2]), tuple(new[j1:j2]))
+                for tag, i1, i2, j1, j2 in matcher.get_opcodes()
+                if tag != "equal"
+            )
+    return groups
+
+
+def _render_groups(groups: list[ChangeGroup]) -> list[str]:
+    lines = []
+    for header, old, new in groups:
+        lines.append(f"@ {header}\n")
+        lines.extend(f"-{line}" for line in old)
+        lines.extend(f"+{line}" for line in new)
+    return [line if line.endswith("\n") else line + "\n" for line in lines]
+
+
+def apply(root: pathlib.Path, llvm_major: int, reviewed: pathlib.Path) -> None:
+    """Edit `root` in place, but only as the committed patches describe."""
+    edited = edit_tree(root, llvm_major)
+    committed = {
+        path.name: path.read_bytes().decode("utf-8")
+        for path in sorted(reviewed.glob("*.patch"))
+    }
+    if set(committed) != set(edited.patches):
+        raise SystemExit(
+            "the committed overlay is not the series this source needs: "
+            f"missing={sorted(set(edited.patches) - set(committed))}, "
+            f"unexpected={sorted(set(committed) - set(edited.patches))}; "
+            "regenerate it with `make overlay-patches` and review the result"
+        )
+    notes = []
+    for name, patch in edited.patches.items():
+        try:
+            expected = change_groups(committed[name])
+        except ValueError as error:
+            raise SystemExit(
+                f"committed {name} is not a readable unified diff: {error}"
+            ) from error
+        actual = change_groups(patch)
+        if expected != actual:
+            difference = list(
+                difflib.unified_diff(
+                    _render_groups(expected),
+                    _render_groups(actual),
+                    f"committed/{name}",
+                    f"generated/{name}",
+                    n=1,
+                )
+            )
+            raise SystemExit(
+                f"{name} does not describe the lines the overlay changes in this "
+                f"source with LLVM {llvm_major}; regenerate it with "
+                "`make overlay-patches` and review the difference:\n"
+                + "".join(difference[:80])
+                + ("[difference truncated]\n" if len(difference) > 80 else "")
+            )
+        drifted = patch != committed[name]
+        notes.append(
+            f"  {name}"
+            + (" (context differs from the reviewed source; changed lines match)" if drifted else "")
+        )
+    for path, content in edited.files.items():
+        if content == edited.original[path]:
+            continue
+        target = root / path
+        if target.is_symlink():
+            raise SystemExit(f"refusing to write the overlay through symlink {path}")
+        if edited.original[path] is None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content.encode("utf-8"))
+    print("\n".join(notes), file=sys.stderr)
+
+
+USAGE = (
+    "usage: generate-overlay-patches.py <source-root> <llvm-major> <output-dir>\n"
+    "       generate-overlay-patches.py --apply <source-root> <llvm-major> <patch-dir>"
+)
 
 
 def main() -> int:
-    if len(sys.argv) != 4:
-        print(
-            "usage: generate-overlay-patches.py <source-root> <llvm-major> <output-dir>",
-            file=sys.stderr,
-        )
+    arguments = sys.argv[1:]
+    applying = arguments[:1] == ["--apply"]
+    if applying:
+        arguments = arguments[1:]
+    if len(arguments) != 3:
+        print(USAGE, file=sys.stderr)
         return 2
-    root = pathlib.Path(sys.argv[1])
-    llvm_major = int(sys.argv[2])
-    output = pathlib.Path(sys.argv[3])
+    root = pathlib.Path(arguments[0])
+    llvm_major = int(arguments[1])
+    if applying:
+        reviewed = pathlib.Path(arguments[2])
+        if not reviewed.is_dir():
+            print("committed patch directory does not exist", file=sys.stderr)
+            return 2
+        apply(root, llvm_major, reviewed)
+        return 0
+    output = pathlib.Path(arguments[2])
     if not output.is_dir() or any(output.iterdir()):
         print("output directory must exist and be empty", file=sys.stderr)
         return 2

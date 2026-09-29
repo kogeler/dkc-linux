@@ -182,6 +182,9 @@ def test_every_generation_specific_edit_keeps_its_reviewed_spellings() -> None:
             for path, edits in variants:
                 assert path.startswith(("debian/", "arch/")), (name, path)
                 for edit in edits:
+                    if isinstance(edit, generator.LinePattern):
+                        assert "\n" not in edit.regex and "@LINE@" in edit.replacement
+                        continue
                     if not isinstance(edit, generator.OneOf):
                         assert isinstance(edit, tuple) and len(edit) == 2
                         continue
