@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import threading
 import urllib.request
 from datetime import datetime, timezone
@@ -184,11 +185,163 @@ def test_remote_error_body_is_never_reflected_into_an_exception() -> None:
     def transport(request):  # type: ignore[no-untyped-def]
         return HttpResponse(500, {}, marker.encode())
 
-    client = S3Client(ENDPOINT, CREDENTIALS, transport=transport, clock=lambda: NOW)
+    client = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=transport,
+        clock=lambda: NOW,
+        sleeper=lambda _delay: None,
+    )
     with pytest.raises(RemoteStoreError) as captured:
         client.get("safe/key")
     assert marker not in str(captured.value)
     assert str(captured.value) == "GetObject safe/key failed with HTTP 500"
+
+
+def _scripted_transport(outcomes, requests):  # type: ignore[no-untyped-def]
+    pending = iter(outcomes)
+
+    def transport(request):  # type: ignore[no-untyped-def]
+        requests.append(request)
+        outcome = next(pending)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return transport
+
+
+def _transport_failure(method: str = "GET") -> RemoteStoreError:
+    return RemoteStoreError(method, 0, "transport unavailable")
+
+
+GOOD_OBJECT = HttpResponse(
+    200,
+    {
+        "Content-Type": MUTABLE.content_type,
+        "Cache-Control": MUTABLE.cache_control,
+        "ETag": '"v1"',
+    },
+    b"{}",
+)
+
+
+def test_reads_retry_transport_failures_and_transient_server_errors() -> None:
+    requests: list[object] = []
+    sleeps: list[float] = []
+    client = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport(
+            [_transport_failure(), HttpResponse(503, {}, b"busy"), GOOD_OBJECT],
+            requests,
+        ),
+        clock=lambda: NOW,
+        sleeper=sleeps.append,
+    )
+    remote = client.get("safe/key")
+    assert remote.body == b"{}"
+    assert remote.etag == '"v1"'
+    assert len(requests) == 3
+    assert sleeps == [1.0, 2.0]
+
+    listing: list[object] = []
+    lister = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport(
+            [
+                _transport_failure(),
+                HttpResponse(
+                    200,
+                    {},
+                    b"<ListBucketResult><IsTruncated>false</IsTruncated>"
+                    b"<Contents><Key>safe/a</Key><Size>1</Size></Contents>"
+                    b"</ListBucketResult>",
+                ),
+            ],
+            listing,
+        ),
+        clock=lambda: NOW,
+        sleeper=lambda _delay: None,
+    )
+    assert lister.list_keys("safe/") == ("safe/a",)
+    assert len(listing) == 2
+
+
+def test_read_retries_are_bounded_and_keep_the_sanitized_failure() -> None:
+    requests: list[object] = []
+    sleeps: list[float] = []
+    client = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport([_transport_failure()] * 3, requests),
+        clock=lambda: NOW,
+        sleeper=sleeps.append,
+    )
+    with pytest.raises(RemoteStoreError) as captured:
+        client.get("safe/key")
+    assert captured.value.status == 0
+    assert str(captured.value) == "GET failed with HTTP 0: transport unavailable"
+    assert len(requests) == 3
+    assert sleeps == [1.0, 2.0]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [_transport_failure("PUT"), HttpResponse(503, {}, b"busy")],
+    ids=["transport-failure", "server-error"],
+)
+def test_writes_never_retry_an_unknown_outcome(outcome) -> None:  # type: ignore[no-untyped-def]
+    requests: list[object] = []
+    sleeps: list[float] = []
+    client = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport([outcome, GOOD_OBJECT], requests),
+        clock=lambda: NOW,
+        sleeper=sleeps.append,
+    )
+    with pytest.raises(RemoteStoreError):
+        client.put("safe/key", b"body", MUTABLE, if_none_match=True)
+    deleting: list[object] = []
+    deleter = S3Client(
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport([outcome, HttpResponse(204, {}, b"")], deleting),
+        clock=lambda: NOW,
+        sleeper=sleeps.append,
+    )
+    with pytest.raises(RemoteStoreError):
+        deleter.delete("safe/key")
+    assert len(requests) == 1
+    assert len(deleting) == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        TimeoutError("The read operation timed out"),
+        ConnectionResetError("connection reset by peer"),
+        http.client.IncompleteRead(b"partial", 10),
+    ],
+    ids=["body-read-timeout", "connection-reset", "truncated-body"],
+)
+def test_transport_failures_become_one_sanitized_status_zero_error(
+    failure: BaseException, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def failing_request(request, timeout):  # type: ignore[no-untyped-def]
+        raise failure
+
+    monkeypatch.setattr("dkc.s3.exact_http_request", failing_request)
+    client = S3Client(ENDPOINT, CREDENTIALS, clock=lambda: NOW)
+    with pytest.raises(RemoteStoreError) as captured:
+        S3Client._urlopen(client.signed_request("GET", "safe/key"))
+    assert captured.value.status == 0
+    assert str(captured.value) == "GET failed with HTTP 0: transport unavailable"
+    assert captured.value.__cause__ is None
+    assert captured.value.__suppress_context__
 
 
 def test_list_objects_v2_is_paginated_and_cannot_escape_prefix() -> None:

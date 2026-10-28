@@ -16,7 +16,8 @@ The suite covers:
   measured storage size, including rejection of every contradictory
   decision/flag combination;
 - strict storage connection files and bounded output redaction;
-- SigV4 canonical requests, pagination, metadata, throttling, and conditional
+- SigV4 canonical requests, pagination, metadata, throttling, bounded read
+  retries after transport failures and transient server errors, and conditional
   create/update/delete behaviour;
 - lease acquisition, renewal, release, stale takeover, and fencing;
 - failure after every publication phase and idempotent convergence;
