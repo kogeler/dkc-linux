@@ -5,7 +5,25 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
-No changes yet.
+### Changed
+
+- The `v4` flavor is no longer scheduled for periodic manual qualification.
+  Its build code stays in the source tree, but DKC neither builds nor publishes
+  it, because `v3` already runs Linux's runtime-selected AVX-512 code. See
+  [docs/BUILD.md](docs/BUILD.md#release-flavor-policy).
+- The kernel build image now requires bindgen to keep the fields of
+  forward-declared C structs, and its check that bindgen does not load the
+  Debian 13 libclang 19 now fails the build. Debian 13's bindgen fails the new
+  check with libclang 22, which keeps the toolchain on Clang 21 for now. See
+  [debian-overlay/COMPATIBILITY.md](debian-overlay/COMPATIBILITY.md) and
+  [TODO.md](TODO.md).
+
+### Fixed
+
+- The kernel build image builds again after Debian 13 backports moved `rustc`
+  to LLVM 22. The image no longer requires rustc and Clang to share an LLVM
+  major, because Linux compiles Rust to native objects that kernel LTO does not
+  merge. See [docs/BUILD.md](docs/BUILD.md).
 
 ## 0.1.0 - 2026-09-29
 

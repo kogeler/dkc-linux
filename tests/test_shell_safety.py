@@ -425,10 +425,8 @@ def test_every_automatic_release_flavor_requires_kvm() -> None:
         ROOT / "scripts" / "qemu-boot.sh"
     ).read_text()
 
-    todo = (ROOT / "TODO.md").read_text()
-    assert "Periodic v4 qualification" in todo
-    assert "Do not configure or select a self-hosted runner" in todo
-    assert "not part of the automatic release matrix" in todo
+    build_doc = " ".join((ROOT / "docs" / "BUILD.md").read_text().split())
+    assert "DKC does not build a `v4` flavor." in build_doc
     assert not (ROOT / ".github" / "workflows" / "qemu-diagnostics.yml").exists()
     assert not (ROOT / "scripts" / "qemu-host-diagnostics.sh").exists()
 
@@ -1101,10 +1099,23 @@ def test_release_build_has_one_debian_rust_toolchain_path() -> None:
     makefile = (ROOT / "mk" / "container.mk").read_text()
     assert '-t "${DEBIAN_SUITE}-backports" rustc rust-src' in containerfile
     assert "rustc_llvm_major" in containerfile
+    assert "does not match Clang" not in containerfile
     for marker in ("RUST_SOURCE", "RUST_VERSION", "rustup-init"):
         assert marker not in containerfile
         assert marker not in makefile
     assert "build-image-rust-pinned" not in makefile
+
+
+def test_bindgen_probe_rejects_wrong_libclang_and_opaque_structs() -> None:
+    containerfile = (ROOT / "container" / "Containerfile.build").read_text()
+    probe = containerfile[containerfile.index("LD_DEBUG=libs bindgen") :]
+    assert "'struct dkc_bindgen_probe;'" in containerfile
+    assert "'typedef struct dkc_bindgen_typed dkc_bindgen_typed_t;'" in containerfile
+    assert "grep -Eq 'pub value ?:' /tmp/dkc-bindgen.rs" in probe
+    assert "grep -Eq 'pub field ?:' /tmp/dkc-bindgen.rs" in probe
+    assert "if grep -q '_address' /tmp/dkc-bindgen.rs; then" in probe
+    # A negated command in the middle of a set -e list never stops the build.
+    assert not re.search(r"(?m)^\s*! .*\\$", containerfile)
 
 
 def test_publication_changelog_drives_the_reproducible_timestamp() -> None:

@@ -13,10 +13,11 @@
 #   * clang-21 lives in trixie-backports, which is official Debian on
 #     deb.debian.org, signed by the archive key already trusted on every Debian
 #     13 system. No new key, no third-party service.
-#   * clang-22 exists only on apt.llvm.org, whose own maintainers describe the
-#     packages as best-effort. Depending on it would force every headers user to
-#     add a rolling third-party repository, and would leave them unable to
-#     install headers if those packages were ever dropped.
+#   * clang-22 is now part of Debian 13 itself and would let headers users drop
+#     backports. It is not selected yet: Debian 13's bindgen 0.71.1 generates
+#     incomplete Rust bindings with libclang 22, which the bindgen probe at the
+#     end of this file rejects. TODO.md tracks the switch and its readiness
+#     criteria.
 #
 # Two more deliberate choices:
 #
@@ -39,10 +40,14 @@ ARG DEBIAN_SUITE=trixie
 # gcc-15 build.
 ARG LLVM_MAJOR=21
 
-# Trixie backports supplies rustc/rust-src and Trixie supplies bindgen. Kernel
-# LTO requires rustc and Clang to use the same LLVM major, and the backported
-# compiler matches the selected Debian clang-21 toolchain. This is the single
-# toolchain for LTO and non-LTO builds alike.
+# Trixie backports supplies rustc/rust-src and Trixie supplies bindgen. This is
+# the single toolchain for LTO and non-LTO builds alike. rustc's LLVM major may
+# differ from Clang's: Linux compiles Rust to native objects
+# (-Cembed-bitcode=n -Clto=n), so kernel LTO merges only Clang bitcode. The one
+# option that mixes rustc and Clang IR, the experimental RUST_INLINE_HELPERS, is
+# unset in Debian's configuration and unavailable in Kconfig unless the majors
+# match. bindgen is different: it must load the selected libclang, which the
+# probe at the end of this file enforces.
 
 ENV LC_ALL=C.UTF-8 \
 	LANG=C.UTF-8 \
@@ -169,10 +174,10 @@ RUN set -eux; \
 		-t "${DEBIAN_SUITE}-backports" rustc rust-src; \
 	apt-get install -y --no-install-recommends bindgen; \
 	rustc_llvm_major="$(rustc -vV | sed -n 's/^LLVM version: \([0-9][0-9]*\).*/\1/p')"; \
-	test "${rustc_llvm_major}" = "${LLVM_MAJOR}" || { \
-		echo "rustc LLVM ${rustc_llvm_major} does not match Clang ${LLVM_MAJOR}" >&2; \
-		exit 1; \
-	}
+	case "${rustc_llvm_major}" in \
+	'' | *[!0-9]*) echo "rustc does not report its LLVM major" >&2; exit 1 ;; \
+	esac; \
+	echo "rustc uses LLVM ${rustc_llvm_major}; Clang uses LLVM ${LLVM_MAJOR}"
 
 # --------------------------------------------------------------------------
 # Record what was actually installed, for the toolchain lock
@@ -218,13 +223,33 @@ ENV LIBCLANG_PATH=/usr/lib/llvm-${LLVM_MAJOR}/lib \
 # A symlink check alone does not prove what bindgen dlopens.  Exercise its real
 # dynamic-loading path and reject the Trixie libclang 19 dependency that is
 # necessarily co-installed with Debian's bindgen package.
+#
+# The probe also declares each struct before defining it, directly and through
+# a typedef. bindgen before 0.72.1 turns such structs into opaque one-byte
+# placeholders with libclang 22 (rust-bindgen PR 3278). Linux generates its
+# bindings with --no-layout-tests and declares many structs ahead of their
+# definitions, so this pairing must fail here rather than in the kernel build.
 RUN set -eux; \
-	printf 'struct dkc_bindgen_probe { int value; };\n' >/tmp/dkc-bindgen.h; \
+	printf '%s\n' \
+		'struct dkc_bindgen_probe;' \
+		'struct dkc_bindgen_probe { int value; };' \
+		'typedef struct dkc_bindgen_typed dkc_bindgen_typed_t;' \
+		'struct dkc_bindgen_typed { int field; };' \
+		>/tmp/dkc-bindgen.h; \
 	LD_DEBUG=libs bindgen /tmp/dkc-bindgen.h --no-layout-tests -- -x c \
 		>/tmp/dkc-bindgen.rs 2>/tmp/dkc-bindgen.ld; \
 	test -s /tmp/dkc-bindgen.rs; \
 	grep -Eq "calling init: .*/libclang-${LLVM_MAJOR}([.][0-9]+)*[.]so([.][0-9]+)*" /tmp/dkc-bindgen.ld; \
-	! grep -Eq 'calling init: .*/libclang-19([.][0-9]+)*[.]so([.][0-9]+)*' /tmp/dkc-bindgen.ld; \
+	if grep -Eq 'calling init: .*/libclang-19([.][0-9]+)*[.]so([.][0-9]+)*' /tmp/dkc-bindgen.ld; then \
+		echo "bindgen loaded the Trixie libclang 19" >&2; \
+		exit 1; \
+	fi; \
+	if grep -q '_address' /tmp/dkc-bindgen.rs; then \
+		echo "bindgen $(bindgen --version) generated an opaque struct with libclang ${LLVM_MAJOR}" >&2; \
+		exit 1; \
+	fi; \
+	grep -Eq 'pub value ?:' /tmp/dkc-bindgen.rs; \
+	grep -Eq 'pub field ?:' /tmp/dkc-bindgen.rs; \
 	rm -f /tmp/dkc-bindgen.h /tmp/dkc-bindgen.rs /tmp/dkc-bindgen.ld
 
 WORKDIR /work

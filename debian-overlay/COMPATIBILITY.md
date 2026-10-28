@@ -95,8 +95,13 @@ would otherwise compile a module with GCC against a kernel built with Clang.
    `/usr/lib/llvm-21/lib` and the image asserts that `libclang.so` there
    resolves to major 21. The image exercises bindgen's actual dynamic-loading
    path under `LD_DEBUG=libs`, requires the selected library, and rejects a
-   loaded libclang 19. The real configuration separately requires
-   `CONFIG_RUST=y` after `olddefconfig`.
+   loaded libclang 19. The probe declares structs before defining them,
+   directly and through a typedef, and requires their fields in the output:
+   bindgen before 0.72.1 emits opaque one-byte placeholders for such structs
+   with libclang 22, and Linux generates its bindings with `--no-layout-tests`.
+   Debian 13's bindgen 0.71.1 fails this probe with libclang 22, which is why
+   Clang 22 is not selected yet; see [TODO.md](../TODO.md). The real
+   configuration separately requires `CONFIG_RUST=y` after `olddefconfig`.
 2. **Debian's own binutils calls.** `debian/rules.real` runs
    `$(CROSS_COMPILE)strip` and `$(CROSS_COMPILE)objcopy` directly, outside
    Kbuild, to strip the image and to extract BTF sections. The overlay selects

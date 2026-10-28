@@ -127,6 +127,3 @@ by the accepted run.
 - Keep complete jobs below GitHub's six-hour maximum; use a project timeout
   that still leaves time to seal an accepted cache entry or retain bounded
   failure evidence.
-- Do not configure a self-hosted runner for periodic v4 maintenance; keep that
-  work outside the automatic release until the policy in [`TODO.md`](../TODO.md)
-  changes.

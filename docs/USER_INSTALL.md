@@ -5,9 +5,9 @@ clean-client tested, signed, published, and independently verified. The
 acceptance is recorded in [VALIDATION.md](VALIDATION.md).
 
 The implemented repository targets Debian 13 (`trixie`) on `amd64`. Its
-automatic release set contains the `v2` and `v3` CPU flavors. The implemented
-`v4` flavor is retained for periodic manual qualification but is not
-distributed; see the [release flavor policy](BUILD.md#release-flavor-policy).
+automatic release set contains the `v2` and `v3` CPU flavors. The `v4` build
+code is kept in the source tree, but DKC neither builds nor distributes a `v4`
+flavor; see the [release flavor policy](BUILD.md#release-flavor-policy).
 
 ## Important limitation
 

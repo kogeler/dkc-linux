@@ -134,12 +134,13 @@ graphics/gaming tests improved by 3–5%. That test used GCC and `native` is mor
 specific than v3, so it demonstrates the workload-dependent pattern rather
 than predicting a DKC percentage.
 
-There is a maintained `v4` build path, but no published `v4` flavor. Linux keeps
-general kernel code out of SIMD registers and runtime-selects its explicit
-AVX-512 implementations. DKC's instruction scan found the same 2,342 AVX-512
-instructions in the tested v3 and v4 kernels, in the same optimized symbols. A
-v3 kernel can therefore use those paths on a capable CPU without making every
-machine meet the v4 baseline. The measured rationale is in the
+The `v4` build path is kept in the source tree, but DKC neither builds nor
+publishes a `v4` flavor. Linux keeps general kernel code out of SIMD registers
+and runtime-selects its explicit AVX-512 implementations. DKC's instruction
+scan found the same 2,342 AVX-512 instructions in the tested v3 and v4 kernels,
+in the same optimized symbols. A v3 kernel can therefore use those paths on a
+capable CPU without making every machine meet the v4 baseline. The measured
+rationale is in the
 [release flavor policy](docs/BUILD.md#release-flavor-policy).
 
 ## Build or contribute
