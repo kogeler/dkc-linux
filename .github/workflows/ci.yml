@@ -100,7 +100,7 @@ jobs:
   discover-source:
     name: discover authenticated source
     if: >-
-      always() &&
+      !cancelled() &&
       needs.container_images.result == 'success' &&
       (github.event_name == 'pull_request' ||
        needs.lifecycle-gate.result == 'success')
@@ -182,7 +182,7 @@ jobs:
   lifecycle-decision:
     name: decide lifecycle or pull-request qualification
     if: >-
-      always() &&
+      !cancelled() &&
       needs.container_images.result == 'success' &&
       needs.discover-source.result == 'success' &&
       (github.event_name == 'pull_request' ||
@@ -278,7 +278,7 @@ jobs:
   release-preflight:
     name: release preflight
     if: >-
-      always() &&
+      !cancelled() &&
       needs.container_images.result == 'success' &&
       needs.fast.result == 'success' &&
       needs.discover-source.result == 'success' &&
@@ -317,11 +317,13 @@ jobs:
   flavors:
     name: build and validate ${{ matrix.flavor }}
     # The successful decision has skipped production-only ancestors in a pull
-    # request. Without always(), GitHub propagates that earlier skip before it
-    # evaluates this job's own build decision. Require every direct producer
-    # explicitly so a real failure remains fail-closed.
+    # request. Without a status function, GitHub propagates that earlier skip
+    # before it evaluates this job's own build decision. Require every direct
+    # producer explicitly so a real failure remains fail-closed. Use
+    # !cancelled() rather than always(): GitHub re-evaluates running jobs on
+    # cancellation, and always() would keep a superseded run building for hours.
     if: >-
-      always() &&
+      !cancelled() &&
       needs.container_images.result == 'success' &&
       needs.discover-source.result == 'success' &&
       needs.lifecycle-decision.result == 'success' &&
@@ -520,7 +522,7 @@ jobs:
   package-matrix:
     name: package install matrix
     if: >-
-      always() &&
+      !cancelled() &&
       needs.lifecycle-decision.outputs.build_required == 'true' &&
       needs.flavors.result == 'success' &&
       (needs.lifecycle-decision.outputs.state_present == 'false' ||
@@ -726,7 +728,7 @@ jobs:
   current-main:
     name: require current main before signing
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       needs.lifecycle-decision.outputs.publish_allowed == 'true' &&
       (needs.package-matrix.result == 'success' ||
@@ -749,7 +751,7 @@ jobs:
   sign-repository:
     name: sign common repository
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       needs.current-main.result == 'success' &&
       (needs.package-matrix.result == 'success' ||
@@ -823,7 +825,7 @@ jobs:
   verify-repository:
     name: verify signed common repository
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       needs.sign-repository.result == 'success'
     needs: [container_images, lifecycle-decision, sign-repository]
@@ -887,7 +889,7 @@ jobs:
     # successful convergence jobs and suppresses this job before evaluating
     # its explicit result check.
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       needs.verify-repository.result == 'success'
     needs: [container_images, lifecycle-decision, verify-repository]
@@ -952,7 +954,7 @@ jobs:
   verify-published-state:
     name: verify committed authoritative state
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       needs.publish-repository.result == 'success'
     needs: [container_images, lifecycle-decision, publish-repository]
@@ -1005,7 +1007,7 @@ jobs:
   lifecycle-result:
     name: lifecycle result
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name != 'pull_request' &&
       github.repository == 'kogeler/dkc-linux' &&
       github.ref == 'refs/heads/main' &&

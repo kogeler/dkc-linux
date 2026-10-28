@@ -5,7 +5,13 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
-No changes yet.
+### Fixed
+
+- A newer push to a pull request now actually cancels the superseded CI run.
+  Job conditions used `always()`, which GitHub keeps true on cancellation, so
+  the old kernel builds ran to completion while the new run waited. A manually
+  cancelled trusted run now stops as well. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 
 ## 0.1.0 - 2026-09-29
 

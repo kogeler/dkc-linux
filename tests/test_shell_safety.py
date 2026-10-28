@@ -117,21 +117,21 @@ def test_ci_uses_only_standard_runners_and_has_no_temporary_capacity_job() -> No
     gate = jobs["lifecycle-gate"]["steps"][-1]
     assert gate["run"] == "make github-lifecycle-gate"
     flavor_condition = str(jobs["flavors"]["if"])
-    assert flavor_condition.startswith("always() &&")
+    assert flavor_condition.startswith("!cancelled() &&")
     assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
         flavor_condition
     )
     assert jobs["publish-repository"]["needs"][-1] == "verify-repository"
     assert jobs["publish-repository"]["if"] == (
-        "always() && github.event_name != 'pull_request' && "
+        "!cancelled() && github.event_name != 'pull_request' && "
         "needs.verify-repository.result == 'success'"
     )
     assert jobs["verify-published-state"]["if"] == (
-        "always() && github.event_name != 'pull_request' && "
+        "!cancelled() && github.event_name != 'pull_request' && "
         "needs.publish-repository.result == 'success'"
     )
     assert jobs["lifecycle-result"]["if"] == (
-        "always() && github.event_name != 'pull_request' && "
+        "!cancelled() && github.event_name != 'pull_request' && "
         "github.repository == 'kogeler/dkc-linux' && "
         "github.ref == 'refs/heads/main' && "
         "needs.fast.result == 'success'"
@@ -479,7 +479,7 @@ def test_release_build_handoff_separates_semantic_and_transport_cache_keys() -> 
         "Prepare bounded flavor qualification evidence"
     ) < ordered_names.index("Upload bounded flavor qualification evidence")
     flavor_condition = str(flavors["if"])
-    assert flavor_condition.startswith("always() &&")
+    assert flavor_condition.startswith("!cancelled() &&")
     assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
         flavor_condition
     )
@@ -534,7 +534,7 @@ def test_pull_requests_run_full_non_publishing_qualification() -> None:
     )
 
     flavor_condition = str(jobs["flavors"]["if"])
-    assert flavor_condition.startswith("always() &&")
+    assert flavor_condition.startswith("!cancelled() &&")
     for dependency in jobs["flavors"]["needs"]:
         assert f"needs.{dependency}.result == 'success'" in flavor_condition
     assert "build_required == 'true'" in flavor_condition
