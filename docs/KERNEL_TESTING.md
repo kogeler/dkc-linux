@@ -270,8 +270,6 @@ manifest.
 After any profile, wrapper, patch, guest-limit, or runner change, build a fresh
 selftest bundle for each affected release flavor and run every enabled
 one-flavor QEMU target. Static profile checks alone are not runtime evidence.
-Periodic manual v4 maintenance follows the separate policy in
-[`TODO.md`](../TODO.md).
 
 ## Evidence to inspect
 

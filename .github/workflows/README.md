@@ -33,7 +33,8 @@ KVM fails each flavor job before compilation; software emulation is not
 accepted.
 
 `container-images.yml` owns the toolbox, kernel-build, and minimal APT-client
-images as one GHCR bundle. A relevant pull request builds all three with
+images as one GHCR bundle. A relevant pull request, or a manual dispatch from
+any branch or tag other than `main`, builds and verifies all three with
 read-only permissions and no registry login. A relevant canonical-main push,
 the Saturday 09:00 UTC schedule, or an exact-main manual dispatch builds all
 three before authenticating and moves only their `latest` tags. Publishers are
@@ -45,8 +46,9 @@ requires one input fingerprint and publication generation, and emits immutable
 digest references. Every image-consuming job selects registry mode explicitly;
 the main CI workflow contains no Containerfile build. Pull-request CI resolves
 the currently published bundle, while the separate read-only image workflow
-verifies candidate Containerfile changes when relevant paths changed. Candidate
-images are never published or passed into the main pull-request workflow.
+verifies candidate Containerfile changes when relevant paths changed or when it
+is dispatched from a branch. Candidate images are never published or passed
+into the main pull-request workflow.
 
 Trusted runs whose typed lifecycle decision requires a build run the `v2`/`v3`
 matrix on independent standard `ubuntu-26.04` runners. Every parallel job
@@ -156,9 +158,14 @@ run the package matrix, and exercise a disposable signed repository. Their typed
 qualification has no publication authority; authoritative-state reads,
 production signing, publication, and final state verification remain skipped.
 Jobs that cross those deliberately skipped production-only branches use
-`always()` together with explicit successful-result checks for every direct
+`!cancelled()` together with explicit successful-result checks for every direct
 producer. This prevents GitHub's skipped-ancestor propagation from suppressing
 the pull-request build while keeping genuine dependency failures fail-closed.
+Unlike `always()`, `!cancelled()` turns false when GitHub re-evaluates running
+jobs on cancellation, so a newer push really cancels a superseded pull-request
+run instead of leaving it to hold the concurrency group. A manually cancelled
+trusted run stops the same way; an interrupted publication converges on a later
+run as described in [`docs/PUBLISHING.md`](../../docs/PUBLISHING.md).
 Trusted runs additionally direct-read signed authoritative state. They build
 only for a newer source or an explicitly increased downstream revision. They
 refresh metadata when `Valid-Until` enters its safety horizon,

@@ -42,15 +42,20 @@ permissions:
   contents: read
 
 jobs:
-  verify-pull-request:
+  # Pull requests and manual runs from any ref other than main build and verify
+  # the candidate bundle without registry credentials. Only main publishes.
+  verify-candidate:
     name: verify complete image bundle
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref != 'refs/heads/main')
     runs-on: ubuntu-26.04
     timeout-minutes: 90
     permissions:
       contents: read
     env:
-      DKC_IMAGE_BUNDLE_GENERATION: pr-${{ github.run_id }}-${{ github.run_attempt }}
+      DKC_IMAGE_BUNDLE_GENERATION: candidate-${{ github.run_id }}-${{ github.run_attempt }}
       DKC_IMAGE_SOURCE_REVISION: ${{ github.sha }}
     steps:
       - name: Check out the repository

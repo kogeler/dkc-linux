@@ -7,6 +7,51 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 No changes yet.
 
+## 0.2.0 - 2026-10-28
+
+### Added
+
+- [TODO.md](TODO.md) plans the switch to Clang/LLVM 22, which would let headers
+  users drop Debian backports. It records the bindgen blocker, a compatibility
+  review of Linux 7.1, 7.2, and 7.3-rc7, the readiness criteria, and the
+  concrete switch steps.
+
+### Changed
+
+- Kernel Rust code is now compiled with the Debian 13 backports `rustc` 1.96,
+  which uses LLVM 22, while C stays on Clang 21 and LLD 21. The build image no
+  longer requires rustc and Clang to share an LLVM major, because Linux
+  compiles Rust to native objects that kernel LTO does not merge. See
+  [docs/BUILD.md](docs/BUILD.md).
+- `DKC_REVISION` is raised to 2 because the build image definition is a
+  build-policy input. The lifecycle therefore rebuilds the already published
+  Debian source with the new toolchain as `+dkc13.2` packages instead of
+  reporting `blocked`. See
+  [docs/MAINTAINER_SETUP.md](docs/MAINTAINER_SETUP.md#rebuilding-one-debian-source-version).
+- The kernel build image now requires bindgen to keep the fields of
+  forward-declared C structs, and its check that bindgen does not load the
+  Debian 13 libclang 19 now fails the build. Debian 13's bindgen fails the new
+  check with libclang 22, which keeps the toolchain on Clang 21 for now. See
+  [debian-overlay/COMPATIBILITY.md](debian-overlay/COMPATIBILITY.md).
+- A manual run of the `container images` workflow from any branch or tag other
+  than `main` now builds and verifies all three images with read-only
+  permissions instead of skipping every job. Only `main` still publishes. See
+  [.github/workflows/README.md](.github/workflows/README.md).
+- The `v4` flavor is no longer scheduled for periodic manual qualification.
+  Its build code stays in the source tree, but DKC neither builds nor publishes
+  it, because `v3` already runs Linux's runtime-selected AVX-512 code. See
+  [docs/BUILD.md](docs/BUILD.md#release-flavor-policy).
+
+### Fixed
+
+- The weekly `container images` rebuild failed after Debian 13 backports
+  withdrew the LLVM 21 build of `rustc` for amd64. It builds again.
+- A newer push to a pull request now actually cancels the superseded CI run.
+  Job conditions used `always()`, which GitHub keeps true on cancellation, so
+  the old kernel builds ran to completion while the new run waited. A manually
+  cancelled trusted run now stops as well. See
+  [.github/workflows/README.md](.github/workflows/README.md).
+
 ## 0.1.0 - 2026-09-29
 
 The first versioned baseline. It summarizes everything the project implements

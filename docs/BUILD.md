@@ -109,10 +109,11 @@ evidence.
 
 ## Release flavor policy
 
-The automatic CI and binary distribution contain `v2` and `v3`. The complete
-`v4` implementation remains a supported manual build target; its configuration,
-package generation, command audit, final machine-code SIMD attestation,
-selftest build, and QEMU paths are deliberately kept in the source tree.
+The automatic CI and binary distribution contain `v2` and `v3`. DKC does not
+build a `v4` flavor. Its configuration, package generation, command audit,
+final machine-code SIMD attestation, selftest build, and QEMU paths are
+deliberately kept in the source tree, but they are not part of any release or
+maintenance process.
 
 This distinction follows from how Linux uses SIMD. Ordinary kernel C and Rust
 compilation reasserts the reviewed no-SIMD controls after the selected
@@ -129,22 +130,8 @@ same distribution across 27 symbols in five artifacts. That is 0.00696% and
 do not predict dynamic workload frequency, but the identical runtime-dispatched
 implementations show that a separate v4 package is not needed to make those
 paths available. Any residual scalar difference caused by the compiler target
-is expected to be small and has not justified a third automatic build, a
-stricter installation baseline, or an unqualified binary release.
-
-Periodic v4 maintenance is performed explicitly on a machine that exposes the
-complete baseline:
-
-```sh
-make build-flavor FLAVOR=v4
-make kselftest-flavor FLAVOR=v4
-make qemu-boot-flavor FLAVOR=v4
-```
-
-The release package matrix intentionally ignores that result. Re-enabling v4
-distribution requires restoring it to the CI matrix and the explicit release
-flavor lists in the package-matrix, repository, and client gates; it must not
-be enabled merely because a package compiles.
+is expected to be small and does not justify a third build or a stricter
+installation baseline.
 
 Link-time optimization is an independent build policy, not a CPU flavor or a
 package-name component. Clang ThinLTO is the default. Disable LTO or select
@@ -170,10 +157,16 @@ mandatory: `none` therefore requires BTF and BTF modules, while `thin` and
 resolved policy configuration and is checked again in the shipped package;
 LTO can never silently change either Rust or BTF policy.
 
-The Debian backports Rust compiler is used because kernel LTO links Rust and C
-LLVM bitcode together. Image construction rejects a Rust compiler whose LLVM
-major differs from the selected Clang major; without that equality Kconfig
-would disable Rust rather than produce a mixed-LLVM LTO build.
+Rust comes from Debian 13 backports, and its LLVM major may differ from the
+selected Clang major. Linux compiles Rust to native objects
+(`-Cembed-bitcode=n -Clto=n`), so kernel LTO merges only Clang bitcode, and
+Kconfig keeps Rust available with either LLVM. The one option that mixes rustc
+and Clang IR, the experimental `RUST_INLINE_HELPERS`, is unset in Debian's
+configuration and unavailable unless the majors match. The image records the
+rustc LLVM version in its toolchain evidence. bindgen is held to a stricter
+rule: it must load the selected libclang and must keep the fields of
+forward-declared structs; see
+[debian-overlay/COMPATIBILITY.md](../debian-overlay/COMPATIBILITY.md).
 
 Every invocation independently verifies and stages the same Debian source and
 complete build-dependency byte lock. Both the normalized package/version/hash
@@ -454,13 +447,15 @@ actually exist.
 A separate `container images` workflow owns the complete image bundle. It
 builds and publishes all three images together after a relevant push to
 canonical `main`, at 09:00 UTC each Saturday, or from a manual run whose ref is
-the current `main`. A relevant pull request builds and verifies all three but
-has read-only permissions and never authenticates to the registry. The
+the current `main`. A relevant pull request, or a manual run from any branch or
+tag other than `main`, builds and verifies all three but has read-only
+permissions and never authenticates to the registry. The
 publisher uses only its job-scoped `GITHUB_TOKEN`, has no delete permission,
 and verifies anonymous pulls after publishing.
 
 The main workflow never rebuilds these Containerfiles. A separate read-only
-workflow checks candidate image changes in pull requests. A trusted run waits
+workflow checks candidate image changes in pull requests and in manual runs
+from other branches. A trusted run waits
 for an already active main image publication to finish, then snapshots whatever
 coherent `latest` bundle is current; it never waits for a checkout-derived image
 fingerprint. Partial updates to the three mutable tags therefore cannot create

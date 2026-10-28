@@ -239,14 +239,14 @@ def test_ci_lifecycle_branches_converge_on_one_terminal_contract() -> None:
     jobs = _workflow(WORKFLOWS / "ci.yml")["jobs"]
 
     flavor_condition = str(jobs["flavors"]["if"])
-    assert flavor_condition.startswith("always() &&")
+    assert flavor_condition.startswith("!cancelled() &&")
     assert "needs.lifecycle-decision.outputs.build_required == 'true'" in (
         flavor_condition
     )
     for dependency in _needs(jobs["flavors"]):
         assert f"needs.{dependency}.result == 'success'" in flavor_condition
     package_condition = str(jobs["package-matrix"]["if"])
-    assert package_condition.startswith("always() &&")
+    assert package_condition.startswith("!cancelled() &&")
     assert "build_required == 'true'" in package_condition
     assert "needs.flavors.result == 'success'" in package_condition
     assert "state_present == 'false'" in package_condition
@@ -268,7 +268,7 @@ def test_ci_lifecycle_branches_converge_on_one_terminal_contract() -> None:
         ("verify-published-state", "publish-repository"),
     ):
         condition = str(jobs[name]["if"])
-        assert condition.startswith("always() &&")
+        assert condition.startswith("!cancelled() &&")
         assert f"needs.{successful_dependency}.result == 'success'" in condition
 
     terminal = jobs["lifecycle-result"]
@@ -294,3 +294,13 @@ def test_signing_consumes_the_typed_decision_before_using_the_key() -> None:
     command = steps["Sign the strict repository request"]["run"]
     assert command.startswith("make github-apt-repository-sign ")
     assert "LIFECYCLE_DECISION_RESULT=out/ci-lifecycle" in command
+
+
+def test_job_conditions_let_cancellation_stop_running_jobs() -> None:
+    # On cancellation GitHub re-evaluates the condition of every running job.
+    # always() stays true, so a superseded pull-request run would keep building
+    # and hold its concurrency group; !cancelled() tolerates skipped ancestors
+    # in the same way but turns false once the run is cancelled.
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        for name, job in _workflow(path)["jobs"].items():
+            assert "always()" not in str(job.get("if", "")), f"{path.name}:{name}"
