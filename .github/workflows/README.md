@@ -33,7 +33,8 @@ KVM fails each flavor job before compilation; software emulation is not
 accepted.
 
 `container-images.yml` owns the toolbox, kernel-build, and minimal APT-client
-images as one GHCR bundle. A relevant pull request builds all three with
+images as one GHCR bundle. A relevant pull request, or a manual dispatch from
+any branch or tag other than `main`, builds and verifies all three with
 read-only permissions and no registry login. A relevant canonical-main push,
 the Saturday 09:00 UTC schedule, or an exact-main manual dispatch builds all
 three before authenticating and moves only their `latest` tags. Publishers are
@@ -45,8 +46,9 @@ requires one input fingerprint and publication generation, and emits immutable
 digest references. Every image-consuming job selects registry mode explicitly;
 the main CI workflow contains no Containerfile build. Pull-request CI resolves
 the currently published bundle, while the separate read-only image workflow
-verifies candidate Containerfile changes when relevant paths changed. Candidate
-images are never published or passed into the main pull-request workflow.
+verifies candidate Containerfile changes when relevant paths changed or when it
+is dispatched from a branch. Candidate images are never published or passed
+into the main pull-request workflow.
 
 Trusted runs whose typed lifecycle decision requires a build run the `v2`/`v3`
 matrix on independent standard `ubuntu-26.04` runners. Every parallel job

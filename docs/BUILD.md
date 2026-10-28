@@ -447,13 +447,15 @@ actually exist.
 A separate `container images` workflow owns the complete image bundle. It
 builds and publishes all three images together after a relevant push to
 canonical `main`, at 09:00 UTC each Saturday, or from a manual run whose ref is
-the current `main`. A relevant pull request builds and verifies all three but
-has read-only permissions and never authenticates to the registry. The
+the current `main`. A relevant pull request, or a manual run from any branch or
+tag other than `main`, builds and verifies all three but has read-only
+permissions and never authenticates to the registry. The
 publisher uses only its job-scoped `GITHUB_TOKEN`, has no delete permission,
 and verifies anonymous pulls after publishing.
 
 The main workflow never rebuilds these Containerfiles. A separate read-only
-workflow checks candidate image changes in pull requests. A trusted run waits
+workflow checks candidate image changes in pull requests and in manual runs
+from other branches. A trusted run waits
 for an already active main image publication to finish, then snapshots whatever
 coherent `latest` bundle is current; it never waits for a checkout-derived image
 fingerprint. Partial updates to the three mutable tags therefore cannot create

@@ -448,18 +448,23 @@ def test_resolver_rejects_mixed_or_partial_publications(
     assert "no coherent public latest image bundle" in result.stderr
 
 
-def test_image_workflow_has_one_read_only_pr_path_and_one_main_publisher() -> None:
+def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "container-images.yml").read_text()
     )
     events = workflow.get("on", workflow.get(True))
     assert events["pull_request"]["branches"] == ["main"]
     assert events["pull_request"]["paths"] == events["push"]["paths"]
+    assert "workflow_dispatch" in events
     jobs = workflow["jobs"]
-    assert set(jobs) == {"verify-pull-request", "publish-main"}
+    assert set(jobs) == {"verify-candidate", "publish-main"}
     assert {job["runs-on"] for job in jobs.values()} == {"ubuntu-26.04"}
-    verification = jobs["verify-pull-request"]
+    verification = jobs["verify-candidate"]
     publisher = jobs["publish-main"]
+    # A manual run from main publishes; from any other ref it only verifies.
+    assert "github.event_name == 'pull_request'" in verification["if"]
+    assert "github.event_name == 'workflow_dispatch'" in verification["if"]
+    assert "github.ref != 'refs/heads/main'" in verification["if"]
     assert verification["permissions"] == {"contents": "read"}
     assert "packages" not in verification["permissions"]
     assert "secrets." not in str(verification)

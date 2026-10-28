@@ -7,6 +7,10 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ### Changed
 
+- A manual run of the `container images` workflow from any branch or tag other
+  than `main` now builds and verifies all three images with read-only
+  permissions instead of skipping every job. Only `main` still publishes. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 - The `v4` flavor is no longer scheduled for periodic manual qualification.
   Its build code stays in the source tree, but DKC neither builds nor publishes
   it, because `v3` already runs Linux's runtime-selected AVX-512 code. See
