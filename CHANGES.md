@@ -5,13 +5,7 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
-### Fixed
-
-- A newer push to a pull request now actually cancels the superseded CI run.
-  Job conditions used `always()`, which GitHub keeps true on cancellation, so
-  the old kernel builds ran to completion while the new run waited. A manually
-  cancelled trusted run now stops as well. See
-  [.github/workflows/README.md](.github/workflows/README.md).
+No changes yet.
 
 ## 0.2.0 - 2026-10-28
 
@@ -52,6 +46,11 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 - The weekly `container images` rebuild failed after Debian 13 backports
   withdrew the LLVM 21 build of `rustc` for amd64. It builds again.
+- A newer push to a pull request now actually cancels the superseded CI run.
+  Job conditions used `always()`, which GitHub keeps true on cancellation, so
+  the old kernel builds ran to completion while the new run waited. A manually
+  cancelled trusted run now stops as well. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 
 ## 0.1.0 - 2026-09-29
 
