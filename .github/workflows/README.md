@@ -158,9 +158,14 @@ run the package matrix, and exercise a disposable signed repository. Their typed
 qualification has no publication authority; authoritative-state reads,
 production signing, publication, and final state verification remain skipped.
 Jobs that cross those deliberately skipped production-only branches use
-`always()` together with explicit successful-result checks for every direct
+`!cancelled()` together with explicit successful-result checks for every direct
 producer. This prevents GitHub's skipped-ancestor propagation from suppressing
 the pull-request build while keeping genuine dependency failures fail-closed.
+Unlike `always()`, `!cancelled()` turns false when GitHub re-evaluates running
+jobs on cancellation, so a newer push really cancels a superseded pull-request
+run instead of leaving it to hold the concurrency group. A manually cancelled
+trusted run stops the same way; an interrupted publication converges on a later
+run as described in [`docs/PUBLISHING.md`](../../docs/PUBLISHING.md).
 Trusted runs additionally direct-read signed authoritative state. They build
 only for a newer source or an explicitly increased downstream revision. They
 refresh metadata when `Valid-Until` enters its safety horizon,

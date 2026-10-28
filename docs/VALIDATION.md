@@ -73,9 +73,9 @@ confirmed authenticated source discovery, the fast tier, the typed
 `qualification` decision, and release preflight. It did not provide hosted
 build acceptance: GitHub suppressed the flavor matrix because its condition
 lacked `always()` while the successful decision had deliberately skipped
-production-only ancestors. The workflow now combines `always()` with explicit
-success requirements for every direct flavor dependency; repository structure
-tests enforce that convergence rule.
+production-only ancestors. The workflow now combines `!cancelled()` (originally
+`always()`) with explicit success requirements for every direct flavor
+dependency; repository structure tests enforce that convergence rule.
 
 [Pull-request run 32225405539](https://github.com/kogeler/dkc-linux/actions/runs/32225405539)
 then completed the entire non-publishing graph from real cache misses. Both
