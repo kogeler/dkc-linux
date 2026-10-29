@@ -1,0 +1,67 @@
+# Debian packages that the kernel build image rebuilds with DKC patches.
+#
+# This ledger is the only place that names a patched package, the problem it
+# covers, or its patches. container/build-patched-packages.py walks it
+# dynamically; nothing else refers to its entries. When Debian carries a fix,
+# delete that whole [[fix]] block.
+#
+# Each [[fix]] lists its Debian source packages in build order. A later source
+# builds against the binaries of the earlier ones. The newest version of each
+# source across every configured Debian 13 suite is rebuilt with the suffix
+# +dkc<revision>. The binary packages named in `install` enter the
+# build image; nothing from this ledger is published or becomes a dependency of
+# a DKC package.
+schema_version = 1
+
+[[fix]]
+id = "bindgen-libclang22-forward-declarations"
+revision = 1
+problem = """
+With libclang 22, bindgen before 0.72.1 resolves a type to its forward
+declaration instead of its definition (llvm-project PR 147835). Any C struct
+declared before it is defined, directly or through a typedef, becomes an opaque
+one-byte `_address` placeholder with no fields. Linux declares many structs
+ahead of their definitions and generates its Rust bindings with
+--no-layout-tests, so Clang 22 kernel builds need the fixed bindgen. Debian 13
+ships bindgen 0.71.1. The bindgen CLI statically links the library crate, so
+both source packages are rebuilt.
+"""
+upstream = "https://github.com/rust-lang/rust-bindgen/pull/3278"
+# The fix is obsolete once the first source reaches this upstream version.
+obsolete_from_upstream_version = "0.72.1"
+install = ["bindgen"]
+
+[[fix.source]]
+package = "rust-bindgen"
+
+[[fix.source.patch]]
+name = "clang22-type-declaration.patch"
+diff = '''
+Description: Resolve type declarations to their definition with libclang 22
+ Since LLVM 22, clang_getTypeDeclaration returns the forward declaration
+ instead of the definition.
+Origin: upstream, https://github.com/rust-lang/rust-bindgen/pull/3278
+Bug: https://github.com/rust-lang/rust-bindgen/issues/3264
+--- a/clang.rs
++++ b/clang.rs
+@@ -1213,11 +1213,11 @@
+
+     /// Get a cursor pointing to this type's declaration.
+     pub(crate) fn declaration(&self) -> Cursor {
+-        unsafe {
+-            Cursor {
+-                x: clang_getTypeDeclaration(self.x),
+-            }
+-        }
++        let decl = Cursor {
++            x: unsafe { clang_getTypeDeclaration(self.x) },
++        };
++        // Prior to clang 22, the declaration pointed to the definition.
++        decl.definition().unwrap_or(decl)
+     }
+
+     /// Get the canonical declaration of this type, if it is available.
+'''
+
+[[fix.source]]
+package = "rust-bindgen-cli"

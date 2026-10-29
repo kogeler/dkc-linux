@@ -44,6 +44,10 @@ _BUILD_IMAGE_RE = re.compile(
 _TOOLBOX_IMAGE_RE = re.compile(
     r"^ghcr\.io/kogeler/dkc-toolbox@sha256:[0-9a-f]{64}$"
 )
+# A pull request builds its own image bundle and loads it in every job, so its
+# qualification cache records those local candidate references instead.
+_CANDIDATE_BUILD_IMAGE_RE = re.compile(r"^localhost/dkc-build:llvm[1-9][0-9]*$")
+_CANDIDATE_TOOLBOX_IMAGE_RE = re.compile(r"^localhost/dkc-toolbox:latest$")
 _FLAVORS = frozenset(("v2", "v3"))
 
 
@@ -140,10 +144,35 @@ def _sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def _image_provenance(
+    build_image: str, toolbox_image: str, *, qualification: bool
+) -> str:
+    """Classify the image references a cache entry was built with.
+
+    Trusted builds must use the published bundle by digest. Only a
+    pull-request qualification may use its own candidate images.
+    """
+    if _BUILD_IMAGE_RE.fullmatch(build_image) and _TOOLBOX_IMAGE_RE.fullmatch(
+        toolbox_image
+    ):
+        return "registry"
+    if (
+        qualification
+        and _CANDIDATE_BUILD_IMAGE_RE.fullmatch(build_image)
+        and _CANDIDATE_TOOLBOX_IMAGE_RE.fullmatch(toolbox_image)
+    ):
+        return "candidate"
+    raise ValueError(
+        "release cache requires the published image bundle, or a pull request's "
+        "own candidate images for its qualification"
+    )
+
+
 def _verify_semantics(
     cache_root: pathlib.Path,
     identity: ReleaseCacheIdentity,
     build_image: str,
+    provenance_kind: str,
 ) -> None:
     flavor_root = cache_root / "flavor"
     selftest_root = cache_root / "kselftest"
@@ -225,13 +254,13 @@ def _verify_semantics(
     provenance = _read_environment(
         flavor_root / "evidence/build-image-provenance.env", "build image provenance"
     )
-    match = _BUILD_IMAGE_RE.fullmatch(build_image)
-    assert match is not None
-    _require_fields(
-        provenance,
-        {"provider": "registry", "registry_manifest_digest": match.group(1)},
-        "build image provenance",
-    )
+    if provenance_kind == "registry":
+        match = _BUILD_IMAGE_RE.fullmatch(build_image)
+        assert match is not None
+        expected = {"provider": "registry", "registry_manifest_digest": match.group(1)}
+    else:
+        expected = {"provider": "local", "registry_manifest_digest": "NOT_APPLICABLE"}
+    _require_fields(provenance, expected, "build image provenance")
     gates = _read_environment(
         flavor_root / "evidence/post-build-gates.env", "post-build gates"
     )
@@ -365,11 +394,9 @@ def _current_manifest(
     *,
     build_image: str,
     toolbox_image: str,
+    qualification: bool,
 ) -> dict[str, object]:
-    if not _BUILD_IMAGE_RE.fullmatch(build_image):
-        raise ValueError("release cache requires an immutable build-image provenance")
-    if not _TOOLBOX_IMAGE_RE.fullmatch(toolbox_image):
-        raise ValueError("release cache requires an immutable toolbox provenance")
+    _image_provenance(build_image, toolbox_image, qualification=qualification)
     return {
         "schema": "dkc.release-cache.v2",
         "cache_key": expected_key,
@@ -404,6 +431,8 @@ def _verify_candidate(
     cache_root: pathlib.Path,
     identity: ReleaseCacheIdentity,
     expected_key: str,
+    *,
+    qualification: bool,
 ) -> None:
     verify_evidence_directory(cache_root)
     manifest = _read_json(cache_root / "cache.json", "release-cache manifest")
@@ -425,11 +454,10 @@ def _verify_candidate(
     build_image = provenance.get("build_image")
     toolbox_image = provenance.get("toolbox_image")
 
-    if not isinstance(build_image, str) or not _BUILD_IMAGE_RE.fullmatch(build_image):
-        raise ValueError("release-cache build-image provenance is malformed")
-    if not isinstance(toolbox_image, str) or not _TOOLBOX_IMAGE_RE.fullmatch(toolbox_image):
-        raise ValueError("release-cache toolbox provenance is malformed")
-    _verify_semantics(cache_root, identity, build_image)
+    if not isinstance(build_image, str) or not isinstance(toolbox_image, str):
+        raise ValueError("release-cache image provenance is malformed")
+    kind = _image_provenance(build_image, toolbox_image, qualification=qualification)
+    _verify_semantics(cache_root, identity, build_image, kind)
 
 
 def verify_release_cache(
@@ -447,7 +475,8 @@ def verify_release_cache(
     identity = _expected_identity(
         decision_root, flavor, expected_key, repository_root
     )
-    _verify_candidate(cache_root, identity, expected_key)
+    qualification = load_discovery_decision(decision_root).decision == "qualification"
+    _verify_candidate(cache_root, identity, expected_key, qualification=qualification)
     return identity
 
 
@@ -550,6 +579,7 @@ def prepare_release_cache(
             expected_key,
             build_image=build_image,
             toolbox_image=toolbox_image,
+            qualification=decision.decision == "qualification",
         )
         (temporary / "cache.json").write_text(dumps(manifest), encoding="utf-8")
         _write_inventory(temporary)

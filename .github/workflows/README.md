@@ -21,8 +21,9 @@ attempt, so failed-jobs-only re-runs retain valid upstream handoffs.
 base is `main`, and the production lifecycle on its six-hour schedule or an
 exact-main manual dispatch. A manual
 dispatch from any other branch or tag fails before source discovery or
-compilation. Ordinary pushes do not start this workflow. The workflow has no
-`pull_request_target` or `workflow_run` bridge. CI never deletes software from
+compilation. Ordinary pushes do not start this workflow. It has no
+`pull_request_target` or `workflow_run` bridge; the separate cleanup workflow
+below only deletes image archives. CI never deletes software from
 the hosted VM. Each disposable flavor runner has one reviewable privileged
 setup step that installs QEMU and grants the runner process access to an
 existing `/dev/kvm` device; project scripts and all make targets remain
@@ -41,14 +42,34 @@ three before authenticating and moves only their `latest` tags. Publishers are
 serialized and never receive delete permission. The final publication check is
 an anonymous pull of all three packages.
 
-The `container_images` resolver job resolves the three public `latest` tags,
-requires one input fingerprint and publication generation, and emits immutable
-digest references. Every image-consuming job selects registry mode explicitly;
-the main CI workflow contains no Containerfile build. Pull-request CI resolves
-the currently published bundle, while the separate read-only image workflow
-verifies candidate Containerfile changes when relevant paths changed or when it
-is dispatched from a branch. Candidate images are never published or passed
-into the main pull-request workflow.
+The `container_images` job prepares one image bundle for the whole run.
+
+- In a pull request it builds all three images from the pull request's own
+  checkout (`make github-container-images-export`) and uploads each image as an
+  attempt-scoped artifact. Every later job downloads only the images it uses,
+  loads them with `make github-container-images-import`, and runs in `loaded`
+  mode. That mode requires the loaded image to carry this checkout's bundle
+  fingerprint and generation, and it never builds or pulls. Kernel builds,
+  selftests, VMs, and package clients therefore exercise exactly the toolchain
+  the pull request proposes, and the pull request never touches the registry.
+- A trusted run resolves the three public `latest` tags, requires one input
+  fingerprint and publication generation, and gives every job immutable digest
+  references in `registry` mode.
+
+The separate read-only image workflow still verifies Containerfile changes on
+its own when relevant paths change or when it is dispatched from a branch.
+Pull-request images are never published.
+
+The pull-request image archives exist only to move the bundle between jobs of
+one run, and they keep a one-day retention as a fallback. `ci-image-cleanup.yml`
+deletes them after every `ci` run triggered by a pull request, whatever its
+conclusion, including failure and cancellation. It is triggered by
+`workflow_run`, so it executes the default branch's code, never the pull
+request's, and only its single job holds `actions: write`. It deletes only
+artifacts named exactly `dkc-images-<run>-<attempt>-<role>` of the finished run.
+Because the archives are gone afterwards, a failed pull-request run is retried
+with a full re-run, which rebuilds the bundle, rather than a failed-jobs-only
+re-run.
 
 Trusted runs whose typed lifecycle decision requires a build run the `v2`/`v3`
 matrix on independent standard `ubuntu-26.04` runners. Every parallel job

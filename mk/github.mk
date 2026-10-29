@@ -36,6 +36,28 @@ github-container-images-resolve: ## Snapshot the current published image bundle 
 	@$(DKC_ROOT)/scripts/github-container-images-resolve.sh \
 		'$(GITHUB_EVENT_NAME)' '$(GITHUB_IMAGE_RESOLVE_TIMEOUT)'
 
+GITHUB_IMAGE_BUNDLE_DIR ?= $(DKC_ROOT)/out/ci-images
+GITHUB_IMAGE_ROLES ?= toolbox kernel-build apt-client
+GITHUB_OUTPUT ?= /dev/stdout
+
+.PHONY: github-container-images-export
+github-container-images-export: container-images ## Build this checkout's image bundle and export it for later jobs
+	@$(DKC_IMAGE_HELPER) export-bundle '$(GITHUB_IMAGE_BUNDLE_DIR)' \
+		'$(DKC_IMAGE_BUNDLE_GENERATION)' '$(GITHUB_OUTPUT)' \
+		'$(TOOLBOX_IMAGE)' '$(BUILD_IMAGE)' '$(APT_CLIENT_IMAGE)'
+
+.PHONY: github-container-images-import
+github-container-images-import: ## Load the downloaded image archives this job needs
+	@for role in $(GITHUB_IMAGE_ROLES); do \
+		$(DKC_IMAGE_HELPER) load "$(GITHUB_IMAGE_BUNDLE_DIR)/$$role/$$role.tar.zst" || exit 1; \
+	done
+
+.PHONY: github-container-images-delete
+github-container-images-delete: ## Delete the pull-request image archives of one finished CI run
+	@test -n '$(GITHUB_IMAGE_RUN_ID)' || { echo 'GITHUB_IMAGE_RUN_ID is required'; exit 1; }
+	@$(DKC_ROOT)/scripts/github-ci.py run-image-artifacts-delete \
+		--run-id '$(GITHUB_IMAGE_RUN_ID)'
+
 .PHONY: github-source-build-env
 github-source-build-env: ## Export one authenticated source handoff to the job environment
 	@$(DKC_ROOT)/scripts/github-ci.py export-source \

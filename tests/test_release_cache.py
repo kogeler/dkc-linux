@@ -399,3 +399,58 @@ def test_release_cache_location_is_confined(tmp_path: Path) -> None:
             cache_workspace=workspace,
         )
     assert external.is_dir()
+
+
+CANDIDATE_IMAGE = "localhost/dkc-build:llvm22"
+CANDIDATE_TOOLBOX = "localhost/dkc-toolbox:latest"
+
+
+def _candidate_results(tmp_path: Path, decision_kind: str) -> tuple[Path, ...]:
+    decision_root = tmp_path / "decision"
+    decision = _decision(decision_root, decision_kind)
+    flavor, selftest, qemu = _accepted_results(tmp_path / "results", decision)
+    (flavor / "evidence/build-image-provenance.env").write_text(
+        "provider=local\nregistry_manifest_digest=NOT_APPLICABLE\n"
+    )
+    _inventory(flavor / "evidence")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    key = release_cache_identity(decision, flavor="v3", repository_root=ROOT).key()
+    return decision_root, flavor, selftest, qemu, workspace, key  # type: ignore[return-value]
+
+
+def _prepare_candidate(tmp_path: Path, decision_kind: str) -> Path:
+    decision_root, flavor, selftest, qemu, workspace, key = _candidate_results(
+        tmp_path, decision_kind
+    )
+    cache = workspace / "out/release-cache/v3"
+    prepare_release_cache(
+        cache,
+        flavor_result=flavor,
+        selftest_result=selftest,
+        qemu_result=qemu,
+        decision_root=decision_root,
+        flavor="v3",
+        build_image=CANDIDATE_IMAGE,
+        toolbox_image=CANDIDATE_TOOLBOX,
+        expected_key=str(key),
+        repository_root=ROOT,
+        cache_workspace=workspace,
+    )
+    return cache
+
+
+def test_a_pull_request_qualification_caches_its_own_candidate_images(
+    tmp_path: Path,
+) -> None:
+    cache = _prepare_candidate(tmp_path, "qualification")
+    manifest = json.loads((cache / "cache.json").read_text())
+    assert manifest["provenance"] == {
+        "build_image": CANDIDATE_IMAGE,
+        "toolbox_image": CANDIDATE_TOOLBOX,
+    }
+
+
+def test_a_trusted_build_never_caches_candidate_images(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="published image bundle"):
+        _prepare_candidate(tmp_path, "build")

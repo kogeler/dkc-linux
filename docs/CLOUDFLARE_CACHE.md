@@ -348,7 +348,7 @@ APT may exit zero after a failed index fetch while printing a warning.
 | Package or by-hash URL never becomes `HIT` | Recheck immutable eligibility, origin Cache-Control, object size, and rule order. |
 | Python client receives error `1010` | Retry with real APT and `curl`; do not disable Browser Integrity Check solely for a synthetic user agent. |
 | Minimal container reports TLS verification failure | Install `ca-certificates` and retry before changing TLS or WAF settings. |
-| Header metapackage cannot resolve LLVM 21 | Enable official Debian `trixie-backports`; this is a client repository issue, not a cache failure. |
+| Header metapackage cannot resolve its LLVM tools | Run `apt update` against current Debian 13 main; this is a client repository issue, not a cache failure. |
 
 If an API is used only for independent read-back, Smart topology requires
 **Zone Settings: Read**; changing it requires **Zone Settings: Edit**. Cache or

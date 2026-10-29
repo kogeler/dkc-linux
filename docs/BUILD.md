@@ -24,8 +24,23 @@ APT client as one bundle. Its inputs are listed in
 content inputs, pinned Debian base, and LLVM major. Local mode is the default
 and requires no registry credentials.
 
-GitHub Actions explicitly selects registry mode. The image lifecycle is
-independent from the kernel lifecycle: the resolver takes the current three
+The kernel toolchain is selected in exactly one place, `config/toolchain.env`:
+the LLVM major and the Debian suite that supplies rustc. Make includes the
+file, `make print-config` shows the values, and the kernel build image receives
+it as build arguments without defaults. Everything else derives from it: the
+overlay, whose committed patches carry an `@LLVM_MAJOR@` placeholder rendered
+at apply time, the generated `clang-<major>`, `lld-<major>`, and
+`llvm-<major>` package relations, and every audit, selftest, and client check.
+The exact package versions that a selection resolves to are recorded in the
+image's toolchain evidence and hashed by the toolchain lock. A different
+selection is proven by building and qualifying it, not by editing copies of a
+version.
+
+A trusted GitHub Actions run selects registry mode; a pull request builds its
+own bundle and loads it in every job (see
+[.github/workflows/README.md](../.github/workflows/README.md)). For trusted
+runs the image lifecycle is independent from the kernel lifecycle: the resolver
+takes the current three
 public `latest` tags, requires one coherent publication generation, and gives
 later jobs immutable `@sha256:<manifest-digest>` snapshots of those tags. It
 does not compare them with the kernel checkout or make their digests part of a
@@ -157,8 +172,8 @@ mandatory: `none` therefore requires BTF and BTF modules, while `thin` and
 resolved policy configuration and is checked again in the shipped package;
 LTO can never silently change either Rust or BTF policy.
 
-Rust comes from Debian 13 backports, and its LLVM major may differ from the
-selected Clang major. Linux compiles Rust to native objects
+Rust comes from the Debian suite selected in `config/toolchain.env`, and its
+LLVM major may differ from the selected Clang major. Linux compiles Rust to native objects
 (`-Cembed-bitcode=n -Clto=n`), so kernel LTO merges only Clang bitcode, and
 Kconfig keeps Rust available with either LLVM. The one option that mixes rustc
 and Clang IR, the experimental `RUST_INLINE_HELPERS`, is unset in Debian's
@@ -167,6 +182,32 @@ rustc LLVM version in its toolchain evidence. bindgen is held to a stricter
 rule: it must load the selected libclang and must keep the fields of
 forward-declared structs; see
 [debian-overlay/COMPATIBILITY.md](../debian-overlay/COMPATIBILITY.md).
+
+### Patched build inputs
+
+A build input that needs a fix Debian 13 does not carry yet is rebuilt from
+the patched-package ledger, `container/patched-packages.toml`. The ledger is
+the only place that names such a package, the problem it covers, and its
+patches; `container/build-patched-packages.py` walks it dynamically, and an
+obsolete fix is removed by deleting its block. For every fix, the first stage
+of `Containerfile.build`:
+
+- selects the newest version of each listed source across every configured
+  Debian 13 suite, including `trixie-updates` and `trixie-security`, from
+  authenticated indices;
+- applies the fix's patches with Debian's fuzz-free quilt, so a patch that no
+  longer matches stops the image build;
+- rebuilds the sources in ledger order, each against the binaries of the
+  previous ones, with the version suffix `+dkc<revision>`, so any
+  newer Debian upload outranks it;
+- skips a fix whose `obsolete_from_upstream_version` Debian already reached.
+
+The binaries a fix names in `install` replace their Debian builds in the image
+and stay in its APT cache, so the toolchain lock hashes them like every other
+package. `/usr/share/dkc/patched-packages.tsv` records their Debian origin, and
+`make closure-proof` accepts exactly those versions and hashes. These packages
+are build-only: they are never published to the APT repository and never
+become a dependency of a DKC package.
 
 Every invocation independently verifies and stages the same Debian source and
 complete build-dependency byte lock. Both the normalized package/version/hash
@@ -311,7 +352,7 @@ files in one dpkg database and verifies:
 - exact `/boot` and `/lib/modules/<KREL>` layout;
 - conventional `/usr/src/linux-headers-*` payloads and exact `build`/`source`
   symlink targets despite the DKC package namespace;
-- versioned LLVM tools from Debian backports;
+- versioned LLVM tools from Debian 13 main, with no backports suite;
 - plain out-of-tree and controlled DKMS builds for every KREL, their real build
   commands, and matching vermagic;
 - isolated v3 removal without damaging v2 or the stock kernel;
@@ -453,15 +494,16 @@ permissions and never authenticates to the registry. The
 publisher uses only its job-scoped `GITHUB_TOKEN`, has no delete permission,
 and verifies anonymous pulls after publishing.
 
-The main workflow never rebuilds these Containerfiles. A separate read-only
-workflow checks candidate image changes in pull requests and in manual runs
-from other branches. A trusted run waits
+A trusted run of the main workflow never rebuilds these Containerfiles; a pull
+request builds them once from its own checkout and every job of that run loads
+exactly those images. A trusted run waits
 for an already active main image publication to finish, then snapshots whatever
 coherent `latest` bundle is current; it never waits for a checkout-derived image
 fingerprint. Partial updates to the three mutable tags therefore cannot create
 a mixed build environment, while the image and kernel schedules remain
-independent. Pull-request kernel jobs use that same published bundle, never the
-unpublished candidate images built by the separate path-filtered image workflow.
+independent. Pull-request images are never published, and a pull request's
+release-cache transport may record only its own candidate images, never a
+trusted build.
 
 Trusted lifecycle triggers first discover authenticated Debian source and read
 signed repository state. The typed decision builds only when the source is new,

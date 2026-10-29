@@ -5,6 +5,44 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
+No changes yet.
+
+## 0.3.0 - 2026-10-29
+
+### Added
+
+- The kernel build image can rebuild Debian 13 packages with DKC patches from
+  one ledger, `container/patched-packages.toml`. The newest source is selected
+  across every Debian 13 suite, patches must apply without fuzz, and the
+  results exist only inside the build image. See
+  [docs/BUILD.md](docs/BUILD.md#patched-build-inputs).
+
+### Changed
+
+- The kernel is compiled and linked with Clang/LLVM 22 from Debian 13 main.
+  Headers now depend on `clang-22`, `lld-22`, and `llvm-22`, so installing them
+  no longer needs `trixie-backports`; the LLVM 21 packages become
+  autoremovable after the upgrade. See
+  [docs/USER_INSTALL.md](docs/USER_INSTALL.md#llvm-tools-for-headers).
+- Clean-client and KVM package tests now install headers on Debian 13 without
+  any backports suite.
+- Pull-request CI builds the container image bundle from the pull request's own
+  checkout and loads it in every job, so kernels, selftests, VMs, and package
+  clients run on the toolchain the pull request proposes. Pull requests no
+  longer use the published registry bundle; trusted runs still do. A separate
+  `workflow_run` workflow running default-branch code deletes those image
+  archives after every pull-request run, whatever its conclusion. See
+  [.github/workflows/README.md](.github/workflows/README.md).
+- The kernel toolchain (LLVM major and rustc suite) is selected only in
+  `config/toolchain.env`. Committed overlay patches carry an `@LLVM_MAJOR@`
+  placeholder, the image takes the selection as build arguments without
+  defaults, and tests check behavior instead of copies of version literals. See
+  [docs/BUILD.md](docs/BUILD.md).
+- `DKC_REVISION` is raised to 3 because the build image definition and the
+  LLVM major are build-policy inputs. The lifecycle therefore rebuilds the
+  already published Debian source with Clang 22 as `+dkc13.3` packages. See
+  [docs/MAINTAINER_SETUP.md](docs/MAINTAINER_SETUP.md#rebuilding-one-debian-source-version).
+
 ### Fixed
 
 - Storage reads now survive a stalled or dropped connection. A body-read

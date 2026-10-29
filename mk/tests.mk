@@ -43,7 +43,7 @@ overlay-patches: build-image ## Regenerate the selected source profile's packagi
 	$(CONTAINER_RUN) --net --image '$(BUILD_IMAGE)' --name regen -- \
 		scripts/in-container/refresh-overlay-patches.sh \
 		'$(DKC_ORIG_TAR_URL)' '$(DKC_ORIG_TAR_SHA256)' \
-		'$(DKC_DEBIAN_TAR_URL)' '$(DKC_DEBIAN_TAR_SHA256)' '$(LLVM_MAJOR)' \
+		'$(DKC_DEBIAN_TAR_URL)' '$(DKC_DEBIAN_TAR_SHA256)' \
 		| tar --extract --file=- --directory="$$staging" --no-same-owner; \
 	profile="$$(find "$$staging" -mindepth 1 -maxdepth 1 -type d -printf '%f\n')"; \
 	test "$$(printf '%s' "$$profile" | wc -l)" -eq 0 -a -n "$$profile"; \

@@ -18,7 +18,7 @@ make closure-proof      # every installed package resolved to its origin
 
 | Upstream dependency | Trixie availability | Adaptation | Files changed |
 |---|---|---|---|
-| `gcc-15-for-host`, `gcc-16-for-host` | **absent.** Trixie has `gcc-14-for-host` 14.2.0-19 and no newer GCC at all | Select the LLVM toolchain instead of a newer GCC, and depend on the real `clang-21` package | `debian/config/defines.toml`, `debian/lib/python/debian_linux/config_v2.py`, `debian/bin/gencontrol.py` |
+| `gcc-15-for-host`, `gcc-16-for-host` | **absent.** Trixie has `gcc-14-for-host` 14.2.0-19 and no newer GCC at all | Select the LLVM toolchain instead of a newer GCC, and depend on the real `clang-<major>` package | `debian/config/defines.toml`, `debian/lib/python/debian_linux/config_v2.py`, `debian/bin/gencontrol.py` |
 | `gcc-<major>-<gnutype>` (cross) | absent | Not synthesised when LLVM is selected: Clang is never invoked through a GNU triplet prefix | `debian/bin/gencontrol.py` |
 | kernel image below `/usr/lib/modules`, `Pre-Depends: linux-base (>= 4.17~)` (Linux 7.2) | **absent.** Trixie has `linux-base` 4.12.1, whose bootloader and initramfs hooks read `/boot` | Keep the image, configuration and `System.map` in `/boot` and require only `linux-base (>= 4.12~)` | `debian/rules.real`, `debian/bin/gencontrol.py`, `debian/templates/base.install.j2`, `debian/templates/binary.install.j2`, `debian/templates/image.control.in` |
 | other source-declared dependencies | present | none | none |
@@ -79,29 +79,28 @@ would otherwise compile a module with GCC against a kernel built with Clang.
 | Rust | Unchanged and still enabled. `pkg.linux.norust` is deliberately not in the profile set |
 | BTF and unrelated hardening | Unchanged by the overlay |
 | Module signing and lockdown | Explicitly disabled for the initial Secure-Boot-off product. `SECURITY_LOCKDOWN_LSM` selects `MODULE_SIG`, so retaining EFI-triggered lockdown while disabling module signatures is not a valid kernel configuration. Both return only with a protected module/UEFI key lifecycle and Secure-Boot-on tests |
-| `CC_HAS_COUNTED_BY` | **Preserved** by choosing Clang 21. Clang 19 would have disabled it, which Debian's own GCC build has enabled; that is why `clang-19` from `trixie` main was rejected despite needing no extra suite |
+| `CC_HAS_COUNTED_BY` | **Preserved**: the selected Clang major must keep it enabled, as Debian's own GCC build does; Clang 19 would disable it |
 | `LD_CAN_USE_KEEP_IN_OVERLAY` | Preserved: needs lld >= 21 |
-| `CC_HAS_COUNTED_BY_PTR` | Not available: needs Clang >= 22.1. Debian's own GCC build does not have it either, so this is not a regression against the stock kernel |
-| Client trust path | No third-party repository. The headers package depends on `clang-21` from `trixie-backports`, which is official Debian signed by the archive key already present on every Debian 13 system |
+| `CC_HAS_COUNTED_BY_PTR` | Follows the selected Clang: enabled where both the compiler and the series support it |
+| Client trust path | No third-party repository. The headers package depends on `clang-<major>`, `lld-<major>`, and `llvm-<major>` from Debian 13 main, signed by the archive key already present on every Debian 13 system; no backports suite is needed |
 | Reproducibility | Improved relative to a third-party toolchain: Debian's archive and `snapshot.debian.org` retain the exact `.deb` inputs |
 
 ## Real-build validation
 
 1. **bindgen and libclang.** Debian's `bindgen` depends on the *unversioned*
-   `libclang-dev`, which on Trixie is libclang 19, so both 19 and 21 are
-   installed. bindgen resolves libclang with `dlopen` at runtime and would
+   `libclang-dev`, which on Trixie is libclang 19, so both 19 and the
+   selected major are installed. bindgen resolves libclang with `dlopen` at runtime and would
    happily load the older one, generating Rust bindings from a different
    compiler than the kernel is built with. `LIBCLANG_PATH` is pinned to
-   `/usr/lib/llvm-21/lib` and the image asserts that `libclang.so` there
-   resolves to major 21. The image exercises bindgen's actual dynamic-loading
+   `/usr/lib/llvm-<major>/lib` and the image asserts that `libclang.so` there
+   resolves to the selected major. The image exercises bindgen's actual dynamic-loading
    path under `LD_DEBUG=libs`, requires the selected library, and rejects a
    loaded libclang 19. The probe declares structs before defining them,
-   directly and through a typedef, and requires their fields in the output:
-   bindgen before 0.72.1 emits opaque one-byte placeholders for such structs
-   with libclang 22, and Linux generates its bindings with `--no-layout-tests`.
-   Debian 13's bindgen 0.71.1 fails this probe with libclang 22, which is why
-   Clang 22 is not selected yet; see [TODO.md](../TODO.md). The real
-   configuration separately requires `CONFIG_RUST=y` after `olddefconfig`.
+   directly and through a typedef, and requires their fields in the output,
+   because Linux generates its bindings with `--no-layout-tests`. A build input
+   that needs a Debian fix is rebuilt from the patched-package ledger described
+   in [docs/BUILD.md](../docs/BUILD.md). The real configuration separately
+   requires `CONFIG_RUST=y` after `olddefconfig`.
 2. **Debian's own binutils calls.** `debian/rules.real` runs
    `$(CROSS_COMPILE)strip` and `$(CROSS_COMPILE)objcopy` directly, outside
    Kbuild, to strip the image and to extract BTF sections. The overlay selects

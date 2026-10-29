@@ -12,9 +12,12 @@ on:
       - .github/workflows/container-images.yml
       - config/base-image.lock
       - config/container-images.inputs
+      - config/toolchain.env
       - container/Containerfile.apt-client
       - container/Containerfile.build
       - container/Containerfile.toolbox
+      - container/build-patched-packages.py
+      - container/patched-packages.toml
       - mk/container.mk
       - mk/preflight.mk
       - scripts/check-current-main.sh
@@ -26,9 +29,12 @@ on:
       - .github/workflows/container-images.yml
       - config/base-image.lock
       - config/container-images.inputs
+      - config/toolchain.env
       - container/Containerfile.apt-client
       - container/Containerfile.build
       - container/Containerfile.toolbox
+      - container/build-patched-packages.py
+      - container/patched-packages.toml
       - mk/container.mk
       - mk/preflight.mk
       - scripts/check-current-main.sh

@@ -21,6 +21,9 @@ usage:
   container-images.sh paths <content|trigger|all>
   container-images.sh build <role> <image> <base> <llvm> <input-sha> <generation> <revision>
   container-images.sh ensure <role> <digest-ref>
+  container-images.sh require <role> <image> <base> <llvm> <input-sha> <generation>
+  container-images.sh export-bundle <dir> <generation> <output> <toolbox> <build> <apt-client>
+  container-images.sh load <archive>
   container-images.sh ensure-base <base-image>
   container-images.sh push-bundle <toolbox> <build> <apt-client> <base> <llvm> <input-sha> <generation> <toolbox-latest> <build-latest> <apt-client-latest>
   container-images.sh resolve <expected-generation-or-empty> <timeout> <interval> <output> <toolbox-latest> <build-latest> <apt-client-latest>
@@ -236,6 +239,7 @@ build_image() {
 	)
 	if [ "$role" = kernel-build ]; then
 		build_args+=(
+			--build-arg-file "${DKC_ROOT}/config/toolchain.env"
 			--build-arg "LLVM_MAJOR=${llvm_major}"
 		)
 	fi
@@ -270,6 +274,57 @@ ensure_image() {
 	verify_published_image "$role" "$image" >/dev/null ||
 		dkc::die "pulled ${role} image failed published-image verification"
 	dkc::ok "immutable ${role} image is ready"
+}
+
+# A loaded image must be exactly the bundle this checkout describes. Nothing is
+# built or pulled: the image was built from this checkout by an earlier job.
+require_image() {
+	local role="$1" image="$2" base_image="$3" llvm_major="$4"
+	local input_sha="$5" generation="$6"
+	validate_role "$role"
+	validate_sha256 "$input_sha" "bundle input fingerprint"
+	validate_llvm "$llvm_major"
+	validate_generation "$generation"
+	verify_image "$role" "$image" "$base_image" "$llvm_major" "$input_sha" "$generation" >/dev/null ||
+		dkc::die "loaded ${role} image ${image} is absent or not this checkout's bundle"
+	dkc::ok "loaded ${role} image matches this checkout"
+}
+
+# Save the three built images as separate compressed archives, so a consumer
+# downloads only the images it uses, and export their references.
+export_bundle() {
+	local dir="$1" generation="$2" output="$3"
+	local -a roles=(toolbox kernel-build apt-client) images=("$4" "$5" "$6")
+	local index role image archive
+	validate_generation "$generation"
+	mkdir -p "$dir"
+	for index in 0 1 2; do
+		role="${roles[$index]}"
+		image="${images[$index]}"
+		podman image exists "$image" || dkc::die "${role} image ${image} has not been built"
+		mkdir -p "${dir}/${role}"
+		archive="${dir}/${role}/${role}.tar.zst"
+		podman save --format docker-archive "$image" | zstd -q -T0 -3 -o "$archive" -f
+		(cd "${dir}/${role}" && sha256sum "${role}.tar.zst") >"${archive}.sha256"
+		dkc::ok "exported ${role} image ${image}"
+	done
+	{
+		printf 'toolbox_image=%s\n' "${images[0]}"
+		printf 'build_image=%s\n' "${images[1]}"
+		printf 'apt_client_image=%s\n' "${images[2]}"
+		printf 'bundle_generation=%s\n' "$generation"
+	} >>"$output"
+}
+
+load_archive() {
+	local archive="$1"
+	if [ ! -f "$archive" ] || [ ! -f "${archive}.sha256" ]; then
+		dkc::die "image archive or its checksum is missing: $archive"
+	fi
+	(cd "$(dirname "$archive")" && sha256sum --check --quiet "$(basename "$archive").sha256") ||
+		dkc::die "image archive checksum mismatch: $archive"
+	zstd -q -dc "$archive" | podman load
+	dkc::ok "loaded image archive $(basename "$archive")"
 }
 
 ensure_base() {
@@ -424,6 +479,24 @@ ensure)
 	dkc::refuse_root
 	dkc::require_cmd podman
 	ensure_image "$@"
+	;;
+require)
+	[ "$#" -eq 6 ] || usage
+	dkc::refuse_root
+	dkc::require_cmd podman
+	require_image "$@"
+	;;
+export-bundle)
+	[ "$#" -eq 6 ] || usage
+	dkc::refuse_root
+	dkc::require_cmd podman zstd sha256sum
+	export_bundle "$@"
+	;;
+load)
+	[ "$#" -eq 1 ] || usage
+	dkc::refuse_root
+	dkc::require_cmd podman zstd sha256sum
+	load_archive "$@"
 	;;
 ensure-base)
 	[ "$#" -eq 1 ] || usage

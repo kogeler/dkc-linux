@@ -15,7 +15,7 @@
  
  [build]
  c_compiler = 'gcc-16'
-+llvm_major = 21
++llvm_major = @LLVM_MAJOR@
  rust_build_depends = [
    'rustc:native (>= 1.78.0)',
    'bindgen:native (>= 0.65.1)',

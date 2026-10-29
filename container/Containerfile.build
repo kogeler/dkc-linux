@@ -10,14 +10,15 @@
 # install. That is why the compiler comes from Debian itself and not from a
 # third-party repository:
 #
-#   * clang-21 lives in trixie-backports, which is official Debian on
+#   * The selected clang, lld, and llvm major comes from Debian 13 itself on
 #     deb.debian.org, signed by the archive key already trusted on every Debian
-#     13 system. No new key, no third-party service.
-#   * clang-22 is now part of Debian 13 itself and would let headers users drop
-#     backports. It is not selected yet: Debian 13's bindgen 0.71.1 generates
-#     incomplete Rust bindings with libclang 22, which the bindgen probe at the
-#     end of this file rejects. TODO.md tracks the switch and its readiness
-#     criteria.
+#     13 system. Headers users need no backports, no new key, and no
+#     third-party service.
+#
+# Build-only inputs may come from container/patched-packages.toml: Debian 13
+# sources rebuilt with DKC patches in the first stage below. They exist only in
+# this image; nothing from the ledger is published or becomes a dependency of a
+# DKC package.
 #
 # Two more deliberate choices:
 #
@@ -29,18 +30,38 @@
 #     appears in a package's runtime dependencies.
 
 ARG BASE_IMAGE
+
+# --------------------------------------------------------------------------
+# Patched build inputs, rebuilt from the newest Debian 13 sources
+# --------------------------------------------------------------------------
+
+FROM ${BASE_IMAGE} AS patched-packages
+ARG DEBIAN_FRONTEND=noninteractive
+COPY patched-packages.toml build-patched-packages.py /dkc-patched/
+RUN set -eux; \
+	rm -f /etc/apt/apt.conf.d/docker-clean; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		build-essential ca-certificates dpkg-dev python3; \
+	python3 /dkc-patched/build-patched-packages.py \
+		--ledger /dkc-patched/patched-packages.toml \
+		--output /patched --work /tmp/dkc-patched-work
+
+# --------------------------------------------------------------------------
+# The kernel build image
+# --------------------------------------------------------------------------
+
 FROM ${BASE_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG DEBIAN_SUITE=trixie
 
-# clang-21 comes from trixie-backports. Kernel 7.1.7 requires LLVM >= 15, so
-# this clears the minimum with room, and it keeps CC_HAS_COUNTED_BY and
-# LD_CAN_USE_KEEP_IN_OVERLAY enabled, matching the hardening of Debian's own
-# gcc-15 build.
-ARG LLVM_MAJOR=21
+# The toolchain is selected only in config/toolchain.env and arrives as build
+# arguments without defaults here. The build verifies each source's own tool
+# minimums and the resulting Kconfig compiler probes.
+ARG LLVM_MAJOR
+ARG RUSTC_SUITE
 
-# Trixie backports supplies rustc/rust-src and Trixie supplies bindgen. This is
+# RUSTC_SUITE supplies rustc/rust-src and Trixie supplies bindgen. This is
 # the single toolchain for LTO and non-LTO builds alike. rustc's LLVM major may
 # differ from Clang's: Linux compiles Rust to native objects
 # (-Cembed-bitcode=n -Clto=n), so kernel LTO merges only Clang bitcode. The one
@@ -61,6 +82,12 @@ ENV LC_ALL=C.UTF-8 \
 # --------------------------------------------------------------------------
 
 RUN set -eux; \
+	case "${LLVM_MAJOR:-}" in \
+	'' | *[!0-9]*) echo "LLVM_MAJOR build argument is required" >&2; exit 1 ;; \
+	esac; \
+	case "${RUSTC_SUITE:-}" in \
+	'' | *[!a-z0-9-]*) echo "RUSTC_SUITE build argument is required" >&2; exit 1 ;; \
+	esac; \
 	# The base image ships APT hooks that rm absolute paths under
 	# /var/cache/apt. Audits run unprivileged against a read-only root, where
 	# those hooks can only fail noisily; they are an image artifact, not policy.
@@ -68,8 +95,8 @@ RUN set -eux; \
 	apt-get update; \
 	apt-get install -y --no-install-recommends ca-certificates; \
 	\
-	printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: %s-backports\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
-		"${DEBIAN_SUITE}" >/etc/apt/sources.list.d/backports.sources; \
+	printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: %s\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+		"${RUSTC_SUITE}" >/etc/apt/sources.list.d/rustc.sources; \
 	apt-get update; \
 	# Bring every package inherited from the digest-pinned base to a version in
 	# the same authenticated indices used below. Staging resolves and hashes the
@@ -171,13 +198,30 @@ RUN set -eux; \
 
 RUN set -eux; \
 	apt-get install -y --no-install-recommends \
-		-t "${DEBIAN_SUITE}-backports" rustc rust-src; \
+		-t "${RUSTC_SUITE}" rustc rust-src; \
 	apt-get install -y --no-install-recommends bindgen; \
 	rustc_llvm_major="$(rustc -vV | sed -n 's/^LLVM version: \([0-9][0-9]*\).*/\1/p')"; \
 	case "${rustc_llvm_major}" in \
 	'' | *[!0-9]*) echo "rustc does not report its LLVM major" >&2; exit 1 ;; \
 	esac; \
 	echo "rustc uses LLVM ${rustc_llvm_major}; Clang uses LLVM ${LLVM_MAJOR}"
+
+# --------------------------------------------------------------------------
+# Patched build inputs from the ledger replace their Debian builds
+# --------------------------------------------------------------------------
+#
+# The archives stay in the APT cache so the toolchain lock hashes them like
+# every other installed package; the manifest records their Debian origin.
+
+COPY --from=patched-packages /patched/ /tmp/dkc-patched/
+RUN set -eux; \
+	if [ -n "$(find /tmp/dkc-patched/debs -name '*.deb' -print -quit)" ]; then \
+		apt-get install -y --no-install-recommends /tmp/dkc-patched/debs/*.deb; \
+		cp /tmp/dkc-patched/debs/*.deb /var/cache/apt/archives/; \
+	fi; \
+	install -D -m 0644 /tmp/dkc-patched/manifest.tsv /usr/share/dkc/patched-packages.tsv; \
+	cat /usr/share/dkc/patched-packages.tsv; \
+	rm -rf /tmp/dkc-patched
 
 # --------------------------------------------------------------------------
 # Record what was actually installed, for the toolchain lock
@@ -225,10 +269,10 @@ ENV LIBCLANG_PATH=/usr/lib/llvm-${LLVM_MAJOR}/lib \
 # necessarily co-installed with Debian's bindgen package.
 #
 # The probe also declares each struct before defining it, directly and through
-# a typedef. bindgen before 0.72.1 turns such structs into opaque one-byte
-# placeholders with libclang 22 (rust-bindgen PR 3278). Linux generates its
+# a typedef, and requires every field in the output. Linux generates its
 # bindings with --no-layout-tests and declares many structs ahead of their
-# definitions, so this pairing must fail here rather than in the kernel build.
+# definitions, so a bindgen/libclang pair that emits opaque placeholders must
+# fail here rather than in the kernel build.
 RUN set -eux; \
 	printf '%s\n' \
 		'struct dkc_bindgen_probe;' \

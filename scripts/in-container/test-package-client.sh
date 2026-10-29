@@ -38,9 +38,10 @@ printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 rm -f /etc/apt/apt.conf.d/docker-clean
 
-# The base must be a plain Trixie client.  Backports is added only in the
-# headers mode, and the DKC repository is the local matrix under test.
-if grep -RhiE '(^|[[:space:]])(sid|unstable)([[:space:]]|$)|apt\.llvm\.org' \
+# The base must be a plain Trixie client without backports, and the DKC
+# repository is the local matrix under test. Headers must resolve their
+# versioned LLVM tools from Debian 13 itself.
+if grep -RhiE '(^|[[:space:]])(sid|unstable|[a-z]+-backports)([[:space:]]|$)|apt\.llvm\.org' \
 	/etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
 	echo "base client contains a forbidden repository" >&2
 	exit 1
@@ -51,15 +52,6 @@ printf '%s\n' \
 	'Suites: ./' \
 	'Trusted: yes' \
 	>/etc/apt/sources.list.d/dkc-local.sources
-if [ "$mode" = headers ]; then
-	printf '%s\n' \
-		'Types: deb' \
-		'URIs: http://deb.debian.org/debian' \
-		'Suites: trixie-backports' \
-		'Components: main' \
-		'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-		>/etc/apt/sources.list.d/backports.sources
-fi
 
 run_logged "apt update" apt-get -o Acquire::Languages=none update
 # Make every inherited base package resolve to the authenticated indices used
@@ -408,8 +400,8 @@ for package in "${image_metas[@]}"; do
 done
 if [ "$mode" = headers ]; then
 	for tool in clang lld llvm; do
-		apt-cache policy "${tool}-${llvm_major}" | grep -q 'trixie-backports' || {
-			echo "${tool}-${llvm_major} did not resolve from Debian backports" >&2
+		apt-cache policy "${tool}-${llvm_major}" | grep -qE 'deb\.debian\.org/debian trixie/main' || {
+			echo "${tool}-${llvm_major} did not resolve from Debian 13 main" >&2
 			exit 1
 		}
 	done

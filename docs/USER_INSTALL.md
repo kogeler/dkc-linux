@@ -29,8 +29,8 @@ sudo apt install dkc-linux-image-v3-amd64
 ```
 
 The last command installs the recommended `v3` image metapackage. Use the CPU
-guidance below before choosing it for older hardware or a migratable VM. The
-image itself does not need Debian backports.
+guidance below before choosing it for older hardware or a migratable VM.
+Neither the image nor the headers need Debian backports.
 
 ## Verify the archive fingerprint
 
@@ -54,27 +54,18 @@ replace it. If the published fingerprint ever changes, verify the new value
 through an independently trusted project channel before accepting metadata
 signed only by the new key.
 
-## Enable Debian backports when installing headers
+## LLVM tools for headers
 
-Kernel images need no extra Debian suite. DKC headers depend on the matching
-`clang-21`, `lld-21`, and `llvm-21` tools from the official Debian 13 backports
-suite. If `trixie-backports` is not already configured, add it before
-installing a headers metapackage. The stanza below follows Debian's official
-[Backports instructions](https://backports.debian.org/Instructions/):
+DKC headers depend on the `clang`, `lld`, and `llvm` packages of the kernel's
+LLVM major, so DKMS and out-of-tree modules build with the kernel's own
+compiler; `apt` resolves them from the headers package. Debian 13
+ships them in its main suite, so no extra Debian suite is needed; do not
+substitute Sid or a third-party LLVM repository.
 
-```sh
-sudo tee /etc/apt/sources.list.d/trixie-backports.sources >/dev/null <<'EOF'
-Types: deb
-URIs: https://deb.debian.org/debian
-Suites: trixie-backports
-Components: main
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
-sudo apt update
-```
-
-This is an official Debian source authenticated by Debian's archive keyring;
-do not substitute Sid or a third-party LLVM repository.
+Earlier DKC headers depended on LLVM tools from `trixie-backports`. After the
+upgrade, those packages are no longer needed by DKC and
+`sudo apt autoremove` can remove them. Keep or remove `trixie-backports`
+according to your other packages.
 
 ## Choose a CPU flavor
 
@@ -111,8 +102,8 @@ compatibility is required:
 sudo apt install dkc-linux-image-v2-amd64
 ```
 
-Headers are optional. After enabling `trixie-backports` as described above,
-install the headers metapackage that matches the selected image flavor:
+Headers are optional. Install the headers metapackage that matches the
+selected image flavor:
 
 ```sh
 sudo apt install dkc-linux-headers-v3-amd64

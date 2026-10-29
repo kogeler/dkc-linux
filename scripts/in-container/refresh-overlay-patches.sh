@@ -16,7 +16,6 @@ ORIG_TAR_URL="${1:?orig tar url required}"
 ORIG_TAR_SHA256="${2:?orig tar sha256 required}"
 DEBIAN_TAR_URL="${3:?debian tar url required}"
 DEBIAN_TAR_SHA256="${4:?debian tar sha256 required}"
-LLVM_MAJOR="${5:?llvm major required}"
 
 # /work, not /tmp: the work area must allow execution and hold an unpacked tree.
 work="$(mktemp -d /work/regen-XXXXXX)"
@@ -81,6 +80,6 @@ profile_id="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
 out="${work}/patches/${profile_id}"
 mkdir -p "$out"
 python3 /work/src/scripts/in-container/generate-overlay-patches.py \
-	"$source_root" "$LLVM_MAJOR" "$out"
+	"$source_root" "$out"
 
 tar --create --file=- --directory="${work}/patches" "$profile_id"

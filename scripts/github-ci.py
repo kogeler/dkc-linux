@@ -26,7 +26,7 @@ from dkc.github_artifacts import (
     prepare_flavor_evidence,
     prepare_pull_request_repository_evidence,
 )
-from dkc.github_cache import delete_release_caches
+from dkc.github_cache import delete_release_caches, delete_run_image_artifacts
 from dkc.release_cache import (
     prepare_release_cache,
     verify_release_cache,
@@ -133,6 +133,8 @@ def main() -> int:
     repository_evidence.add_argument("--repository", type=Path, required=True)
     repository_evidence.add_argument("--output", type=Path, required=True)
     repository_evidence.add_argument("--outcome", required=True)
+    delete_artifacts = subparsers.add_parser("run-image-artifacts-delete")
+    delete_artifacts.add_argument("--run-id", required=True)
     delete_cache = subparsers.add_parser("release-cache-delete")
     delete_cache.add_argument("--v2-key", required=True)
     delete_cache.add_argument("--v3-key", required=True)
@@ -230,6 +232,13 @@ def main() -> int:
             qualification_outcome=args.outcome,
         )
         print("PASS bounded pull-request repository evidence prepared")
+    elif args.command == "run-image-artifacts-delete":
+        removed = delete_run_image_artifacts(
+            repository=required_environment("GITHUB_REPOSITORY"),
+            run_id=args.run_id,
+            token=required_environment("GITHUB_TOKEN"),
+        )
+        print(f"PASS removed {removed} pull-request image archives")
     elif args.command == "release-cache-delete":
         removed = delete_release_caches(
             repository=required_environment("GITHUB_REPOSITORY"),

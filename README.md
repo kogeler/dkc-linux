@@ -21,9 +21,9 @@ repository.
   kernel-sensitive workloads because Clang may use additional scalar
   instructions. It is not a universal speed boost—see the [CPU compatibility
   table and performance evidence](#cpu-compatibility).
-- **Clang/LLVM 21 instead of GCC.** Debian's official kernel configuration
-  selects GCC 15; DKC compiles and links the kernel proper with Debian-packaged
-  Clang 21, LLD, and the matching LLVM tools. That gives the kernel a modern,
+- **Clang/LLVM instead of GCC.** Debian's official kernel configuration
+  selects GCC; DKC compiles and links the kernel proper with Debian-packaged
+  Clang, LLD, and the matching LLVM tools of one selected major. That gives the kernel a modern,
   independent optimizer and code generator, unlocks LLVM-native LTO, and is
   verified by auditing every recorded Kbuild command—not by trusting the banner.
 - **ThinLTO by default.** ThinLTO lets LLVM optimize across source files while
@@ -80,22 +80,20 @@ sudo apt install dkc-linux-image-v2-amd64
 ```
 
 If you use DKMS or build other out-of-tree modules, install the matching
-headers too. Headers require the version-matched `clang-21`, `lld-21`, and
-`llvm-21` packages from Debian's official `trixie-backports` suite, so
-[enable Debian Backports](https://backports.debian.org/Instructions/) before
-running:
+headers too. Headers depend on the version-matched `clang`, `lld`, and `llvm`
+packages of the kernel's LLVM major, which plain Debian 13 provides:
 
 ```sh
 sudo apt install dkc-linux-headers-v3-amd64
 ```
 
-Replace `v3` with `v2` when that is the image flavor you installed. The kernel
-image itself does not require backports.
+Replace `v3` with `v2` when that is the image flavor you installed. Neither
+the image nor the headers need Debian backports.
 
 The archive's primary fingerprint is
 `7B98 D4BE 1341 8D38 BAC0 37D2 7634 9629 CC45 3C26`. The
 [complete installation guide](docs/USER_INSTALL.md) includes the stricter
-first-use fingerprint check, CPU selection, headers and Debian backports,
+first-use fingerprint check, CPU selection, headers,
 exact-version installs, upgrades, rollback, removal, and source retrieval.
 
 ### CPU compatibility

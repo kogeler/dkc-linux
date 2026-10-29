@@ -1110,6 +1110,9 @@ RULES_SECURITY = (
 # The major comes from the $(LLVM_MAJOR) makeflag rather than being baked in,
 # so defines.toml stays the single source of truth and bumping the compiler
 # does not require regenerating this patch.
+# Committed patches carry this marker; `apply` renders the selected major.
+LLVM_PLACEHOLDER = "@LLVM_MAJOR@"
+
 LLVM_TOOLS = [
     ("LLVM", "-$(LLVM_MAJOR)"),
     ("LLVM_PREFIX", ""),
@@ -1161,10 +1164,10 @@ NEW_FILES = {
 }
 
 
-def kernelvariables_block(llvm_major: int) -> str:
+def kernelvariables_block(llvm_major: str) -> str:
     lines = []
     for name, value in LLVM_TOOLS:
-        rendered = value.replace("@LLVM_MAJOR@", str(llvm_major))
+        rendered = value.replace(LLVM_PLACEHOLDER, llvm_major)
         lines.append(
             f"\techo '{name} = {rendered}' >> '$(DIR)/.kernelvariables'\n"
         )
@@ -1177,16 +1180,16 @@ def _variant_matches(text: str, variant: tuple[str, str] | Absent) -> bool:
     return text.count(variant[0]) == 1
 
 
-def _render(replacement: str, llvm_major: int) -> str:
+def _render(replacement: str, llvm_major: str) -> str:
     # Explicit markers rather than str.format: the replacements contain
     # literal braces from the Python and Make code they insert, which
     # format() would try to interpret as fields.
     return replacement.replace(
         "@KERNELVARIABLES@", kernelvariables_block(llvm_major)
-    ).replace("@LLVM_MAJOR@", str(llvm_major))
+    ).replace(LLVM_PLACEHOLDER, llvm_major)
 
 
-def _apply_line_pattern(path: str, text: str, edit: LinePattern, llvm_major: int) -> str:
+def _apply_line_pattern(path: str, text: str, edit: LinePattern, llvm_major: str) -> str:
     matches = list(re.finditer(rf"^(?:{edit.regex})\n", text, re.MULTILINE))
     if len(matches) != 1:
         problem = "no longer matches exactly one line" if not matches else "is ambiguous"
@@ -1199,7 +1202,7 @@ def _apply_line_pattern(path: str, text: str, edit: LinePattern, llvm_major: int
     return text[: match.start()] + rendered + text[match.end() :]
 
 
-def apply_edit(path: str, text: str, edit: object, llvm_major: int) -> str:
+def apply_edit(path: str, text: str, edit: object, llvm_major: str) -> str:
     """Apply one exact edit, choosing the single matching reviewed spelling."""
     if isinstance(edit, LinePattern):
         return _apply_line_pattern(path, text, edit, llvm_major)
@@ -1240,7 +1243,7 @@ class EditedTree:
     files: dict[str, str]
 
 
-def edit_tree(root: pathlib.Path, llvm_major: int) -> EditedTree:
+def edit_tree(root: pathlib.Path, llvm_major: str) -> EditedTree:
     """Apply every edit of the ordered series in memory."""
     tree: dict[str, str] = {}
     original: dict[str, str | None] = {}
@@ -1285,9 +1288,13 @@ def edit_tree(root: pathlib.Path, llvm_major: int) -> EditedTree:
     return EditedTree(patches, original, tree)
 
 
-def generate(root: pathlib.Path, llvm_major: int) -> dict[str, str]:
-    """Return every non-empty patch of the ordered series for one source tree."""
-    return edit_tree(root, llvm_major).patches
+def generate(root: pathlib.Path) -> dict[str, str]:
+    """Return every non-empty patch of the ordered series for one source tree.
+
+    The patches carry LLVM_PLACEHOLDER instead of an LLVM major: the major is
+    selected in one place and rendered only by `apply`.
+    """
+    return edit_tree(root, LLVM_PLACEHOLDER).patches
 
 
 _HUNK_HEADER = re.compile(r"@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
@@ -1353,9 +1360,11 @@ def _render_groups(groups: list[ChangeGroup]) -> list[str]:
 
 def apply(root: pathlib.Path, llvm_major: int, reviewed: pathlib.Path) -> None:
     """Edit `root` in place, but only as the committed patches describe."""
-    edited = edit_tree(root, llvm_major)
+    edited = edit_tree(root, str(llvm_major))
     committed = {
-        path.name: path.read_bytes().decode("utf-8")
+        path.name: path.read_bytes()
+        .decode("utf-8")
+        .replace(LLVM_PLACEHOLDER, str(llvm_major))
         for path in sorted(reviewed.glob("*.patch"))
     }
     if set(committed) != set(edited.patches):
@@ -1409,7 +1418,7 @@ def apply(root: pathlib.Path, llvm_major: int, reviewed: pathlib.Path) -> None:
 
 
 USAGE = (
-    "usage: generate-overlay-patches.py <source-root> <llvm-major> <output-dir>\n"
+    "usage: generate-overlay-patches.py <source-root> <output-dir>\n"
     "       generate-overlay-patches.py --apply <source-root> <llvm-major> <patch-dir>"
 )
 
@@ -1419,24 +1428,24 @@ def main() -> int:
     applying = arguments[:1] == ["--apply"]
     if applying:
         arguments = arguments[1:]
-    if len(arguments) != 3:
+    if len(arguments) != (3 if applying else 2):
         print(USAGE, file=sys.stderr)
         return 2
     root = pathlib.Path(arguments[0])
-    llvm_major = int(arguments[1])
     if applying:
+        llvm_major = int(arguments[1])
         reviewed = pathlib.Path(arguments[2])
         if not reviewed.is_dir():
             print("committed patch directory does not exist", file=sys.stderr)
             return 2
         apply(root, llvm_major, reviewed)
         return 0
-    output = pathlib.Path(arguments[2])
+    output = pathlib.Path(arguments[1])
     if not output.is_dir() or any(output.iterdir()):
         print("output directory must exist and be empty", file=sys.stderr)
         return 2
 
-    for name, patch in generate(root, llvm_major).items():
+    for name, patch in generate(root).items():
         (output / name).write_text(patch)
         print(f"generated {name} ({len(patch.splitlines())} lines)", file=sys.stderr)
     return 0
