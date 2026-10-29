@@ -2,11 +2,8 @@
 
 BASE_IMAGE := $(shell cat $(DKC_ROOT)/config/base-image.lock 2>/dev/null)
 
-# Kernel toolchain selection. LLVM_MAJOR names the clang-<major> packages and
-# the LLVM=-<major> Kbuild selection. It must stay a compiler Debian ships,
-# because the generated headers package depends on it at runtime and every DKMS
-# user has to be able to install it.
-LLVM_MAJOR ?= 21
+# The kernel toolchain is selected in config/toolchain.env only.
+include $(DKC_ROOT)/config/toolchain.env
 
 DKC_IMAGE_MODE ?= build
 TOOLBOX_IMAGE ?= localhost/dkc-toolbox:latest

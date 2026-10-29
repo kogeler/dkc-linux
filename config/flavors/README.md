@@ -19,7 +19,7 @@ pairs reviewed from that series' machine code: optimized crypto/RAID
 implementations, KVM guest-FPU access, and explicitly bracketed display copies.
 The full audit
 streams `vmlinux` and every shipped module through the selected
-`llvm-objdump-21`; directory and symbol globs are unsupported. Detection covers
+`llvm-objdump-<major>`; directory and symbol globs are unsupported. Detection covers
 vector, mask, AMX tile, MPX bound, MMX and x87 registers plus implicit FPU/state
 operations such as `emms`, `ldmxcsr`, `xsave*`, `xrstor*`, and `vzero*`. The
 single reviewed alternatives section is exact and all other matches require an

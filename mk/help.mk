@@ -25,6 +25,8 @@ print-config: ## Print the resolved automation configuration
 	@printf 'DKC_RUN_ID     %s\n' '$(DKC_RUN_ID)'
 	@printf 'DKC_CACHE_DIR  %s\n' '$(DKC_CACHE_DIR)'
 	@printf 'BASE_IMAGE     %s\n' '$(BASE_IMAGE)'
+	@printf 'LLVM_MAJOR     %s\n' '$(LLVM_MAJOR)'
+	@printf 'RUSTC_SUITE    %s\n' '$(RUSTC_SUITE)'
 	@printf 'DKC_IMAGE_MODE %s\n' '$(DKC_IMAGE_MODE)'
 	@printf 'TOOLBOX_IMAGE  %s\n' '$(TOOLBOX_IMAGE)'
 	@printf 'BUILD_IMAGE    %s\n' '$(BUILD_IMAGE)'

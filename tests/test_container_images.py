@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -234,7 +235,12 @@ def test_make_defaults_to_build_and_registry_mode_has_no_build_recipe() -> None:
     ]
     assert len(generation_lines) == 3
     assert len(set(generation_lines)) == 1
-    fingerprint = _run_helper("fingerprint", BASE_IMAGE, "21").stdout.strip()
+    config = subprocess.run(
+        ["make", "-s", "print-config"], cwd=ROOT, text=True, capture_output=True, check=True
+    ).stdout
+    llvm_major = re.search(r"(?m)^LLVM_MAJOR +(\d+)$", config)
+    assert llvm_major is not None
+    fingerprint = _run_helper("fingerprint", BASE_IMAGE, llvm_major[1]).stdout.strip()
     assert f"local-{fingerprint}" in generation_lines[0]
 
 

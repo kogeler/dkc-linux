@@ -315,21 +315,38 @@ bootstrap() {
 	v4) ;;
 	esac
 
-	cat >/etc/apt/sources.list.d/trixie-backports.sources <<'EOF'
-Types: deb
-URIs: http://deb.debian.org/debian
-Suites: trixie-backports
-Components: main
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-EOF
+	# The headers name the versioned LLVM tools they need; a plain Debian 13
+	# guest must resolve them without backports. Cloud images may enable
+	# backports by default, so remove it before proving that.
+	for source in /etc/apt/sources.list.d/*.sources; do
+		[ -e "$source" ] || continue
+		sed -i -E '/^Suites:/s/[[:space:]]+[a-z]+-backports([[:space:]]|$)/\1/g' "$source"
+	done
+	if [ -e /etc/apt/sources.list ]; then
+		sed -i -E '/^[[:space:]]*deb(-src)?[[:space:]].*[a-z]+-backports([[:space:]]|$)/d' \
+			/etc/apt/sources.list
+	fi
+	if grep -RqiE '(^|[[:space:]])[a-z]+-backports([[:space:]]|$)' \
+		/etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+		printf 'guest unexpectedly contains a backports source\n' >&2
+		return 1
+	fi
+	mapfile -t llvm_tools < <(
+		for deb in "$DKC_TEST_PACKAGES"/*.deb; do
+			dpkg-deb --field "$deb" Depends
+		done | tr ',' '\n' |
+			sed -nE 's/^[[:space:]]*((clang|lld|llvm)-[0-9]+)([[:space:](].*)?$/\1/p' |
+			sort -u
+	)
+	[ "${#llvm_tools[@]}" -eq 3 ]
 
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update >"${DKC_TEST_RESULTS}/package-bootstrap.log" 2>&1
 	# Only external Debian prerequisites are resolved with APT. The DKC package
 	# files below are never exposed through an APT source or passed to apt-get.
 	apt-get install -y --no-install-recommends \
-		clang-21 dkms initramfs-tools kmod libcap2 libcap-ng0 libelf1t64 \
-		libssl3t64 linux-base lld-21 llvm-21 pahole xz-utils zlib1g \
+		"${llvm_tools[@]}" dkms initramfs-tools kmod libcap2 libcap-ng0 \
+		libelf1t64 libssl3t64 linux-base pahole xz-utils zlib1g \
 		>>"${DKC_TEST_RESULTS}/package-bootstrap.log" 2>&1
 	(
 		cd "$DKC_TEST_PACKAGES"
@@ -375,14 +392,20 @@ EOF
 }
 
 running() {
-	local current root_source dummy_vermagic dkms_vermagic stock
+	local current root_source dummy_vermagic dkms_vermagic stock llvm_major
 	current="$(uname -r)"
 	stock="$(cat "$stock_file")"
 	[ "$current" = "$DKC_TEST_KERNEL_RELEASE" ]
 	uname -a >"${DKC_TEST_RESULTS}/uname-running.txt"
 	cat /proc/version >"${DKC_TEST_RESULTS}/proc-version.txt"
-	grep -Fq 'Debian clang version 21' "${DKC_TEST_RESULTS}/proc-version.txt"
-	grep -Fq 'Debian LLD 21' "${DKC_TEST_RESULTS}/proc-version.txt"
+	# The installed headers name the LLVM major the kernel was built with.
+	llvm_major="$(
+		dpkg-query -W -f='${Depends}\n' "dkc-linux-headers-${DKC_TEST_KERNEL_RELEASE}" |
+			tr ',' '\n' | sed -nE 's/^[[:space:]]*clang-([0-9]+)([[:space:](].*)?$/\1/p'
+	)"
+	[[ "$llvm_major" =~ ^[0-9]+$ ]]
+	grep -Fq "Debian clang version ${llvm_major}." "${DKC_TEST_RESULTS}/proc-version.txt"
+	grep -Fq "Debian LLD ${llvm_major}." "${DKC_TEST_RESULTS}/proc-version.txt"
 	cpu_positive running
 
 	root_source="$(findmnt -n -o SOURCE /)"

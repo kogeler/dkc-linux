@@ -162,7 +162,35 @@ unattributed = []
 rejected = []
 counts: dict[str, int] = {}
 
+# Packages rebuilt from the patched-package ledger are attributed to the
+# image's own manifest, but only for the exact installed version and only when
+# the retained archive still has the recorded SHA-256.
+import glob
+import hashlib
+
+patched = {}
+try:
+    with open("/usr/share/dkc/patched-packages.tsv", encoding="utf-8") as stream:
+        rows = [line.rstrip("\n").split("\t") for line in stream if line.strip()]
+except FileNotFoundError:
+    rows = [[]]
+for row in rows[1:]:
+    fix, source, debian_version, package, version, architecture, sha256 = row
+    matches = []
+    for archive in glob.glob(f"/var/cache/apt/archives/{package}_*_{architecture}.deb"):
+        with open(archive, "rb") as stream:
+            if hashlib.sha256(stream.read()).hexdigest() == sha256:
+                matches.append(archive)
+    if len(matches) != 1:
+        rejected.append(f"{package}: patched archive with the recorded SHA-256 is missing")
+        continue
+    patched[package] = (version, f"dkc-patched {source} {debian_version}")
+
 for name in sorted(packages):
+    if name in patched and packages[name] == patched[name][0]:
+        key = patched[name][1]
+        counts[key] = counts.get(key, 0) + 1
+        continue
     host, suite = attribution.get(name, (None, None))
     if host is None:
         unattributed.append(name)

@@ -114,7 +114,7 @@ def _committed(tmp_path: pathlib.Path) -> pathlib.Path:
     reviewed = _tree(tmp_path / "reviewed")
     patches = tmp_path / "patches"
     patches.mkdir()
-    for name, patch in GENERATOR.generate(reviewed, 21).items():
+    for name, patch in GENERATOR.generate(reviewed).items():
         (patches / name).write_text(patch, encoding="utf-8")
     return patches
 
@@ -136,7 +136,7 @@ def test_apply_tolerates_changes_next_to_the_edited_lines(
     assert (target / "debian/config/amd64/config.v3").read_text() == "CONFIG_V3=y\n"
     # The reviewed patch no longer matches byte for byte; the build still
     # proceeds because only its context and positions moved.
-    regenerated = GENERATOR.generate(_tree(tmp_path / "again", DRIFTED_MAKEFILE, "gcc-17"), 21)
+    regenerated = GENERATOR.generate(_tree(tmp_path / "again", DRIFTED_MAKEFILE, "gcc-17"))
     assert regenerated["0001-baseline.patch"] != (patches / "0001-baseline.patch").read_text()
     notes = capsys.readouterr().err
     assert "0001-baseline.patch (context differs from the reviewed source" in notes
@@ -178,12 +178,17 @@ def test_apply_rejects_a_committed_patch_the_generator_no_longer_produces(
 
 
 @pytest.mark.usefixtures("series")
-def test_apply_rejects_a_different_llvm_major(tmp_path: pathlib.Path) -> None:
+def test_committed_patches_render_whichever_llvm_major_is_selected(
+    tmp_path: pathlib.Path,
+) -> None:
     patches = _committed(tmp_path)
-    target = _tree(tmp_path / "target")
-
-    with pytest.raises(SystemExit, match="0002-defines.patch does not describe .* LLVM 22"):
-        GENERATOR.apply(target, 22, patches)
+    assert GENERATOR.LLVM_PLACEHOLDER in (patches / "0002-defines.patch").read_text()
+    for major in (21, 22):
+        target = _tree(tmp_path / f"target-{major}")
+        GENERATOR.apply(target, major, patches)
+        defines = (target / "debian/config/defines.toml").read_text(encoding="utf-8")
+        assert f"llvm_major = {major}\n" in defines
+        assert GENERATOR.LLVM_PLACEHOLDER not in defines
 
 
 @pytest.mark.usefixtures("series")
@@ -224,16 +229,16 @@ def test_line_patterns_match_exactly_one_whole_line() -> None:
     assert isinstance(edit, GENERATOR.LinePattern)
     for compiler in ("gcc-15", "gcc-16", "gcc-17"):
         text = f"[build]\nc_compiler = '{compiler}'\nx = 1\n"
-        assert GENERATOR.apply_edit("defines.toml", text, edit, 21) == (
+        assert GENERATOR.apply_edit("defines.toml", text, edit, "21") == (
             f"[build]\nc_compiler = '{compiler}'\nllvm_major = 21\nx = 1\n"
         )
     with pytest.raises(SystemExit, match="is ambiguous"):
         GENERATOR.apply_edit(
-            "defines.toml", "c_compiler = 'gcc-16'\nc_compiler = 'gcc-17'\n", edit, 21
+            "defines.toml", "c_compiler = 'gcc-16'\nc_compiler = 'gcc-17'\n", edit, "21"
         )
     for text in ("# c_compiler = 'gcc-16'\n", "c_compiler = 'clang-21'\n"):
         with pytest.raises(SystemExit, match="no longer matches exactly one line"):
-            GENERATOR.apply_edit("defines.toml", text, edit, 21)
+            GENERATOR.apply_edit("defines.toml", text, edit, "21")
 
 
 def _unchanged_edges(anchor: str, replacement: str) -> int:

@@ -236,6 +236,7 @@ build_image() {
 	)
 	if [ "$role" = kernel-build ]; then
 		build_args+=(
+			--build-arg-file "${DKC_ROOT}/config/toolchain.env"
 			--build-arg "LLVM_MAJOR=${llvm_major}"
 		)
 	fi

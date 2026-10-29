@@ -2,9 +2,12 @@
 trigger    .github/workflows/container-images.yml
 content    config/base-image.lock
 trigger    config/container-images.inputs
+content    config/toolchain.env
 content    container/Containerfile.apt-client
 content    container/Containerfile.build
 content    container/Containerfile.toolbox
+content    container/build-patched-packages.py
+content    container/patched-packages.toml
 content    mk/container.mk
 trigger    mk/preflight.mk
 trigger    scripts/check-current-main.sh
