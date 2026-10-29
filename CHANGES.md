@@ -5,7 +5,13 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
-No changes yet.
+### Fixed
+
+- Storage reads now survive a stalled or dropped connection. A body-read
+  timeout aborted the live-pool export of a scheduled lifecycle, because the
+  client neither caught it nor retried reads. Reads now retry transport
+  failures, HTTP 429, and transient 5xx responses up to three attempts, while
+  writes still retry only HTTP 429. See [docs/STORAGE.md](docs/STORAGE.md).
 
 ## 0.2.0 - 2026-10-28
 

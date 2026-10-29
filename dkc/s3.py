@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import http.client
 import re
 import time
 import urllib.error
@@ -43,6 +44,8 @@ _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _REGION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,62}[A-Za-z0-9]$")
 _ETAG_RE = re.compile(r'^"[^"\x00-\x1f\x7f]+"$')
 _UNRESERVED = "/-_.~"
+# Server-side statuses that S3-compatible stores document as transient.
+_TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 
 
 class RemoteStoreError(RuntimeError):
@@ -372,7 +375,10 @@ class S3Client:
         )
         try:
             return exact_http_request(req, 120)
-        except urllib.error.URLError:
+        except (OSError, http.client.HTTPException):
+            # URLError, socket timeouts while reading the body, connection
+            # resets, TLS failures, and truncated responses all end here as one
+            # sanitized status-0 failure.
             raise RemoteStoreError(request.method, 0, "transport unavailable") from None
 
     def _send(
@@ -386,12 +392,29 @@ class S3Client:
         query: Mapping[str, str] | None = None,
         accepted: tuple[int, ...] = (200,),
         retry_throttled: bool = False,
+        read_only: bool = False,
     ) -> HttpResponse:
+        """Send one request with bounded retries.
+
+        Every request retries HTTP 429 when ``retry_throttled`` is set, because
+        the store did not process it. A ``read_only`` request also retries a
+        transport failure and a transient 5xx status: repeating a read cannot
+        change remote state. A write never retries those, because its outcome
+        is unknown; the publication protocol reconciles it with an
+        authenticated read instead.
+        """
         for attempt in range(1, self._max_attempts + 1):
+            retry_allowed = attempt < self._max_attempts
             request = self.signed_request(
                 method, key, body=body, headers=headers, query=query
             )
-            response = self._transport(request)
+            try:
+                response = self._transport(request)
+            except RemoteStoreError as exc:
+                if read_only and exc.status == 0 and retry_allowed:
+                    self._sleeper(min(2 ** (attempt - 1), 10.0))
+                    continue
+                raise
             if response.status in accepted:
                 return response
             if response.status == 412:
@@ -399,9 +422,9 @@ class S3Client:
             if response.status == 404:
                 raise NotFound(operation)
             if (
-                retry_throttled
+                (retry_throttled or read_only)
                 and response.status == 429
-                and attempt < self._max_attempts
+                and retry_allowed
             ):
                 raw_delay = _header(response.headers, "retry-after")
                 delay = (
@@ -410,6 +433,13 @@ class S3Client:
                     else 2 ** (attempt - 1)
                 )
                 self._sleeper(min(delay, 10.0))
+                continue
+            if (
+                read_only
+                and response.status in _TRANSIENT_STATUSES
+                and retry_allowed
+            ):
+                self._sleeper(min(2 ** (attempt - 1), 10.0))
                 continue
             # Remote bodies are untrusted and may reflect request values. Keep
             # them out of exceptions and workflow output entirely.
@@ -449,7 +479,9 @@ class S3Client:
         return _etag(response.headers, f"PutObject {key}")
 
     def get(self, key: str) -> RemoteObject:
-        response = self._send(f"GetObject {key}", "GET", key, accepted=(200,))
+        response = self._send(
+            f"GetObject {key}", "GET", key, accepted=(200,), read_only=True
+        )
         content_type = _header(response.headers, "content-type")
         cache_control = _header(response.headers, "cache-control")
         if content_type is None or cache_control is None:
@@ -487,7 +519,12 @@ class S3Client:
             if continuation is not None:
                 query["continuation-token"] = continuation
             response = self._send(
-                f"ListObjectsV2 {prefix}", "GET", None, query=query, accepted=(200,)
+                f"ListObjectsV2 {prefix}",
+                "GET",
+                None,
+                query=query,
+                accepted=(200,),
+                read_only=True,
             )
             try:
                 root = ET.fromstring(response.body)

@@ -121,8 +121,12 @@ key uses the ETag captured during planning. `dists/trixie/InRelease` is the APT
 client commit point; `state/current.asc` follows as controller authority. A
 lost response is accepted only after an authenticated read proves the exact
 intended bytes and metadata. HTTP 412 is always a lost precondition, never a
-retry signal. See [PUBLISHING.md](PUBLISHING.md) and
-[RETENTION.md](RETENTION.md).
+retry signal. Reads (`GetObject` and listings) retry a transport failure, such
+as a body-read timeout or a reset connection, HTTP 429, and a transient
+500/502/503/504 response, at most three attempts in total. A write retries only
+HTTP 429, which the store did not process. Its other unknown outcomes are left
+to that authenticated-read reconciliation. See [PUBLISHING.md](PUBLISHING.md)
+and [RETENTION.md](RETENTION.md).
 
 The toolbox image is resolved and verified before a storage step receives
 secrets. The secret-bearing `make` invocation explicitly disables image
