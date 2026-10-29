@@ -1,0 +1,38 @@
+name: ci image cleanup
+
+# A pull-request CI run builds its own image bundle and passes it between jobs
+# as artifacts. Those archives are useless once the run ends, so this workflow
+# deletes them after every CI run, whatever its conclusion, including failure
+# and cancellation. It runs the default branch's code, never pull-request code,
+# so the write token is never exposed to a pull request.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  delete-image-archives:
+    name: delete pull-request image archives
+    if: >-
+      github.repository == 'kogeler/dkc-linux' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Delete the finished run's image archives
+        run: >-
+          make github-container-images-delete
+          GITHUB_IMAGE_RUN_ID='${{ github.event.workflow_run.id }}'

@@ -211,6 +211,17 @@ def test_make_defaults_to_build_and_registry_mode_has_no_build_recipe() -> None:
     assert "container-images.sh ensure toolbox" in registry_fast.stdout
     assert "container-images.sh build" not in registry_fast.stdout
 
+    loaded = subprocess.run(
+        ["make", "-n", "image", "DKC_IMAGE_MODE=loaded"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "container-images.sh require toolbox" in loaded.stdout
+    assert "container-images.sh build" not in loaded.stdout
+    assert "container-images.sh ensure" not in loaded.stdout
+
     invalid = subprocess.run(
         ["make", "-n", "image", "DKC_IMAGE_MODE=automatic"],
         cwd=ROOT,
@@ -219,7 +230,7 @@ def test_make_defaults_to_build_and_registry_mode_has_no_build_recipe() -> None:
         check=False,
     )
     assert invalid.returncode != 0
-    assert "must be exactly build or registry" in invalid.stderr
+    assert "must be exactly build, loaded, or registry" in invalid.stderr
 
     bundle = subprocess.run(
         ["make", "-n", "container-images"],
@@ -497,30 +508,47 @@ def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher(
     assert "upload-artifact" not in str(publisher)
 
 
-def test_main_ci_consumes_only_resolved_registry_images() -> None:
-    workflow_path = ROOT / ".github" / "workflows" / "ci.yml"
-    workflow_text = workflow_path.read_text()
-    workflow = yaml.safe_load(workflow_text)
+def test_pull_requests_build_their_own_images_and_trusted_runs_use_published_ones() -> None:
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
     jobs = workflow["jobs"]
-    resolver = jobs["container_images"]
-    assert "container-images-resolve" in str(resolver)
-    assert "github.event.pull_request.base.sha" not in str(resolver)
-    assert resolver["permissions"] == {"actions": "read", "contents": "read"}
-    assert "podman build" not in workflow_text
+    images = jobs["container_images"]
+    steps = {step["name"]: step for step in images["steps"]}
+    candidate = steps["Build and export this pull request's image bundle"]
+    resolve = steps["Snapshot one coherent latest bundle"]
+    assert candidate["if"] == "github.event_name == 'pull_request'"
+    assert candidate["run"] == "make github-container-images-export"
+    assert candidate["env"]["DKC_IMAGE_MODE"] == "build"
+    assert resolve["if"] == "github.event_name != 'pull_request'"
+    assert resolve["run"] == "make github-container-images-resolve"
+    assert images["outputs"]["image_mode"] == (
+        "${{ github.event_name == 'pull_request' && 'loaded' || 'registry' }}"
+    )
+    assert images["permissions"] == {"actions": "read", "contents": "read"}
 
-    consumers = {
-        "fast": ("TOOLBOX_IMAGE",),
-        "release-preflight": ("BUILD_IMAGE",),
-        "flavors": ("TOOLBOX_IMAGE", "BUILD_IMAGE"),
-        "package-matrix": ("TOOLBOX_IMAGE", "APT_CLIENT_IMAGE"),
-        "sign-repository": ("TOOLBOX_IMAGE",),
-        "verify-repository": ("TOOLBOX_IMAGE", "APT_CLIENT_IMAGE"),
+    # Every job a pull request reaches loads the images built above; none of
+    # them resolves, pulls, or builds an image itself.
+    pull_request_consumers = {
+        "discover-source": {"toolbox"},
+        "lifecycle-decision": {"toolbox"},
+        "fast": {"toolbox"},
+        "release-preflight": {"kernel-build"},
+        "flavors": {"toolbox", "kernel-build"},
+        "package-matrix": {"toolbox", "apt-client"},
     }
-    for name, image_variables in consumers.items():
+    for name, roles in pull_request_consumers.items():
         job = jobs[name]
-        assert "container_images" in job["needs"]
-        assert job["env"]["DKC_IMAGE_MODE"] == "registry"
-        assert "DKC_IMAGE_BUNDLE_INPUT_SHA256" not in job["env"]
-        assert "DKC_IMAGE_BUNDLE_GENERATION" not in job["env"]
-        for variable in image_variables:
-            assert "needs.container_images.outputs" in job["env"][variable]
+        assert job["env"]["DKC_IMAGE_MODE"] == "${{ needs.container_images.outputs.image_mode }}"
+        loads = [
+            step
+            for step in job["steps"]
+            if step.get("run", "").startswith("make github-container-images-import")
+        ]
+        assert len(loads) == 1, name
+        assert loads[0]["if"] == "needs.container_images.outputs.image_mode == 'loaded'"
+        assert set(loads[0]["run"].split("'")[1].split()) == roles, name
+        assert "github-container-images-resolve" not in str(job)
+
+    # Production-only jobs keep the published bundle by immutable digest.
+    for name in ("sign-repository", "verify-repository", "publish-repository"):
+        assert jobs[name]["env"]["DKC_IMAGE_MODE"] == "registry"
+        assert "needs.container_images.outputs" in str(jobs[name]["env"])

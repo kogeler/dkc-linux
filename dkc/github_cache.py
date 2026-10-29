@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 
 from .release_cache import RELEASE_CACHE_REVISION
 
-__all__ = ["delete_release_caches"]
+__all__ = ["delete_release_caches", "delete_run_image_artifacts"]
 
 
 _REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
@@ -132,4 +132,100 @@ def delete_release_caches(
             removed += 1
         if _list_caches(repository, selected_ref, key, headers, request):
             raise RuntimeError("GitHub cache deletion did not reach an empty exact key")
+    return removed
+
+
+
+def _list_run_artifacts(
+    repository: str,
+    run_id: int,
+    headers: dict[str, str],
+    transport: Transport,
+) -> tuple[tuple[int, str], ...]:
+    owner, repo = repository.split("/", 1)
+    base = (
+        f"{_API_ROOT}/repos/{urllib.parse.quote(owner, safe='')}"
+        f"/{urllib.parse.quote(repo, safe='')}/actions/runs/{run_id}/artifacts"
+    )
+    result: list[tuple[int, str]] = []
+    page = 1
+    while True:
+        query = urllib.parse.urlencode({"per_page": 100, "page": page})
+        status, body = transport("GET", f"{base}?{query}", headers)
+        if status != 200:
+            raise RuntimeError("GitHub artifact API returned an unexpected list status")
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("GitHub artifact API returned malformed list data") from exc
+        entries = payload.get("artifacts") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            raise RuntimeError("GitHub artifact API returned an invalid artifact list")
+        for entry in entries:
+            identifier = entry.get("id") if isinstance(entry, dict) else None
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if (
+                not isinstance(identifier, int)
+                or isinstance(identifier, bool)
+                or identifier < 1
+                or not isinstance(name, str)
+            ):
+                raise RuntimeError("GitHub artifact API returned an unexpected artifact record")
+            result.append((identifier, name))
+        if len(entries) < 100:
+            break
+        page += 1
+        if page > 100:
+            raise RuntimeError("GitHub artifact API pagination exceeded its safety bound")
+    return tuple(result)
+
+
+def delete_run_image_artifacts(
+    *,
+    repository: str,
+    run_id: str,
+    token: str,
+    transport: Transport | None = None,
+) -> int:
+    """Delete the pull-request image archives of one workflow run.
+
+    Only artifacts named exactly ``dkc-images-<run>-<attempt>-<role>`` for this
+    run are deleted, by numeric ID, for every attempt. Repeating the operation
+    is safe: absent artifacts are simply not listed.
+    """
+
+    if not _REPOSITORY_RE.fullmatch(repository):
+        raise ValueError("GitHub repository is invalid")
+    if not run_id.isdecimal() or int(run_id) < 1:
+        raise ValueError("GitHub run ID is invalid")
+    if not token or any(character in token for character in "\r\n\x00"):
+        raise ValueError("GitHub token is absent or malformed")
+    pattern = re.compile(
+        rf"^dkc-images-{int(run_id)}-[1-9][0-9]*-(?:toolbox|kernel-build|apt-client)$"
+    )
+    request = transport or _transport
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2026-03-10",
+        "User-Agent": "dkc-linux-artifact-cleanup",
+    }
+    owner, repo = repository.split("/", 1)
+    base = (
+        f"{_API_ROOT}/repos/{urllib.parse.quote(owner, safe='')}"
+        f"/{urllib.parse.quote(repo, safe='')}/actions/artifacts"
+    )
+    removed = 0
+    for identifier, name in _list_run_artifacts(repository, int(run_id), headers, request):
+        if not pattern.fullmatch(name):
+            continue
+        status, body = request("DELETE", f"{base}/{identifier}", headers)
+        if status != 204 or body:
+            raise RuntimeError("GitHub artifact API returned an unexpected delete result")
+        removed += 1
+    if any(
+        pattern.fullmatch(name)
+        for _, name in _list_run_artifacts(repository, int(run_id), headers, request)
+    ):
+        raise RuntimeError("GitHub artifact deletion left an image archive behind")
     return removed

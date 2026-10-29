@@ -5,7 +5,7 @@ import urllib.parse
 
 import pytest
 
-from dkc.github_cache import delete_release_caches
+from dkc.github_cache import delete_release_caches, delete_run_image_artifacts
 
 
 KEY_V2 = "dkc-release-v2-v2-" + "a" * 64
@@ -80,4 +80,45 @@ def test_cache_cleanup_rejects_other_refs_and_unexpected_records() -> None:
             keys=(KEY_V2,),
             token="token",
             transport=wrong_record,
+        )
+
+
+
+def test_run_image_cleanup_deletes_only_this_runs_image_archives() -> None:
+    artifacts = {
+        11: "dkc-images-7-1-toolbox",
+        12: "dkc-images-7-2-kernel-build",
+        13: "dkc-source-7-1",
+        14: "dkc-images-8-1-toolbox",
+        15: "dkc-images-7-1-toolbox-extra",
+    }
+    deleted: list[int] = []
+
+    def transport(method: str, url: str, headers: dict[str, str]):  # type: ignore[no-untyped-def]
+        parsed = urllib.parse.urlparse(url)
+        if method == "GET":
+            assert parsed.path == "/repos/kogeler/dkc-linux/actions/runs/7/artifacts"
+            entries = [{"id": i, "name": n} for i, n in artifacts.items()]
+            return 200, json.dumps({"artifacts": entries}).encode()
+        identifier = int(parsed.path.rsplit("/", 1)[1])
+        deleted.append(identifier)
+        del artifacts[identifier]
+        return 204, b""
+
+    assert delete_run_image_artifacts(
+        repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
+    ) == 2
+    assert sorted(deleted) == [11, 12]
+    assert delete_run_image_artifacts(
+        repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
+    ) == 0
+
+
+def test_run_image_cleanup_rejects_a_malformed_record() -> None:
+    def transport(method: str, url: str, headers: dict[str, str]):  # type: ignore[no-untyped-def]
+        return 200, json.dumps({"artifacts": [{"id": "x", "name": "dkc-images-7-1-toolbox"}]}).encode()
+
+    with pytest.raises(RuntimeError, match="unexpected artifact record"):
+        delete_run_image_artifacts(
+            repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
         )

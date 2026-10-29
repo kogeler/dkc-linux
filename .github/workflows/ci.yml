@@ -69,7 +69,7 @@ jobs:
         run: make github-lifecycle-gate
 
   container_images:
-    name: resolve published image bundle
+    name: prepare image bundle
     if: >-
       github.event_name == 'pull_request' ||
       (github.repository == 'kogeler/dkc-linux' && github.ref == 'refs/heads/main')
@@ -81,18 +81,66 @@ jobs:
     permissions:
       actions: read
       contents: read
+    # A pull request builds the image bundle from its own checkout and every
+    # later job loads exactly those images; it never uses the registry. Trusted
+    # runs use the published bundle by immutable digest.
     outputs:
-      toolbox_image: ${{ steps.resolve.outputs.toolbox_image }}
-      build_image: ${{ steps.resolve.outputs.build_image }}
-      apt_client_image: ${{ steps.resolve.outputs.apt_client_image }}
+      image_mode: ${{ github.event_name == 'pull_request' && 'loaded' || 'registry' }}
+      bundle_generation: ${{ steps.candidate.outputs.bundle_generation }}
+      toolbox_artifact: ${{ format('dkc-images-{0}-{1}-toolbox', github.run_id, github.run_attempt) }}
+      kernel_build_artifact: ${{ format('dkc-images-{0}-{1}-kernel-build', github.run_id, github.run_attempt) }}
+      apt_client_artifact: ${{ format('dkc-images-{0}-{1}-apt-client', github.run_id, github.run_attempt) }}
+      toolbox_image: ${{ steps.resolve.outputs.toolbox_image || steps.candidate.outputs.toolbox_image }}
+      build_image: ${{ steps.resolve.outputs.build_image || steps.candidate.outputs.build_image }}
+      apt_client_image: ${{ steps.resolve.outputs.apt_client_image || steps.candidate.outputs.apt_client_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Build and export this pull request's image bundle
+        id: candidate
+        if: github.event_name == 'pull_request'
+        env:
+          DKC_IMAGE_MODE: build
+          DKC_IMAGE_BUNDLE_GENERATION: pr-${{ github.run_id }}-${{ github.run_attempt }}
+          DKC_IMAGE_SOURCE_REVISION: ${{ github.sha }}
+        run: make github-container-images-export
+
+      - name: Upload the toolbox image
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-images-${{ github.run_id }}-${{ github.run_attempt }}-toolbox
+          path: out/ci-images/toolbox/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload the kernel-build image
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-images-${{ github.run_id }}-${{ github.run_attempt }}-kernel-build
+          path: out/ci-images/kernel-build/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload the APT client image
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-images-${{ github.run_id }}-${{ github.run_attempt }}-apt-client
+          path: out/ci-images/apt-client/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
       - name: Snapshot one coherent latest bundle
         id: resolve
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: make github-container-images-resolve
@@ -110,13 +158,25 @@ jobs:
     outputs:
       source_handoff: ${{ format('dkc-source-{0}-{1}', github.run_id, github.run_attempt) }}
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's toolbox image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.toolbox_artifact }}
+          path: out/ci-images/toolbox
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='toolbox'
 
       - name: Set the discovery run identity
         run: make github-run-id GITHUB_RUN_ROLE=source
@@ -204,13 +264,25 @@ jobs:
       v3_cache_key: ${{ steps.decision.outputs.v3_cache_key }}
       v3_cache_transport_key: ${{ steps.decision.outputs.v3_cache_transport_key }}
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's toolbox image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.toolbox_artifact }}
+          path: out/ci-images/toolbox
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='toolbox'
 
       - name: Download authenticated source handoff
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
@@ -264,13 +336,25 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's toolbox image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.toolbox_artifact }}
+          path: out/ci-images/toolbox
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='toolbox'
 
       - name: Fast tier
         run: make fast
@@ -288,13 +372,25 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's kernel-build image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.kernel_build_artifact }}
+          path: out/ci-images/kernel-build
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='kernel-build'
 
       - name: Download authenticated source handoff
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
@@ -343,7 +439,8 @@ jobs:
     # source growth, the final-ELF SIMD scan, VM qualification, and cache save.
     timeout-minutes: 360
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
       BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
       GITHUB_RELEASE_CACHE_KEY: ${{ matrix.flavor == 'v2' && needs.lifecycle-decision.outputs.v2_cache_key || needs.lifecycle-decision.outputs.v3_cache_key }}
@@ -353,6 +450,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's toolbox image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.toolbox_artifact }}
+          path: out/ci-images/toolbox
+
+      - name: Download this pull request's kernel-build image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.kernel_build_artifact }}
+          path: out/ci-images/kernel-build
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='toolbox kernel-build'
 
       - name: Set the flavor run identity
         run: make github-run-id GITHUB_RUN_ROLE='flavor-${{ matrix.flavor }}'
@@ -534,7 +649,8 @@ jobs:
     outputs:
       unsigned_handoff: ${{ format('dkc-apt-unsigned-{0}-{1}', github.run_id, github.run_attempt) }}
     env:
-      DKC_IMAGE_MODE: registry
+      DKC_IMAGE_MODE: ${{ needs.container_images.outputs.image_mode }}
+      DKC_IMAGE_BUNDLE_GENERATION: ${{ needs.container_images.outputs.bundle_generation }}
       TOOLBOX_IMAGE: ${{ needs.container_images.outputs.toolbox_image }}
       BUILD_IMAGE: ${{ needs.container_images.outputs.build_image }}
       APT_CLIENT_IMAGE: ${{ needs.container_images.outputs.apt_client_image }}
@@ -543,6 +659,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download this pull request's toolbox image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.toolbox_artifact }}
+          path: out/ci-images/toolbox
+
+      - name: Download this pull request's apt-client image
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.container_images.outputs.apt_client_artifact }}
+          path: out/ci-images/apt-client
+
+      - name: Load this pull request's images
+        if: needs.container_images.outputs.image_mode == 'loaded'
+        run: make github-container-images-import GITHUB_IMAGE_ROLES='toolbox apt-client'
 
       - name: Set the matrix run identity
         run: make github-run-id GITHUB_RUN_ROLE=package-matrix

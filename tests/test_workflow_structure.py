@@ -304,3 +304,23 @@ def test_job_conditions_let_cancellation_stop_running_jobs() -> None:
     for path in sorted(WORKFLOWS.glob("*.yml")):
         for name, job in _workflow(path)["jobs"].items():
             assert "always()" not in str(job.get("if", "")), f"{path.name}:{name}"
+
+
+def test_pull_request_image_archives_are_deleted_by_trusted_code_after_every_run() -> None:
+    workflow = _workflow(WORKFLOWS / "ci-image-cleanup.yml")
+    events = workflow.get("on", workflow.get(True))
+    assert events == {"workflow_run": {"workflows": ["ci"], "types": ["completed"]}}
+    assert workflow["permissions"] == {}
+    (job,) = workflow["jobs"].values()
+    condition = " ".join(str(job["if"]).split())
+    assert "github.repository == 'kogeler/dkc-linux'" in condition
+    assert "github.ref == 'refs/heads/main'" in condition
+    assert "github.event.workflow_run.event == 'pull_request'" in condition
+    # Any conclusion, including failure and cancellation, triggers cleanup.
+    assert "conclusion" not in condition
+    assert job["permissions"] == {"actions": "write", "contents": "read"}
+    commands = [step["run"] for step in job["steps"] if "run" in step]
+    assert commands == [
+        "make github-container-images-delete "
+        "GITHUB_IMAGE_RUN_ID='${{ github.event.workflow_run.id }}'"
+    ]

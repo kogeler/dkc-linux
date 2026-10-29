@@ -28,11 +28,15 @@ DKC_IMAGE_RESOLVE_OUTPUT ?= /dev/stdout
 DKC_IMAGE_EXPECTED_GENERATION ?=
 export DKC_TOOLBOX_IMAGE = $(TOOLBOX_IMAGE)
 
+# build:    build the bundle from this checkout (local work and pull requests).
+# loaded:   require images an earlier job built from this checkout and loaded;
+#           nothing is built or pulled.
+# registry: use the published bundle by immutable digest (trusted runs).
 ifneq ($(words $(DKC_IMAGE_MODE)),1)
-$(error DKC_IMAGE_MODE must be exactly build or registry)
+$(error DKC_IMAGE_MODE must be exactly build, loaded, or registry)
 endif
-ifeq ($(filter $(DKC_IMAGE_MODE),build registry),)
-$(error DKC_IMAGE_MODE must be exactly build or registry)
+ifeq ($(filter $(DKC_IMAGE_MODE),build loaded registry),)
+$(error DKC_IMAGE_MODE must be exactly build, loaded, or registry)
 endif
 
 .PHONY: image
@@ -41,6 +45,11 @@ image: ## Build or fetch and verify the toolbox image
 	@$(DKC_IMAGE_HELPER) build toolbox '$(TOOLBOX_IMAGE)' '$(BASE_IMAGE)' \
 		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
 		'$(DKC_IMAGE_BUNDLE_GENERATION)' '$(DKC_IMAGE_SOURCE_REVISION)'
+else ifeq ($(DKC_IMAGE_MODE),loaded)
+image: ## Build or fetch and verify the toolbox image
+	@$(DKC_IMAGE_HELPER) require toolbox '$(TOOLBOX_IMAGE)' '$(BASE_IMAGE)' \
+		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
+		'$(DKC_IMAGE_BUNDLE_GENERATION)'
 else
 image: ## Build or fetch and verify the toolbox image
 	@$(DKC_IMAGE_HELPER) ensure toolbox '$(TOOLBOX_IMAGE)'
@@ -52,6 +61,11 @@ apt-client-image: ## Build or fetch and verify the minimal APT client image
 	@$(DKC_IMAGE_HELPER) build apt-client '$(APT_CLIENT_IMAGE)' '$(BASE_IMAGE)' \
 		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
 		'$(DKC_IMAGE_BUNDLE_GENERATION)' '$(DKC_IMAGE_SOURCE_REVISION)'
+else ifeq ($(DKC_IMAGE_MODE),loaded)
+apt-client-image: ## Build or fetch and verify the minimal APT client image
+	@$(DKC_IMAGE_HELPER) require apt-client '$(APT_CLIENT_IMAGE)' '$(BASE_IMAGE)' \
+		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
+		'$(DKC_IMAGE_BUNDLE_GENERATION)'
 else
 apt-client-image: ## Build or fetch and verify the minimal APT client image
 	@$(DKC_IMAGE_HELPER) ensure apt-client '$(APT_CLIENT_IMAGE)'
@@ -63,6 +77,11 @@ build-image: ## Build or fetch and verify the kernel build image
 	@$(DKC_IMAGE_HELPER) build kernel-build '$(BUILD_IMAGE)' '$(BASE_IMAGE)' \
 		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
 		'$(DKC_IMAGE_BUNDLE_GENERATION)' '$(DKC_IMAGE_SOURCE_REVISION)'
+else ifeq ($(DKC_IMAGE_MODE),loaded)
+build-image: ## Build or fetch and verify the kernel build image
+	@$(DKC_IMAGE_HELPER) require kernel-build '$(BUILD_IMAGE)' '$(BASE_IMAGE)' \
+		'$(LLVM_MAJOR)' '$(DKC_IMAGE_BUNDLE_INPUT_SHA256)' \
+		'$(DKC_IMAGE_BUNDLE_GENERATION)'
 else
 build-image: ## Build or fetch and verify the kernel build image
 	@$(DKC_IMAGE_HELPER) ensure kernel-build '$(BUILD_IMAGE)'

@@ -26,6 +26,13 @@ No changes yet.
   [docs/USER_INSTALL.md](docs/USER_INSTALL.md#llvm-tools-for-headers).
 - Clean-client and KVM package tests now install headers on Debian 13 without
   any backports suite.
+- Pull-request CI builds the container image bundle from the pull request's own
+  checkout and loads it in every job, so kernels, selftests, VMs, and package
+  clients run on the toolchain the pull request proposes. Pull requests no
+  longer use the published registry bundle; trusted runs still do. A separate
+  `workflow_run` workflow running default-branch code deletes those image
+  archives after every pull-request run, whatever its conclusion. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 - The kernel toolchain (LLVM major and rustc suite) is selected only in
   `config/toolchain.env`. Committed overlay patches carry an `@LLVM_MAJOR@`
   placeholder, the image takes the selection as build arguments without
