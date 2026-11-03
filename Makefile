@@ -54,6 +54,7 @@ include $(DKC_ROOT)/mk/github.mk
 include $(DKC_ROOT)/mk/container.mk
 include $(DKC_ROOT)/mk/build.mk
 include $(DKC_ROOT)/mk/vm.mk
+include $(DKC_ROOT)/mk/site.mk
 include $(DKC_ROOT)/mk/quality.mk
 include $(DKC_ROOT)/mk/tests.mk
 include $(DKC_ROOT)/mk/housekeeping.mk

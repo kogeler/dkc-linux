@@ -133,6 +133,13 @@ secrets. The secret-bearing `make` invocation explicitly disables image
 prerequisites, so connection values cannot enter registry or image-build
 processes.
 
+The documentation-site publisher is a second, narrower writer with the same
+`production-storage` credential. Its code accepts only keys below `site/`,
+uses the same conditional writes and production lease, and deletes by exact key
+only objects absent from the audited site build. If the provider can scope a
+credential only to a whole bucket, that code is the prefix guard. See
+[SITE.md](SITE.md#publication).
+
 ## Disposable qualification
 
 The local qualification target is:

@@ -1,0 +1,185 @@
+# Build, check, and publish the public documentation site.
+#
+# This workflow is a trigger, not a build system: every executable step is one
+# make target. A pull request builds the toolbox image from its own checkout,
+# then builds and audits the site and keeps it as a preview. The main-branch
+# build job has no secrets. The publication job receives the production storage
+# Environment, repeats the current-main check before the credential is used,
+# and writes nothing outside the site/ storage prefix.
+
+name: site
+
+on:
+  # No path filter: the pull-request job is a required check and must report
+  # on every pull request.
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "**.md"
+      - .github/workflows/site.yml
+      - container/Containerfile.toolbox
+      - dkc/github_runs.py
+      - dkc/lease.py
+      - dkc/site.py
+      - dkc/site_publication.py
+      - keys/archive-primary.fingerprint
+      - mk/site.mk
+      - schemas/site-build.schema.json
+      - scripts/in-container/site-build.py
+      - scripts/in-container/site-publish.py
+      - scripts/site-build.sh
+      - scripts/site-publish.sh
+      - site/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pull requests may cancel superseded checks. Publications run one at a time:
+# a newer push waits instead of cancelling a running publication, and the
+# production lease is the storage-side fence.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('site-pr-{0}', github.ref) || 'dkc-site-publication' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pull-request:
+    name: documentation site
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the site preview run identity
+        run: make github-run-id GITHUB_RUN_ROLE=site-preview
+
+      # The default image mode builds the toolbox from this checkout, so a
+      # generator change in the pull request is what gets checked.
+      - name: Build the toolbox, then build and audit the site
+        run: make site
+
+      - name: Upload the audited site preview
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-site-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/site/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          retention-days: 3
+
+  build:
+    name: fast tier and site build
+    if: github.repository == 'kogeler/dkc-linux' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    # Image resolution waits for a container-image publication started by the
+    # same push, so the site uses the toolbox built from this commit.
+    timeout-minutes: 200
+    permissions:
+      actions: read
+      contents: read
+    env:
+      DKC_IMAGE_MODE: registry
+    outputs:
+      toolbox_image: ${{ steps.images.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the site build run identity
+        run: make github-run-id GITHUB_RUN_ROLE=site-build
+
+      - name: Snapshot one coherent latest image bundle
+        id: images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make github-container-images-resolve
+
+      # Like every production mutation path, publication requires the fast
+      # tier before the audited site is built.
+      - name: Run the fast tier
+        env:
+          TOOLBOX_IMAGE: ${{ steps.images.outputs.toolbox_image }}
+        run: make fast
+
+      - name: Build and audit the site
+        env:
+          TOOLBOX_IMAGE: ${{ steps.images.outputs.toolbox_image }}
+        run: make site SITE_SOURCE_REVISION='${{ github.sha }}'
+
+      - name: Upload the audited site
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/site/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish the site
+    if: github.repository == 'kogeler/dkc-linux' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-26.04
+    # Includes a bounded wait while a repository publication holds the lease.
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    environment:
+      name: production-storage
+      deployment: false
+    env:
+      DKC_IMAGE_MODE: registry
+      TOOLBOX_IMAGE: ${{ needs.build.outputs.toolbox_image }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the site publication run identity
+        run: make github-run-id GITHUB_RUN_ROLE=site-publication
+
+      - name: Download the audited site
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: dkc-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/ci-site
+
+      - name: Fetch and verify the confined storage toolbox
+        run: make image
+
+      - name: Publish through the leased conditional S3 protocol
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.S3_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_ADDRESSING_STYLE: ${{ secrets.S3_ADDRESSING_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+        run: >-
+          make github-site-publish
+          SITE_RESULT=out/ci-site
+          CANONICAL_REPOSITORY=kogeler/dkc-linux
+          EXPECTED_COMMIT='${{ github.sha }}'
+          WORKFLOW_RUN_ID='${{ github.run_id }}'
+          WORKFLOW_RUN_ATTEMPT='${{ github.run_attempt }}'
+
+      - name: Upload sanitized publication evidence
+        if: ${{ always() && steps.publish.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: dkc-site-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/site-publication/${{ env.DKC_RUN_ID }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7

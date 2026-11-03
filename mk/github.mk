@@ -20,6 +20,9 @@ GITHUB_PR_APT_QUALIFICATION_OUTCOME ?=
 GITHUB_PR_APT_UNSIGNED_RESULT ?= $(DKC_ROOT)/out/apt-unsigned/$(DKC_RUN_ID)
 GITHUB_PR_APT_SIGNATURE_RESULT ?= $(DKC_ROOT)/out/apt-signature/$(DKC_RUN_ID)
 GITHUB_PR_APT_REPOSITORY_RESULT ?= $(DKC_ROOT)/out/apt-repository/$(DKC_RUN_ID)
+# Comma-separated job results, as GitHub's join() renders needs.*.result.
+GITHUB_NEEDS_RESULTS ?=
+DKC_COMMA := ,
 
 .PHONY: github-lifecycle-gate
 github-lifecycle-gate: ## Authorize one exact-main production lifecycle trigger
@@ -80,6 +83,9 @@ github-storage-export-pool: storage-export-pool-prepared ## Export the live pool
 
 .PHONY: github-storage-publish
 github-storage-publish: storage-publish-prepared ## Publish with an already prepared toolbox
+
+.PHONY: github-site-publish
+github-site-publish: site-publish-prepared ## Publish the documentation site with an already prepared toolbox
 
 .PHONY: github-apt-repository-sign
 github-apt-repository-sign: ## Sign an authorized lifecycle handoff with a prepared toolbox
@@ -168,6 +174,14 @@ github-release-cache-delete: ## Delete exact main-branch release caches after re
 	@$(DKC_ROOT)/scripts/github-ci.py release-cache-delete \
 		--v2-key '$(GITHUB_RELEASE_CACHE_KEY_V2)' \
 		--v3-key '$(GITHUB_RELEASE_CACHE_KEY_V3)'
+
+.PHONY: github-pull-request-result
+github-pull-request-result: ## Require every direct dependency of an aggregate check to have succeeded
+	@test -n '$(strip $(GITHUB_NEEDS_RESULTS))' || { echo 'GITHUB_NEEDS_RESULTS is required'; exit 1; }
+	@for result in $(subst $(DKC_COMMA), ,$(GITHUB_NEEDS_RESULTS)); do \
+		[ "$$result" = success ] || { echo "a required job ended with: $$result"; exit 1; }; \
+	done
+	@echo 'PASS every required job succeeded'
 
 .PHONY: github-lifecycle-result
 github-lifecycle-result: ## Require the workflow terminal state selected by discovery

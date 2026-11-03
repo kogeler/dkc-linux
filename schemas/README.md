@@ -17,7 +17,9 @@ storage trust boundaries:
 - `transaction` — immutable intended publication transaction;
 - `production-lease` — conditionally updated mutation lease and fencing owner;
 - `gc-plan` — signed-tombstone-derived, generation-bound, bounded
-  exact-deletion plan.
+  exact-deletion plan;
+- `site-build` — audited documentation-site objects handed from the site build
+  to its publisher.
 
 Records reject unknown fields. Canonical serialization, schema validation, and
 cross-record identity checks are covered by repeatable tests; a schema-valid

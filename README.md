@@ -3,11 +3,28 @@
 **The newest kernel source published by Debian, rebuilt for Debian 13 and
 modern x86-64 processors. No Sid userspace required.**
 
+[Install in four commands](#install-in-four-commands) ·
+[Choose a CPU flavor](#cpu-compatibility) ·
+[Read the documentation](docs/README.md)
+
 Debian stable is delightfully boring. Its kernel does not have to be. DKC keeps
 the dependable Debian 13 (`trixie`) userspace while following the newest
 authenticated Debian Sid `src:linux` package. It turns that source into ordinary
 Debian packages, boots and tests them, and publishes them through a signed APT
 repository.
+
+## At a glance
+
+- **Runs on** Debian 13 (`trixie`) for `amd64`; the rest of the system stays
+  stock Debian.
+- **Follows** the newest authenticated Debian Sid `src:linux` and checks for a
+  new upload four times a day.
+- **Ships** `x86-64-v2` and `x86-64-v3` kernel images, matching headers, and
+  the exact downstream source package.
+- **Builds** with Debian-packaged Clang, LLD, and LLVM, using ThinLTO.
+- **Tests** every release with package, Kbuild, and SIMD audits, a KVM boot,
+  kernel selftests, DKMS, removal, and fallback to the stock kernel before it
+  is signed.
 
 ## Why try DKC?
 
@@ -23,9 +40,10 @@ repository.
   table and performance evidence](#cpu-compatibility).
 - **Clang/LLVM instead of GCC.** Debian's official kernel configuration
   selects GCC; DKC compiles and links the kernel proper with Debian-packaged
-  Clang, LLD, and the matching LLVM tools of one selected major. That gives the kernel a modern,
-  independent optimizer and code generator, unlocks LLVM-native LTO, and is
-  verified by auditing every recorded Kbuild command—not by trusting the banner.
+  Clang, LLD, and the matching LLVM tools of one selected major. That gives the
+  kernel a modern, independent optimizer and code generator, unlocks
+  LLVM-native LTO, and is verified by auditing every recorded Kbuild
+  command—not by trusting the banner.
 - **ThinLTO by default.** ThinLTO lets LLVM optimize across source files while
   keeping the link parallel and practical. This is not purely theoretical:
   Meta reports [non-trivial performance improvements from
@@ -50,8 +68,7 @@ repository.
 The repository is live. An unattended lifecycle checks Debian four times a day
 at `00:17`, `06:17`, `12:17`, and `18:17` UTC. A new source version triggers the
 build, test, signing, and publication chain; an unchanged version is a cheap
-no-op. The accepted production evidence is in
-[`docs/VALIDATION.md`](docs/VALIDATION.md).
+no-op. The [accepted production evidence](docs/VALIDATION.md) is public.
 
 > **One important catch:** DKC kernels do not boot while UEFI Secure Boot
 > enforcement is enabled. Keep Debian's stock kernel installed until the new
@@ -116,9 +133,12 @@ requires AVX/AVX2, BMI1/2, F16C, FMA, LZCNT, MOVBE, and XSAVE.
 
 Model names are not proof: some Pentium/Celeron SKUs disable features, and a
 hypervisor can hide them. Check every local or hot-pluggable CPU and every VM
-migration destination. From a project checkout, the exact gate is:
+migration destination. The exact gate is a self-contained script in the
+project repository:
 
 ```sh
+git clone https://github.com/kogeler/dkc-linux.git
+cd dkc-linux
 ./scripts/dkc-cpu-select --require v3
 # or: ./scripts/dkc-cpu-select --require v2
 ```
@@ -153,6 +173,7 @@ make doctor           # check the host and write machine-readable evidence
 make image            # build the cached local toolbox image
 make container-images # build and verify the complete local image bundle
 make fast             # run unit, type, shell, language, and Make checks
+make site             # build and audit the documentation site
 make shell            # open an ephemeral toolbox shell with the repo mounted
 make clean-all        # remove only this repository's labelled scratch resources
 ```
@@ -164,17 +185,19 @@ QEMU and grants the runner access to `/dev/kvm` before unprivileged Make targets
 take over.
 
 Start with the [documentation index](docs/README.md) for build internals,
-testing, security, publishing, maintenance, and validation. `make help` remains
-the exact command-line reference. Every noticeable change is recorded in
+testing, security, publishing, maintenance, and validation. The same documents
+are published with navigation and search at
+<https://dkc-linux.romancello.net/>. `make help` remains the exact
+command-line reference. Every noticeable change is recorded in
 [CHANGES.md](CHANGES.md), which also defines the project versioning.
 
 ## Licensing and source
 
 The root MIT license covers the independently written project automation, not
-Linux or Debian-derived packaging. The per-path policy, inherited licenses, and
-non-affiliation notice are in [`LICENSES/README.md`](LICENSES/README.md). Every
-binary publication includes one complete downstream Debian source package in
-the same signed archive.
+Linux or Debian-derived packaging. The [license scope](LICENSES/README.md)
+holds the per-path policy, inherited licenses, and non-affiliation notice.
+Every binary publication includes one complete downstream Debian source package
+in the same signed archive.
 
 The project is deliberately strict about its boring bits: production runs only
 from canonical `main`, secrets are never committed or placed on command lines,

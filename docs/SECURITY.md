@@ -137,6 +137,7 @@ references exactly one of them:
 | authoritative state read | object-store read-only | signing, write, delete |
 | signing | one protected archive signing subkey | primary secret, storage credentials |
 | origin publish, finalize, GC | object-store read-write | signing credentials |
+| documentation-site publish | object-store read-write, used only below `site/` | signing credentials |
 
 No production credential and no private key enters a build container or a build
 artifact. Package contents are treated as data and are never executed in a
@@ -145,6 +146,11 @@ job proves its imported primary is only a stub and that exactly one secret
 subkey is usable. Passphrases are mounted as a mode-0600 file and never passed
 through argv where a process list would expose them.
 
+The documentation-site publisher shares the production storage credential.
+Where a provider can scope a credential only to a whole bucket, the publisher's
+code is the `site/` prefix guard: every planned write and deletion is checked
+against that prefix before the request.
+
 ### Publishing without authorization
 
 Production mutation requires the canonical repository, `refs/heads/main`, and
@@ -152,7 +158,10 @@ every validation gate at `PASS`. A manual lifecycle additionally requires an
 explicit boolean confirmation. Protected Environments use an exact-main
 deployment policy but deliberately have no reviewer or wait timer, so the
 unattended schedule cannot stall. A stale run is rejected before
-signing and again immediately before the secret-bearing storage process.
+signing and again immediately before the secret-bearing storage process. The
+documentation-site workflow publishes on canonical-main pushes; it requires the
+fast tier and repeats the same current-main check before its storage process
+receives the credential.
 
 ### Corrupting published state through a race or a crash
 
@@ -187,6 +196,10 @@ SHA-256, immutable metadata, current generation, and lease ownership. A queued
 key is permanently tombstoned and can never become live again. Whole-namespace
 size is projected before mutation and listed again after commit and deletion;
 the default signed policy rejects a result over decimal 9.5 GB.
+
+The documentation-site publisher deletes only exact keys below `site/` that are
+absent from the audited site build, within its own count cap, while holding the
+production lease. It never lists or deletes outside that prefix.
 
 ## Local execution
 

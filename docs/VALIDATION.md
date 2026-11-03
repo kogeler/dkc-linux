@@ -7,7 +7,8 @@ A local `PASS` does not claim that a future hosted or production run passed.
 
 `make fast` runs the complete Python unit/integration-fixture suite, type checks,
 ShellCheck, shfmt, language policy, and Make policy in the pinned toolbox image.
-The suite covers:
+`make site` separately builds and audits the documentation site; the `site`
+workflow runs it for every pull request. The suite covers:
 
 - signed source discovery and Debian version ordering;
 - exact source/state/pool handoff boundaries, repeated OpenPGP state
@@ -40,7 +41,11 @@ The suite covers:
   decision binding, and publication dependency invariants;
 - retry-safe content-derived immutable publication namespaces;
 - exact predecessor publication binding at decision, signing, and storage-CAS
-  boundaries.
+  boundaries;
+- documentation-site page mapping, link rewriting, home-page structure, object
+  keys, manifest and schema agreement, delivery-rule agreement, every audit
+  rejection, prefix-confined conditional publication, deletion caps, read-back
+  verification, and bounded lease waiting.
 
 The full kernel and repository workflow adds the expensive evidence that unit
 fixtures cannot provide: real v2/v3 ThinLTO compilation, complete build/SIMD

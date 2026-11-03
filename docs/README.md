@@ -44,6 +44,8 @@ retry, and public APT delivery have passed.
   policy, tombstones, and immediate bounded exact deletion.
 - [CLOUDFLARE_CACHE.md](CLOUDFLARE_CACHE.md) — accepted operator-owned delivery
   configuration and its repeatable validation; CI does not call a CDN API.
+- [SITE.md](SITE.md) — documentation-site sources, offline build, audit, and
+  publication below the `site/` storage prefix.
 
 ## Design and compatibility
 

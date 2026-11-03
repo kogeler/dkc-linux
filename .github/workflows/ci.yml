@@ -1138,6 +1138,29 @@ jobs:
           compression-level: 1
           retention-days: 7
 
+  pull-request-result:
+    name: pull request result
+    # The single required check of this workflow. GitHub reports a job that is
+    # skipped after a failed dependency as a passed check, so this job always
+    # runs and fails unless every direct dependency succeeded. The package
+    # matrix already requires every earlier pull-request job to succeed.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request'
+    needs: [package-matrix]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require every pull-request job to succeed
+        run: >-
+          make github-pull-request-result
+          GITHUB_NEEDS_RESULTS='${{ join(needs.*.result) }}'
+
   lifecycle-result:
     name: lifecycle result
     if: >-
