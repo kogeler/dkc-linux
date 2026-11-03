@@ -97,3 +97,7 @@ class ConditionalObjectStore:
         _validate_key(key)
         with self._lock:
             self._objects.pop(key, None)
+
+    def list_keys(self, prefix: str) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(sorted(key for key in self._objects if key.startswith(prefix)))

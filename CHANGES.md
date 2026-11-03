@@ -5,7 +5,25 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- The documentation is published as a searchable site at
+  `https://dkc-linux.romancello.net/`, generated from the tracked Markdown and
+  served from the same origin as the APT repository. `make site` builds and
+  audits it offline. The `site` workflow checks every pull request, keeps the
+  result as a three-day preview artifact, and publishes each relevant push to
+  `main`. Operators must add the rewrite, allow-list, and cache rules first. See
+  [docs/SITE.md](docs/SITE.md) and
+  [docs/CLOUDFLARE_CACHE.md](docs/CLOUDFLARE_CACHE.md#7-serve-the-documentation-site).
+- Pull requests report one aggregate `pull request result` check from `ci` that
+  fails unless every pull-request job succeeded. Together with the site's
+  `documentation site` check, it is the intended required check for `main`. See
+  [docs/MAINTAINER_SETUP.md](docs/MAINTAINER_SETUP.md#required-pull-request-checks).
+
+### Changed
+
+- The README opens with a link line and an at-a-glance summary so it also works
+  as the site's home page.
 
 ## 0.3.0 - 2026-10-29
 
@@ -206,13 +224,13 @@ at this point rather than listing individual changes.
 - The project version follows [Semantic Versioning](https://semver.org/). It is
   independent of the kernel package versions, which follow the Debian source
   version plus the DKC revision.
-  - A patch version adds only fixes and robustness improvements that keep every
-    documented contract.
-  - A minor version adds a capability, a supported upstream series, or a flavor.
-    Below `1.0.0` it also carries any incompatible change.
-  - From `1.0.0` on, a major version carries an incompatible change to the
-    installed-system contract: the repository location, suite, or key; package
-    names; or the supported Debian release.
+    - A patch version adds only fixes and robustness improvements that keep
+      every documented contract.
+    - A minor version adds a capability, a supported upstream series, or a
+      flavor. Below `1.0.0` it also carries any incompatible change.
+    - From `1.0.0` on, a major version carries an incompatible change to the
+      installed-system contract: the repository location, suite, or key;
+      package names; or the supported Debian release.
 - Cutting a version is an operator decision. Rename `## Unreleased` to
   `## X.Y.Z - YYYY-MM-DD` and start a new `## Unreleased` above it. The
   operator may then tag that commit `vX.Y.Z`.

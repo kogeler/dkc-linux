@@ -1,13 +1,17 @@
 # Cloudflare delivery setup
 
-This is the maintained Cloudflare configuration for the public APT endpoint.
-CI remains provider-neutral: it publishes only through S3 and has no Cloudflare
-credential, purge call, or control-plane access. The settings below were
+This is the maintained Cloudflare configuration for the public APT endpoint
+and the documentation site served from the same hostname. CI remains
+provider-neutral: it publishes only through S3 and has no Cloudflare
+credential, purge call, or control-plane access. The APT settings below were
 checked against the live data plane and Cloudflare documentation on 2026-08-18.
+The site rules in [section 7](#7-serve-the-documentation-site) must pass their
+own validation before the site is announced.
 
-The configuration consumes one WAF custom rule, two Cache Rules, and the one
-Rate Limiting Rule available on Free. Every project-owned rule starts with
-`dkc-linux` so it is distinguishable from unrelated zone policy.
+The configuration consumes one WAF custom rule, two URL rewrite rules, three
+Cache Rules, and the one Rate Limiting Rule available on Free. Every
+project-owned rule starts with `dkc-linux` so it is distinguishable from
+unrelated zone policy.
 
 Replace `APT_HOSTNAME` with the public repository hostname in every expression.
 If a rule with the exact documented name already exists, edit and verify it
@@ -29,9 +33,10 @@ enforced budget in front of the origin and qualify it separately.
 ## 1. Connect and tier the origin
 
 Before changing anything, select the zone that owns `APT_HOSTNAME` and record
-the existing Custom Rules, Cache Rules, Rate Limiting Rules, and their order.
-This configuration needs one free Custom Rule slot, two Cache Rule slots, and
-the single Free-plan Rate Limiting Rule slot.
+the existing Custom Rules, URL rewrite rules, Cache Rules, Rate Limiting Rules,
+and their order. This configuration needs one free Custom Rule slot, two URL
+rewrite rule slots, three Cache Rule slots, and the single Free-plan Rate
+Limiting Rule slot.
 
 1. Connect `APT_HOSTNAME` to the chosen HTTPS origin using that origin's
    documented DNS method. The resulting Cloudflare DNS record must remain
@@ -85,17 +90,33 @@ enter this expression exactly:
       "/pool/main/d/dkc-archive-keyring/")) and
    (ends_with(http.request.uri.path, ".deb") or
     ends_with(http.request.uri.path, ".dsc") or
-    ends_with(http.request.uri.path, ".tar.xz")))
+    ends_with(http.request.uri.path, ".tar.xz"))) or
+  (starts_with(http.request.uri.path, "/site/") and
+   len(http.request.uri.path) le 166 and
+   (ends_with(http.request.uri.path, ".html") or
+    ends_with(http.request.uri.path, ".css") or
+    ends_with(http.request.uri.path, ".js") or
+    ends_with(http.request.uri.path, ".json") or
+    ends_with(http.request.uri.path, ".png") or
+    ends_with(http.request.uri.path, ".svg") or
+    ends_with(http.request.uri.path, ".txt") or
+    ends_with(http.request.uri.path, ".xml")))
  )
 ))
 ```
 
 This admits only HTTPS `GET`/`HEAD` requests for the exact canonical indexes,
-the three public key files, exact-length SHA-256 by-hash names, and known
-package/source suffixes below the two published pool prefixes. Root manifests,
-controller state, leases, query variants, plaintext HTTP, and arbitrary object
-names are blocked before the origin. Update the allow-list before publishing a
-new index path, component, architecture, or source suffix.
+the three public key files, exact-length SHA-256 by-hash names, known
+package/source suffixes below the two published pool prefixes, and
+documentation-site objects. Root manifests, controller state, leases, query
+variants, plaintext HTTP, and arbitrary object names are blocked before the
+origin. Update the allow-list before publishing a new index path, component,
+architecture, or source suffix.
+
+Custom rules evaluate the path after the URL rewrites in
+[section 7](#7-serve-the-documentation-site), so every site request arrives
+here below `/site/`. The suffix list and the 160-character key bound equal the
+site build's audit; change them together.
 
 Select **Block**, retain Cloudflare's default `403` response, enable the rule,
 and deploy it. Do not use Challenge or a custom browser response. Reopen the
@@ -203,8 +224,9 @@ value wins. The rules are otherwise disjoint from each other.
 
 Do not create Cache Response Rules, a hostname-wide Cache Everything rule, or
 a bypass-first rule for this endpoint. Status Code TTL is part of ordinary
-Cache Rules on Free, and the two disjoint expressions already define every
-public cacheable path. The live setup required no purge operation.
+Cache Rules on Free. These two disjoint expressions and the site rule in
+[section 7](#7-serve-the-documentation-site) define every public cacheable
+path. The live setup required no purge operation.
 
 Free, Pro, and Business cache at most 512 MB per object. Recheck the signed
 manifest after a material package-layout change; the accepted generation's
@@ -338,6 +360,107 @@ minimal image without the CA bundle can report a certificate error even though
 the public TLS endpoint is correct. Also inspect the complete `apt update` log:
 APT may exit zero after a failed index fetch while printing a warning.
 
+## 7. Serve the documentation site
+
+The documentation site lives below the `site/` object-storage prefix; its
+contract is [SITE.md](SITE.md). The origin does not resolve directory index
+documents, so two URL rewrite rules map public paths onto that prefix. Every
+path outside the APT namespace is mapped, so the raw prefix is never a second
+public address and no other root object is reachable through the site.
+
+Open **Rules** > **Overview** > **Create rule** > **URL Rewrite Rule** (older
+navigation: **Rules** > **Transform Rules** > **Rewrite URL**). Create or edit
+`dkc-linux site: home page` with **Custom filter expression**:
+
+```text
+(http.host eq "APT_HOSTNAME" and http.request.uri.path eq "/")
+```
+
+Set **Path** to **Rewrite to** > **Static** `/site/index.html` and leave
+**Query** preserved. Then create or edit `dkc-linux site: map pages`:
+
+```text
+(http.host eq "APT_HOSTNAME" and
+ http.request.uri.path ne "/" and
+ not starts_with(http.request.uri.path, "/dists/") and
+ not starts_with(http.request.uri.path, "/pool/") and
+ not http.request.uri.path in {
+  "/keys/archive-primary.fingerprint"
+  "/keys/archive-signing-subkeys.fingerprints"
+  "/keys/dkc-archive-keyring.gpg"
+ })
+```
+
+Set **Path** to **Rewrite to** > **Dynamic**
+`concat("/site", http.request.uri.path)` and leave **Query** preserved. The two
+expressions are disjoint, so their order does not matter. The APT allow-list
+and both APT Cache Rules see unchanged paths; the WAF rule in
+[section 2](#2-allow-only-the-public-apt-graph) admits the rewritten site paths.
+
+Create both rewrite rules and the Cache Rule below before adding the `/site/`
+clause to the WAF expression. Until that clause exists, every site request is
+still blocked, and a direct request for the raw prefix can never reach the
+origin before the rewrite that hides it is active.
+
+Create or edit a third Cache Rule, `dkc-linux site: cache pages`:
+
+```text
+(http.host eq "APT_HOSTNAME" and
+ http.request.uri.query eq "" and
+ starts_with(http.request.uri.path, "/site/"))
+```
+
+Set:
+
+- **Cache eligibility**: eligible;
+- **Edge TTL**: **Ignore cache-control header and use this TTL**, 2 hours;
+- **Status Code TTL**: the immutable table from
+  [section 3](#3-cache-immutable-objects);
+- **Browser TTL**: respect origin;
+- **Respect strong ETags**: enabled;
+- **Cache key**: leave unset;
+- every other optional setting: leave unset.
+
+Every site object carries `public, max-age=0, must-revalidate`. Browsers
+therefore revalidate against the edge on each visit, while the edge absorbs
+repeated requests for two hours, the minimum Free Edge TTL. A site publication
+becomes visible within that bound without a purge. A valid-suffix path that
+does not exist reaches the origin once and its `404` is cached for two hours,
+the same residual risk as an unknown package name. The Rate Limiting Rule is
+unchanged: without a hostname condition, a site path in it would also limit
+unrelated hostnames in the zone.
+
+Validate after the first site publication:
+
+```sh
+SITE_URL="https://${APT_HOSTNAME}"
+for path in / /index.html /docs/USER_INSTALL.html /sitemap.xml; do
+  curl -fsS -o /dev/null -w "%{http_code} %{content_type} ${path}\n" \
+    "${SITE_URL}${path}"
+done
+for attempt in 1 2; do
+  curl -fsS -D "/tmp/dkc-site.${attempt}.headers" -o "/tmp/dkc-site.${attempt}" \
+    "${SITE_URL}/"
+done
+grep -Ei '^(cache-control|cf-cache-status|age):' /tmp/dkc-site.*.headers
+curl -fsS "${SITE_URL}/index.html" | cmp - /tmp/dkc-site.1
+curl -sS -o /dev/null -w 'raw-prefix=%{http_code}\n' "${SITE_URL}/site/index.html"
+curl -sS -o /dev/null -w 'root-manifest=%{http_code}\n' "${SITE_URL}/manifest.json"
+curl -sS -o /dev/null -w 'query=%{http_code}\n' "${SITE_URL}/?probe=1"
+curl -sS -o /dev/null -w 'state=%{http_code}\n' "${SITE_URL}/state/current.asc"
+```
+
+Accept the site only when:
+
+- the four paths return `200` with an HTML or XML media type;
+- the second home-page response is `HIT` with `Age` and keeps
+  `max-age=0, must-revalidate`;
+- `/` and `/index.html` return identical bytes;
+- the raw prefix and the root manifest return `404`, because both resolve
+  below the site prefix where no such object exists;
+- the query and private-state probes return `403`;
+- the complete [section 6](#6-validate) APT validation still passes.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -349,6 +472,9 @@ APT may exit zero after a failed index fetch while printing a warning.
 | Python client receives error `1010` | Retry with real APT and `curl`; do not disable Browser Integrity Check solely for a synthetic user agent. |
 | Minimal container reports TLS verification failure | Install `ca-certificates` and retry before changing TLS or WAF settings. |
 | Header metapackage cannot resolve its LLVM tools | Run `apt update` against current Debian 13 main; this is a client repository issue, not a cache failure. |
+| Site home page returns `403` | Confirm both site rewrite rules are enabled and the WAF expression contains the `/site/` clause. |
+| Site page returns `404` | Check that the latest `site` workflow published, and that the page exists in its manifest. A missing page is negatively cached for two hours. |
+| Site change is not visible | The edge keeps a copy for up to two hours; this is the accepted freshness bound, not a failure. |
 
 If an API is used only for independent read-back, Smart topology requires
 **Zone Settings: Read**; changing it requires **Zone Settings: Edit**. Cache or
@@ -365,6 +491,7 @@ endpoints, API tokens, or storage credentials.
 - [Create a Custom Rule in the dashboard](https://developers.cloudflare.com/waf/custom-rules/create-dashboard/)
 - [Create a Cache Rule in the dashboard](https://developers.cloudflare.com/cache/how-to/cache-rules/create-dashboard/)
 - [Create a Rate Limiting Rule in the dashboard](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/)
+- [URL rewrite rules](https://developers.cloudflare.com/rules/transform/url-rewrite/)
 - [Cache Rule settings](https://developers.cloudflare.com/cache/how-to/cache-rules/settings/)
 - [Cache Rule order](https://developers.cloudflare.com/cache/how-to/cache-rules/order/)
 - [Cache by status code](https://developers.cloudflare.com/cache/how-to/configure-cache-status-code/)

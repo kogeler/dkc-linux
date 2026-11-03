@@ -1,7 +1,8 @@
 # DKC toolbox image.
 #
-# Purpose: run linting, formatting, schema checks, and fast tests inside an
-# ephemeral container so the host stays untouched.
+# Purpose: run linting, formatting, schema checks, fast tests, and the static
+# documentation-site build inside an ephemeral container so the host stays
+# untouched.
 #
 # This image is NOT a release build input. The release build container is a
 # separate definition with a complete package/version/.deb-hash lock, as
@@ -34,6 +35,8 @@ RUN set -eux; \
 		gpgv \
 		jq \
 		make \
+		mkdocs \
+		mkdocs-material \
 		mypy \
 		python3 \
 		python3-jsonschema \

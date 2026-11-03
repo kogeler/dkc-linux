@@ -74,7 +74,9 @@ make release-preflight
 `release-preflight` downloads and extracts the pinned Debian source once, then
 checks the complete packaging overlay, toolchain wiring, generated package
 graph, and build-dependency closure on that same tree. It therefore needs
-network access. `make fast` is offline once the toolbox image exists.
+network access. `make fast` is offline once the toolbox image exists. After a
+documentation change, also run `make site`, which builds and audits the
+documentation site described in [SITE.md](SITE.md).
 
 ## Source profiles
 

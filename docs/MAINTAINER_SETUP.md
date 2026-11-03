@@ -89,6 +89,27 @@ bucket. It does not need permission to configure the service, buckets, DNS, or
 a CDN. Do not reuse a local qualification credential after it has been exposed
 or shared; rotate it before provisioning either Environment.
 
+The `site` workflow's publication job also uses `production-storage`, on
+canonical-main pushes that change the documentation site. Its code writes and
+deletes only keys below the `site/` prefix and holds the same production lease;
+see [SITE.md](SITE.md#publication). No further Environment or secret is
+needed.
+
+## Required pull-request checks
+
+In the default-branch ruleset, enable **Require status checks to pass** with
+exactly two checks from GitHub Actions:
+
+- `pull request result` from the `ci` workflow;
+- `documentation site` from the `site` workflow.
+
+Do not list individual jobs instead. GitHub reports a job that is skipped after
+a failed dependency as a passed check, and the job set changes with the
+workflows. `pull request result` runs whenever the pull-request run was not
+cancelled and fails unless its dependencies succeeded; `documentation site`
+runs on every pull request without a path filter, so neither check can stay
+pending or pass by being skipped.
+
 ## Rebuilding one Debian source version
 
 `DKC_REVISION` in the top-level `Makefile` is the explicit release revision for

@@ -24,7 +24,8 @@ selects metadata maintenance rather than `no_op`; kernel packages are reused.
 ## Whole-storage accounting
 
 The size policy covers the complete configured object-storage namespace, not
-only `.deb` files. An authenticated state read lists every object and records
+only `.deb` files; it includes the few megabytes of the documentation site
+below `site/`. An authenticated state read lists every object and records
 the exact count and byte total, including objects left by an interrupted
 pre-commit bootstrap. Assembly subtracts the prior signed live pool, adds the
 candidate pool, and reserves 64 MiB for replacement metadata, signed state,

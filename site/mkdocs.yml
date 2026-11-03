@@ -1,0 +1,121 @@
+# Public documentation site.
+#
+# `make site` stages every published Markdown page into `pages/`, builds this
+# configuration offline with the toolbox image's Debian-packaged generator,
+# prunes unused output, and audits the result. docs/SITE.md is the contract.
+# Keep this file free of third-party plugins and Python object tags so the
+# configuration remains portable to a successor generator.
+
+site_name: Debian Kernel Current
+site_description: >-
+  The newest Debian kernel source, rebuilt for Debian 13 with Clang, LLVM, and
+  ThinLTO as signed x86-64-v2 and x86-64-v3 packages that are booted and
+  tested before release.
+site_url: https://dkc-linux.romancello.net/
+copyright: >-
+  Project automation is MIT-licensed; Linux and Debian-derived packaging keep
+  their own licenses. DKC is not sponsored, endorsed, or affiliated with the
+  Debian Project.
+
+docs_dir: pages
+use_directory_urls: false
+strict: true
+
+theme:
+  name: material
+  custom_dir: theme
+  language: en
+  # Material otherwise loads fonts from a third-party service.
+  font: false
+  icon:
+    logo: material/penguin
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  # No search.highlight or search.share: both add query strings, and the
+  # delivery layer rejects every request that carries one.
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+extra_css:
+  - assets/stylesheets/dkc.css
+
+# repo_url is deliberately unset: Material's repository widget would make
+# every visitor's browser call a third-party API.
+extra:
+  generator: false
+  repository_url: https://github.com/kogeler/dkc-linux
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kogeler/dkc-linux
+      name: Source on GitHub
+
+nav:
+  - Home: README.md
+  - Install:
+      - Installing DKC: docs/USER_INSTALL.md
+      - Security: docs/SECURITY.md
+      - Validation evidence: docs/VALIDATION.md
+      - Changes: CHANGES.md
+  - Build and test:
+      - Building DKC: docs/BUILD.md
+      - Flavor policy: config/flavors/README.md
+      - Source profiles: config/source-profiles/README.md
+      - Packaging overlay: debian-overlay/README.md
+      - Overlay compatibility: debian-overlay/COMPATIBILITY.md
+      - Kernel testing: docs/KERNEL_TESTING.md
+      - Test fixtures: tests/fixtures/README.md
+      - Integration tests: tests/integration/README.md
+  - Operate:
+      - Architecture: docs/ARCHITECTURE.md
+      - Publishing: docs/PUBLISHING.md
+      - Workflows: ci/README.md
+      - CI capacity: docs/CI_CAPACITY.md
+      - Maintainer setup: docs/MAINTAINER_SETUP.md
+      - Archive signing keys: docs/KEYS.md
+      - Public key material: keys/README.md
+      - Object storage: docs/STORAGE.md
+      - Retention: docs/RETENTION.md
+      - Delivery cache: docs/CLOUDFLARE_CACHE.md
+      - Documentation site: docs/SITE.md
+  - Reference:
+      - Documentation map: docs/README.md
+      - Schemas: schemas/README.md
+      - License scope: LICENSES/README.md
+  - Source code: https://github.com/kogeler/dkc-linux

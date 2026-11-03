@@ -1,0 +1,81 @@
+/* Public documentation site theme. No external resources: the audit rejects
+   any stylesheet that imports or loads one. */
+
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1f2933;
+  --md-primary-fg-color--light: #3e4c59;
+  --md-primary-fg-color--dark: #121a21;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: #0b7a75;
+  --md-accent-fg-color--transparent: rgba(11, 122, 117, 0.1);
+  --md-typeset-a-color: #0b6b67;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #121a21;
+  --md-primary-fg-color--light: #1f2933;
+  --md-primary-fg-color--dark: #0b1015;
+  --md-accent-fg-color: #3cc8bd;
+  --md-accent-fg-color--transparent: rgba(60, 200, 189, 0.12);
+  --md-typeset-a-color: #5fd4cb;
+}
+
+/* The home page is the project README. Its first heading, tagline, and link
+   line become the hero; the source test keeps that structure in place. */
+.dkc-home > h1 {
+  margin-bottom: 0.4em;
+  font-size: 2.4em;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--md-default-fg-color);
+}
+
+.dkc-home > h1 + p {
+  max-width: 40em;
+  font-size: 1.2em;
+  line-height: 1.5;
+}
+
+.dkc-home > h1 + p + p {
+  margin: 1.4em 0 2em;
+  font-size: 0;
+}
+
+.dkc-home > h1 + p + p a {
+  display: inline-block;
+  margin: 0 0.6rem 0.6rem 0;
+  padding: 0.55em 1.2em;
+  border: 0.1rem solid var(--md-accent-fg-color);
+  border-radius: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--md-accent-fg-color);
+}
+
+.dkc-home > h1 + p + p a:first-child {
+  background-color: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+.dkc-home > h1 + p + p a:hover,
+.dkc-home > h1 + p + p a:focus {
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+}
+
+.dkc-home > h1 + p + p a:first-child:hover,
+.dkc-home > h1 + p + p a:first-child:focus {
+  background-color: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+
+/* Long install commands scroll inside their block instead of the page. */
+.md-typeset pre > code {
+  white-space: pre;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.7rem;
+}

@@ -86,6 +86,7 @@ def test_all_record_schemas_exist() -> None:
         "provenance",
         "publication-manifest",
         "repository-signing-request",
+        "site-build",
         "source-inventory",
         "state-pointer",
         "transaction",

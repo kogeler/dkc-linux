@@ -147,3 +147,11 @@ may set `allow_empty_bootstrap=true`.
 The production origin already has an accepted generation-zero state. Every
 accepted canonical-main trigger runs the lifecycle without a separate enable
 switch, and a schedule can never authorize empty bootstrap.
+
+## Documentation site
+
+The documentation site is published by the separate `site` workflow, not by
+this lifecycle. It writes only below the `site/` storage prefix, never touches
+repository objects or controller state, and creates no signed generation. It
+shares only the production lease, so a site publication and a repository
+publication never interleave. See [SITE.md](SITE.md#publication).

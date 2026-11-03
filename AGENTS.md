@@ -36,6 +36,13 @@ documentation.
   not refer to private plans, session labels, unavailable documents, or
   automated authorship. This agent-facing file is the sole exception for
   agent-specific instructions.
+- Test behavior and invariants that code can actually break. Do not add tests
+  for coverage's sake, and do not restate declarative configuration in a test:
+  a test that copies a workflow's job list, `needs` graph, step order,
+  conditions, or other YAML or configuration values must change in lockstep
+  with that file and proves nothing. Keep such a contract in one place, the
+  configuration itself or the code that enforces it. When a change touches an
+  existing test of that kind, remove the duplication instead of extending it.
 - Use the repository's Make targets instead of reproducing workflow logic in
   ad-hoc shell snippets. GitHub-only adapters begin with `github-`; ordinary
   local targets must remain usable without `sudo`.
@@ -70,6 +77,7 @@ documentation.
 | Object storage and retention/GC | [docs/STORAGE.md](docs/STORAGE.md), [docs/RETENTION.md](docs/RETENTION.md) |
 | Maintainer environments and archive keys | [docs/MAINTAINER_SETUP.md](docs/MAINTAINER_SETUP.md), [docs/KEYS.md](docs/KEYS.md) |
 | Public delivery-cache configuration | [docs/CLOUDFLARE_CACHE.md](docs/CLOUDFLARE_CACHE.md) |
+| Public documentation site: sources, build, audit, publication | [docs/SITE.md](docs/SITE.md), [docs/CLOUDFLARE_CACHE.md](docs/CLOUDFLARE_CACHE.md) |
 | Trust boundaries and secret handling | [docs/SECURITY.md](docs/SECURITY.md) |
 | Evidence and accepted results | [docs/VALIDATION.md](docs/VALIDATION.md) |
 | Machine-readable handoffs | [schemas/README.md](schemas/README.md) |
@@ -88,7 +96,8 @@ documentation.
    notice, following the rules at the end of that file. Never rename
    `Unreleased` to a version without an explicit operator instruction.
 4. Run the narrowest relevant checks first, then `make fast` for changes that
-   can affect the tracked project contract. Run expensive build, VM, or live
+   can affect the tracked project contract, and `make site` for changes to any
+   Markdown page or documentation-site input. Run expensive build, VM, or live
    integration targets only when the task requires their evidence.
 5. Review `git diff --check`, the final diff, and `git status`.
 6. Report files changed, checks actually run, remaining risks, and that the

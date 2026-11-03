@@ -11,11 +11,10 @@ import secrets
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
 from dkc.gc import execute_gc, plan_gc
+from dkc.github_runs import workflow_attempt_terminal
 from dkc.lease import LeaseHandle, LeaseManager
 from dkc.publication import PublicationExecutor
 from dkc.publication_plan import plan_repository
@@ -142,36 +141,6 @@ def verify_current_generation(
         raise ValueError("desired publication does not follow authoritative state")
 
 
-def terminal_proof(token: str, old: LeaseOwner) -> bool:
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{old.repository}/actions/runs/{old.workflow_run_id}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}" if token else "",
-            "User-Agent": "dkc-storage-lifecycle",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            body = response.read(1_048_577)
-    except (OSError, urllib.error.URLError):
-        return False
-    if len(body) > 1_048_576:
-        return False
-    try:
-        value = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return False
-    repository = value.get("head_repository") if isinstance(value, dict) else None
-    return bool(
-        isinstance(repository, dict)
-        and repository.get("full_name") == old.repository
-        and value.get("status") == "completed"
-        and value.get("run_attempt") == int(old.run_attempt)
-    )
-
-
 def main(args: argparse.Namespace) -> int:
     output = args.output
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -202,7 +171,7 @@ def main(args: argparse.Namespace) -> int:
             store,
             ttl_seconds=args.lease_ttl_seconds,
             takeover_grace_seconds=args.takeover_grace_seconds,
-            terminal_proof=lambda old: terminal_proof(token, old),
+            terminal_proof=lambda old: workflow_attempt_terminal(token, old),
         )
         try:
             lease = manager.acquire(owner)

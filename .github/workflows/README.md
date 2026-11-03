@@ -42,6 +42,19 @@ three before authenticating and moves only their `latest` tags. Publishers are
 serialized and never receive delete permission. The final publication check is
 an anonymous pull of all three packages.
 
+`site.yml` owns everything about the documentation site. On every pull request
+whose base is `main`, its `documentation site` job builds the toolbox image
+from the pull request's own checkout, runs `make site`, and keeps the audited
+site as a three-day preview artifact. That job has no path filter because it is
+a required check. A canonical-main push that changes a published page or a site
+input, or an exact-main manual dispatch, resolves the registry bundle, runs the
+fast tier, and then runs `make site`; the audited site is uploaded as an
+attempt-scoped artifact. Only then does the publication job enter the
+`production-storage` Environment and run `make github-site-publish`. That
+target repeats the current-main check before the credential is used, waits a
+bounded time for the production lease, and writes only below the `site/`
+storage prefix. See [SITE.md](../../docs/SITE.md).
+
 The `container_images` job prepares one image bundle for the whole run.
 
 - In a pull request it builds all three images from the pull request's own
@@ -182,6 +195,11 @@ Jobs that cross those deliberately skipped production-only branches use
 `!cancelled()` together with explicit successful-result checks for every direct
 producer. This prevents GitHub's skipped-ancestor propagation from suppressing
 the pull-request build while keeping genuine dependency failures fail-closed.
+The `pull request result` job is the workflow's single required check. GitHub
+reports a job skipped after a failed dependency as a passed check, so that job
+runs under `!cancelled()` and `make github-pull-request-result` fails unless
+every direct dependency succeeded. Its only dependency is the package matrix,
+whose condition already requires every earlier pull-request job to succeed.
 Unlike `always()`, `!cancelled()` turns false when GitHub re-evaluates running
 jobs on cancellation, so a newer push really cancels a superseded pull-request
 run instead of leaving it to hold the concurrency group. A manually cancelled

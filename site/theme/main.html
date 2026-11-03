@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name | e }}">
+  {% if page and page.is_homepage %}
+    <meta property="og:title" content="{{ config.site_name | e }}">
+  {% elif page and page.title %}
+    <meta property="og:title" content="{{ page.title | striptags | e }} - {{ config.site_name | e }}">
+  {% endif %}
+  <meta property="og:description" content="{{ config.site_description | e }}">
+  {% if page and page.canonical_url %}
+    <meta property="og:url" content="{{ page.canonical_url | e }}">
+  {% endif %}
+  <meta name="twitter:card" content="summary">
+{% endblock %}
+
+{% block content %}
+  {% if page and page.is_homepage %}
+    <div class="dkc-home">{{ super() }}</div>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}

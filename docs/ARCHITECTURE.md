@@ -110,3 +110,7 @@ secrets and are confined to mode-0600 mounted files. CI has no CDN URL,
 credential, purge call, probe, or control-plane action. Public delivery, its
 strict path allow-list, and bounded cache TTLs are one-time operator
 configuration described separately from the publication protocol.
+
+The documentation site is a separate, narrower writer below the `site/` prefix.
+It holds the same production lease as repository publication but never takes
+part in a signed generation; see [SITE.md](SITE.md).
