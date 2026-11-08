@@ -7,6 +7,10 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ### Added
 
+- Linux 7.3 has an independent source profile, packaging overlay, and kernel
+  selftest policy. Scheduled builds can qualify Debian's 7.3 source while
+  preserving the reviewed policies of older series. See
+  [config/source-profiles/README.md](config/source-profiles/README.md).
 - The documentation is published as a searchable site at
   `https://dkc-linux.romancello.net/`, generated from the tracked Markdown and
   served from the same origin as the APT repository. `make site` builds and
@@ -24,6 +28,16 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 - The README opens with a link line and an at-a-glance summary so it also works
   as the site's home page.
+
+### Fixed
+
+- Package audits compare metapackage migration commands with the exact
+  source-package templates, including Debian 7.3's bug-directory migration,
+  while rejecting extra commands, unsafe paths, and mismatched kernel targets.
+- VM preparation errors now retain their diagnostic logs before scratch
+  cleanup, including failures that exit directly and signals.
+- Clean package clients can read the temporary repository with APT's sandbox
+  user even when the operator uses a private file-creation mask.
 
 ## 0.3.0 - 2026-10-29
 

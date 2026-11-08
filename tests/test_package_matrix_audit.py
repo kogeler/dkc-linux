@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -239,7 +240,15 @@ def _build_synthetic_source_bundle(
     orig = root / "dkc-linux_7.1.7.orig.tar.xz"
     debian = root / f"{prefix}.debian.tar.xz"
     orig.write_bytes(b"synthetic orig\n")
-    debian.write_bytes(b"synthetic debian\n")
+    with tarfile.open(debian, "w:xz") as archive:
+        for role in ("image", "headers"):
+            template = (
+                "dir_to_symlink /usr/share/doc/@package@ "
+                f"dkc-linux-{role}-@abiname@@localversion@ 5.7~rc5-1~exp1 @package@\n"
+            ).encode()
+            member = tarfile.TarInfo(f"debian/templates/{role}.meta.maintscript.in")
+            member.size = len(template)
+            archive.addfile(member, io.BytesIO(template))
     names = identity["package_names"]
     assert isinstance(names, dict)
     binaries = [*names["versioned"], *names["meta"]]
@@ -1039,10 +1048,14 @@ def test_metapackage_documentation_transition_is_exact() -> None:
         f"5.7~rc5-1~exp1 {package} -- \"$@\"\n"
     )
     scripts = {name: (0o755, correct) for name in ("preinst", "postinst", "prerm", "postrm")}
-    audit.validate_maintainer_scripts(package, release_map, scripts)
+    templates = {
+        "headers": "dir_to_symlink /usr/share/doc/@package@ "
+        "dkc-linux-headers-@abiname@@localversion@ 5.7~rc5-1~exp1 @package@\n"
+    }
+    audit.validate_maintainer_scripts(package, release_map, scripts, templates)
     scripts["postinst"] = (0o755, correct.replace("dkc-linux-headers-", "wrong-", 1))
     with pytest.raises(SystemExit, match="unexpected documentation symlink transition"):
-        audit.validate_maintainer_scripts(package, release_map, scripts)
+        audit.validate_maintainer_scripts(package, release_map, scripts, templates)
 
 
 @pytest.mark.parametrize(

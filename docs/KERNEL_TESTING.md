@@ -205,7 +205,7 @@ the surrounding test code changed. This patch is derived from Linux and follows
 the per-path license policy in `LICENSES/README.md`; the root MIT license does
 not relicense it.
 
-### `futex:run.sh` on Linux 7.2
+### `futex:run.sh` on Linux 7.2 and 7.3
 
 Linux 7.2 adds `futex/functional/robust_list.c`, which asserts on a futex word
 declared `_Atomic(unsigned int)`. The harness compares operand signedness with
@@ -220,6 +220,9 @@ an `_Atomic` object is itself a sequentially consistent load, so this changes th
 static type of the comparison and nothing the test observes. Do not disable the
 collection or drop the robust-list cases instead; they cover the same
 robust-futex unlock path that this series added.
+
+Linux 7.3.3 still needs these three atomic loads, so its independent profile
+carries the same repair under `tests/integration/kselftest-patches/7.3/`.
 
 ### `landlock:fs_test` on Linux 7.2
 
@@ -240,6 +243,10 @@ carries that one-line change for this source, so the assertion tests what the
 kernel actually reports. Linux 7.2.8 includes the upstream commit, and the build
 records the patch as `already-present` there. Do not omit `landlock:fs_test` instead: the remaining
 439 assertions are the Landlock filesystem coverage of this gate.
+
+Linux 7.3.3 already contains the upstream repair and adds an explicit whiteout
+case. Its profile carries no Landlock patch and keeps `landlock:fs_test`
+selected.
 
 ## Rules for changing the profile
 

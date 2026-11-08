@@ -1,0 +1,29 @@
+--- a/tools/testing/selftests/futex/functional/robust_list.c
++++ b/tools/testing/selftests/futex/functional/robust_list.c
+@@ -654,7 +654,7 @@
+ 	ret = self->vdso(futex, tid, &head.list_op_pending);
+ 
+ 	ASSERT_EQ(ret, tid);
+-	ASSERT_EQ(*futex, 0);
++	ASSERT_EQ(atomic_load(futex), 0);
+ 
+ 	/* Check only the lower 32 bits for the 32-bit entry point */
+ 	if (variant->is_32) {
+@@ -694,7 +694,7 @@
+ 	ret = self->vdso(futex, tid, &head.list_op_pending);
+ 
+ 	ASSERT_EQ(ret, tid | FUTEX_WAITERS);
+-	ASSERT_EQ(*futex, tid | FUTEX_WAITERS);
++	ASSERT_EQ(atomic_load(futex), tid | FUTEX_WAITERS);
+ 	ASSERT_EQ(head.list_op_pending, &lock.list);
+ }
+ 
+@@ -778,7 +778,7 @@
+ 				      &head.list_op_pending, variant->val3);
+ 
+ 	ASSERT_EQ(ret, 0);
+-	ASSERT_EQ(*futex, 0);
++	ASSERT_EQ(atomic_load(futex), 0);
+ 
+ 	if (variant->op & FUTEX_ROBUST_LIST32) {
+ 		exp = (uint64_t)(unsigned long)&lock.list;

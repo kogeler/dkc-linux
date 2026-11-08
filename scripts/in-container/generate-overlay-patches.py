@@ -175,13 +175,16 @@ LAYOUT_TEMPLATES = [
             ("boot/vmlinu*-*\n", "boot/vmlinu*-*\n"),
         )],
     ),
-    (
-        "debian/templates/image.control.in",
-        [OneOf(
-            ("Pre-Depends: linux-base (>= 4.17~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
-            ("Pre-Depends: linux-base (>= 4.12~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
-        )],
-    ),
+    FileVariants(*(
+        (
+            f"debian/templates/image.control.{suffix}",
+            [OneOf(
+                ("Pre-Depends: linux-base (>= 4.17~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
+                ("Pre-Depends: linux-base (>= 4.12~)\n", "Pre-Depends: linux-base (>= 4.12~)\n"),
+            )],
+        )
+        for suffix in ("in", "j2")
+    )),
 ]
 
 # --------------------------------------------------------------------------
@@ -542,42 +545,55 @@ FLAVOUR_CONFIGS = {
 
 DKC_GENCONTROL = (
     "debian/bin/gencontrol.py",
-    [OneOf(
-        (
-            "        packages_own.extend(\n"
-            "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
-            "        )\n"
-            "        if do_meta:\n"
-            "            packages_own.extend(\n"
-            "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch)\n"
-            "            )\n\n",
-            "        # Detached debug packages are intentionally outside the product.\n"
-            "        # Omitting their control stanzas also keeps the source package's\n"
-            "        # declared binary graph identical to the published graph.\n\n",
+    [
+        # Image metapackages already depend on the exact versioned modules through
+        # their versioned image. A second stable modules metapackage is not part of
+        # the DKC graph. Keep this independent from the debug-package removal.
+        OneOf(
+            (
+                "            packages_own.extend(\n"
+                "                bundle_signed.add('modules.meta', ruleid, makeflags, vars, arch=arch))\n",
+                "",
+            ),
+            Absent("bundle_signed.add('modules.meta',"),
         ),
-        (
-            "        packages_own.extend(\n"
-            "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
-            "        )\n"
-            "\n"
-            "        if do_meta:\n"
-            "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
-            "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
-            "            packages_own.extend(\n"
-            "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n"
-            "            packages_own.extend(\n"
-            "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch))\n",
-            "        # Detached debug packages are intentionally outside the product.\n"
-            "        # Omitting their control stanzas also keeps the source package's\n"
-            "        # declared binary graph identical to the published graph.\n"
-            "\n"
-            "        if do_meta:\n"
-            "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
-            "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
-            "            packages_own.extend(\n"
-            "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n",
+        OneOf(
+            (
+                "        packages_own.extend(\n"
+                "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
+                "        )\n"
+                "        if do_meta:\n"
+                "            packages_own.extend(\n"
+                "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch)\n"
+                "            )\n\n",
+                "        # Detached debug packages are intentionally outside the product.\n"
+                "        # Omitting their control stanzas also keeps the source package's\n"
+                "        # declared binary graph identical to the published graph.\n\n",
+            ),
+            (
+                "        packages_own.extend(\n"
+                "            self.bundle.add('image-dbg', ruleid, makeflags, vars, arch=arch)\n"
+                "        )\n"
+                "\n"
+                "        if do_meta:\n"
+                "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
+                "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
+                "            packages_own.extend(\n"
+                "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n"
+                "            packages_own.extend(\n"
+                "                bundle_signed.add('image-dbg.meta', ruleid, makeflags, vars, arch=arch))\n",
+                "        # Detached debug packages are intentionally outside the product.\n"
+                "        # Omitting their control stanzas also keeps the source package's\n"
+                "        # declared binary graph identical to the published graph.\n"
+                "\n"
+                "        if do_meta:\n"
+                "            packages_own.extend(bundle_signed.add('base.meta', ruleid, makeflags, vars, arch=arch))\n"
+                "            packages_own.extend(bundle_signed.add('image.meta', ruleid, makeflags, vars, arch=arch))\n"
+                "            packages_own.extend(\n"
+                "                bundle_signed.add('headers.meta', ruleid, makeflags, vars, arch=arch))\n",
+            ),
         ),
-    )],
+    ],
 )
 
 DKC_DEBIAN_RELEASE = (
@@ -706,15 +722,27 @@ esac
             (" normally install linux-image-@abiname@@localversion@.", " normally install dkc-linux-image-@abiname@@localversion@."),
         ],
     ),
-    (
-        "debian/templates/image.control.in",
-        [
-            ("Package: linux-image-", "Package: dkc-linux-image-"),
-            ("INSTALLDOCS_LINK_DOC=linux-base-", "INSTALLDOCS_LINK_DOC=dkc-linux-base-"),
-            (" linux-base-@abiname@@localversion@", " dkc-linux-base-@abiname@@localversion@"),
-            (" linux-binary-@abiname@@localversion@", " dkc-linux-binary-@abiname@@localversion@"),
-            (" linux-modules-@abiname@@localversion@", " dkc-linux-modules-@abiname@@localversion@"),
-        ],
+    FileVariants(
+        (
+            "debian/templates/image.control.in",
+            [
+                ("Package: linux-image-", "Package: dkc-linux-image-"),
+                ("INSTALLDOCS_LINK_DOC=linux-base-", "INSTALLDOCS_LINK_DOC=dkc-linux-base-"),
+                (" linux-base-@abiname@@localversion@", " dkc-linux-base-@abiname@@localversion@"),
+                (" linux-binary-@abiname@@localversion@", " dkc-linux-binary-@abiname@@localversion@"),
+                (" linux-modules-@abiname@@localversion@", " dkc-linux-modules-@abiname@@localversion@"),
+            ],
+        ),
+        (
+            "debian/templates/image.control.j2",
+            [
+                ("Package: linux-image", "Package: dkc-linux-image"),
+                ("INSTALLDOCS_LINK_DOC=linux-base-", "INSTALLDOCS_LINK_DOC=dkc-linux-base-"),
+                (" linux-base-{{abiname}}{{localversion}}", " dkc-linux-base-{{abiname}}{{localversion}}"),
+                (" linux-binary{%if build_unsigned%}-unsigned{%endif%}-{{abiname}}{{localversion}}", " dkc-linux-binary{%if build_unsigned%}-unsigned{%endif%}-{{abiname}}{{localversion}}"),
+                (" linux-modules-{{abiname}}{{localversion}}", " dkc-linux-modules-{{abiname}}{{localversion}}"),
+            ],
+        ),
     ),
     (
         "debian/templates/image.links.j2",
@@ -749,13 +777,25 @@ esac
                 (" linux-base{{source_suffix}}{{localversion}}", " dkc-linux-base{{source_suffix}}{{localversion}}"),
                 (" linux-image-{{abiname}}{{localversion}}", " dkc-linux-image-{{abiname}}{{localversion}}"),
                 ("linux-latest-modules-", "dkc-linux-latest-modules-"),
+                OneOf(
+                    (
+                        " linux-modules{{source_suffix}}{{localversion}} (= ${binary:Version}),\n",
+                        "",
+                    ),
+                    Absent(" linux-modules{{source_suffix}}{{localversion}}"),
+                ),
                 (" (meta-package)", " (metapackage)"),
             ],
         ),
     ),
-    (
-        "debian/templates/image.meta.bug-presubj.in",
-        [("package name linux-image-", "package name dkc-linux-image-")],
+    # The Jinja image-control generation no longer has a separate meta-package
+    # bug preamble. Its control template is the explicit no-op counterpart.
+    FileVariants(
+        (
+            "debian/templates/image.meta.bug-presubj.in",
+            [("package name linux-image-", "package name dkc-linux-image-")],
+        ),
+        ("debian/templates/image.control.j2", []),
     ),
     (
         "debian/templates/image.meta.lintian-overrides.j2",
@@ -766,9 +806,15 @@ esac
             "",
         )],
     ),
-    (
-        "debian/templates/image.meta.maintscript.in",
-        [(" linux-image-@abiname@@localversion@ ", " dkc-linux-image-@abiname@@localversion@ ")],
+    FileVariants(
+        (
+            "debian/templates/image.meta.maintscript.in",
+            [(" linux-image-@abiname@@localversion@ ", " dkc-linux-image-@abiname@@localversion@ ")],
+        ),
+        (
+            "debian/templates/image.meta.maintscript.j2",
+            [(" linux-base-{{abiname}}{{localversion}} ", " dkc-linux-base-{{abiname}}{{localversion}} ")],
+        ),
     ),
     (
         "debian/templates/headers.control.in",

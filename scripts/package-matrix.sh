@@ -126,6 +126,12 @@ else
 	export_matrix_failure "$audit_rc"
 fi
 
+# APT downloads as _apt, not container root. Expose the public repository
+# inside the client mount even when the caller uses a private umask. The
+# enclosing run directory stays mode 0700 and the evidence is not widened.
+chmod 0755 "$stage"
+chmod -R a+rX "$stage/repository"
+
 # shellcheck disable=SC2054  # comma-separated tmpfs options are one argument
 client_flags=(
 	--rm

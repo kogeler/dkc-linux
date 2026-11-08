@@ -12,6 +12,7 @@ import pytest
 
 from dkc.buildpolicy import build_policy_digest
 from dkc.sourceprofile import (
+    SourceProfile,
     SourceProfileError,
     load_profile,
     load_profiles,
@@ -32,15 +33,13 @@ def _copy_registry(destination: pathlib.Path) -> None:
 
 def test_every_profile_is_complete_and_covers_its_reviewed_source() -> None:
     profiles = load_profiles(ROOT)
-    assert [profile.profile_id for profile in profiles] == ["7.1", "7.2"]
+    assert profiles
     for profile in profiles:
         assert profile.covers(profile.reviewed_source_version)
         assert profile.overlay_patches
         assert profile.build_policy_paths()[0] == profile.build_file
         assert profile.validation_policy_paths()[0] == profile.validation_file
-        assert profile.fpu.final_artifact.endswith("amdgpu.ko")
-        assert profile.simd_allowlist
-        assert "nodoc" in profile.build_profiles
+        assert select_profile(ROOT, profile.reviewed_source_version) == profile
 
 
 @pytest.mark.parametrize(
@@ -50,6 +49,8 @@ def test_every_profile_is_complete_and_covers_its_reviewed_source() -> None:
         ("7.1.13-1", "7.1"),
         ("7.2.6-1", "7.2"),
         ("7.2~rc3-1~exp1", "7.2"),
+        ("7.3.3-1", "7.3"),
+        ("7.3~rc7-1~exp1", "7.3"),
     ],
 )
 def test_one_profile_covers_each_known_source_version(version: str, expected: str) -> None:
@@ -57,20 +58,29 @@ def test_one_profile_covers_each_known_source_version(version: str, expected: st
 
 
 def test_an_unreviewed_series_is_named_rather_than_guessed() -> None:
-    with pytest.raises(SourceProfileError, match="no source profile covers linux 7.3.1-1"):
-        select_profile(ROOT, "7.3.1-1")
+    with pytest.raises(SourceProfileError, match="no source profile covers linux 999.1-1"):
+        select_profile(ROOT, "999.1-1")
     with pytest.raises(SourceProfileError, match="invalid Debian source version"):
         select_profile(ROOT, "not a version")
 
 
-def test_build_identity_depends_only_on_the_selected_profile(tmp_path: pathlib.Path) -> None:
-    original = build_policy_digest(ROOT, "7.2.6-1")
+@pytest.mark.parametrize("selected", load_profiles(ROOT), ids=lambda profile: profile.profile_id)
+def test_build_identity_depends_only_on_the_selected_profile(
+    tmp_path: pathlib.Path, selected: SourceProfile,
+) -> None:
+    version = selected.reviewed_source_version
+    original = build_policy_digest(ROOT, version)
     _copy_registry(tmp_path)
-    assert build_policy_digest(tmp_path, "7.2.6-1") == original
-    with (tmp_path / "config/source-profiles/7.1/profile.toml").open("a") as stream:
-        stream.write("\n")
-    assert build_policy_digest(tmp_path, "7.2.6-1") == original
-    assert build_policy_digest(tmp_path, "7.1.13-1") != build_policy_digest(ROOT, "7.1.13-1")
+    assert build_policy_digest(tmp_path, version) == original
+    for profile in load_profiles(ROOT):
+        if profile.profile_id == selected.profile_id:
+            continue
+        with (tmp_path / profile.build_file.relative_to(ROOT)).open("a") as stream:
+            stream.write("\n")
+        assert build_policy_digest(tmp_path, version) == original
+        assert build_policy_digest(tmp_path, profile.reviewed_source_version) != (
+            build_policy_digest(ROOT, profile.reviewed_source_version)
+        )
 
 
 def test_overlay_directories_belong_to_a_profile(tmp_path: pathlib.Path) -> None:

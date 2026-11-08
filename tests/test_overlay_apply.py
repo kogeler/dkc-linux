@@ -25,6 +25,35 @@ def _load_generator() -> ModuleType:
 
 GENERATOR = _load_generator()
 
+
+@pytest.mark.parametrize("present", [("in",), ("j2",), (), ("in", "j2")])
+def test_template_migration_requires_one_reviewed_filename_before_editing(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, present: tuple[str, ...],
+) -> None:
+    monkeypatch.setattr(GENERATOR, "PATCHES", {
+        "0001-template.patch": [GENERATOR.FileVariants(
+            ("image.control.in", [("Package: linux-image-@abi@", "Package: dkc-linux-image-@abi@")]),
+            ("image.control.j2", [("Package: linux-image-{{abi}}", "Package: dkc-linux-image-{{abi}}")]),
+        )],
+    })
+    monkeypatch.setattr(GENERATOR, "NEW_FILES", {})
+    for suffix in present:
+        expression = "@abi@" if suffix == "in" else "{{abi}}"
+        (tmp_path / f"image.control.{suffix}").write_text(
+            f"Package: linux-image-{expression}\nDepends: unchanged\n"
+        )
+    before = _snapshot(tmp_path)
+    if len(present) != 1:
+        with pytest.raises(SystemExit, match="exactly one reviewed file name must exist"):
+            GENERATOR.generate(tmp_path)
+    else:
+        edited = GENERATOR.edit_tree(tmp_path, "22")
+        filename = f"image.control.{present[0]}"
+        assert edited.files[filename] == before[filename].decode().replace(
+            "Package: linux-image-", "Package: dkc-linux-image-"
+        )
+    assert _snapshot(tmp_path) == before
+
 FILLER = "".join(f"# unrelated line {number}\n" for number in range(12))
 REVIEWED_MAKEFILE = (
     FILLER
