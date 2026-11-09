@@ -269,6 +269,106 @@ def test_reads_retry_transport_failures_and_transient_server_errors() -> None:
     assert len(listing) == 2
 
 
+def test_conditional_head_signs_the_validator_and_retries_only_read_failures() -> None:
+    requests = []
+    client = S3Client(
+        ENDPOINT, CREDENTIALS,
+        transport=_scripted_transport([
+            _transport_failure("HEAD"),
+            HttpResponse(503, {}, b""),
+            HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""),
+        ], requests),
+        sleeper=lambda _: None,
+    )
+    result = client.head("safe/key", if_match='"v1"')
+    assert result.size == 2
+    assert result.metadata == MUTABLE
+    assert result.etag == '"v1"'
+    assert len(requests) == 3
+    for request in requests:
+        assert request.method == "HEAD"
+        assert request.body == b""
+        assert request.headers["if-match"] == '"v1"'
+        assert 'if-match:"v1"\n' in request.canonical_request
+
+
+def test_head_transport_does_not_read_the_advertised_object_body() -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self) -> None:  # noqa: N802
+            assert self.headers["If-Match"] == '"v1"'
+            self.send_response(200)
+            self.send_header("Content-Length", "1000000")
+            self.send_header("Content-Type", MUTABLE.content_type)
+            self.send_header("Cache-Control", MUTABLE.cache_control)
+            self.send_header("ETag", '"v1"')
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        # The transport fixture is local HTTP; operator input still requires
+        # S3Endpoint.validated and an exact HTTPS origin.
+        endpoint = S3Endpoint(
+            f"http://127.0.0.1:{server.server_port}", "fixture", "test-region", "path"
+        )
+        remote = S3Client(endpoint, CREDENTIALS).head("safe/key", if_match='"v1"')
+        assert remote.size == 1_000_000
+        assert remote.metadata == MUTABLE
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+
+@pytest.mark.parametrize("status", [403, 404, 412])
+def test_head_errors_never_become_absence_or_reuse(status: int) -> None:
+    requests = []
+    client = S3Client(
+        ENDPOINT, CREDENTIALS,
+        transport=_scripted_transport([HttpResponse(status, {}, b"")], requests),
+    )
+    with pytest.raises(RemoteStoreError) as failure:
+        client.head("safe/key", if_match='"v1"')
+    assert failure.value.status == status
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize("header", ["Content-Length", "Content-Type", "Cache-Control", "ETag"])
+def test_head_rejects_incomplete_headers(header: str) -> None:
+    headers = {**GOOD_OBJECT.headers, "Content-Length": "2"}
+    del headers[header]
+    client = S3Client(
+        ENDPOINT, CREDENTIALS, transport=lambda _: HttpResponse(200, headers, b"")
+    )
+    with pytest.raises(RemoteStoreError):
+        client.head("safe/key", if_match='"v1"')
+
+
+@pytest.mark.parametrize("size", ["-1", "1.5", "", " 2", "٢"])
+def test_head_rejects_invalid_size(size: str) -> None:
+    client = S3Client(
+        ENDPOINT, CREDENTIALS,
+        transport=lambda _: HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": size}, b""),
+    )
+    with pytest.raises(RemoteStoreError, match="headers"):
+        client.head("safe/key", if_match='"v1"')
+
+
+def test_head_rejects_a_server_ignoring_the_condition() -> None:
+    client = S3Client(
+        ENDPOINT, CREDENTIALS,
+        transport=lambda _: HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""),
+    )
+    with pytest.raises(PreconditionFailed):
+        client.head("safe/key", if_match='"other"')
+    with pytest.raises(ValueError, match="opaque quoted"):
+        client.head("safe/key", if_match="unquoted")
+
+
 def test_read_retries_are_bounded_and_keep_the_sanitized_failure() -> None:
     requests: list[object] = []
     sleeps: list[float] = []

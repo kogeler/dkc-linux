@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from dkc.remote_store import S3ObjectStore, validate_namespace
-from dkc.s3 import ListedObject, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
+from dkc.s3 import ListedObject, ObjectHead, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
 from dkc.storage import ObjectMetadata
 
 
@@ -41,6 +41,12 @@ class FakeClient:
 
     def get_optional(self, key: str) -> RemoteObject | None:
         return self.objects.get(key)
+
+    def head(self, key: str, *, if_match: str) -> ObjectHead:
+        value = self.objects[key]
+        if value.etag != if_match:
+            raise PreconditionFailed("head")
+        return ObjectHead(len(value.body), value.metadata, value.etag)
 
     def delete(self, key: str) -> None:
         self.objects.pop(key, None)
@@ -121,3 +127,6 @@ def test_namespace_is_validated_and_listing_cannot_escape() -> None:
     client.objects["outside/object"] = RemoteObject(b"x", METADATA, '"x"')
     assert store.list_keys("pool/") == ("pool/a",)
     assert store.list_objects("pool/") == (ListedObject("pool/a", 1),)
+    assert store.head("pool/a", if_match='"etag-new"').size == 1
+    with pytest.raises(PreconditionFailed):
+        store.head("pool/a", if_match='"stale"')

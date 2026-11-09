@@ -7,6 +7,7 @@ import threading
 from dataclasses import dataclass
 
 from dkc.storage import ObjectMetadata
+from dkc.s3 import ObjectHead
 
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -53,6 +54,14 @@ class ConditionalObjectStore:
     def keys(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(sorted(self._objects))
+
+    def head(self, key: str, *, if_match: str) -> ObjectHead:
+        _validate_key(key)
+        with self._lock:
+            current = self._objects.get(key)
+            if current is None or current.etag != if_match:
+                raise PreconditionFailed(f"If-Match lost for {key}")
+            return ObjectHead(len(current.body), current.metadata, current.etag)
 
     def put(
         self,

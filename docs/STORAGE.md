@@ -8,8 +8,8 @@ implemented boundary is deliberately small:
 - path-style or virtual-hosted addressing;
 - literal single-request `PutObject` with exactly one of `If-None-Match: *` or
   an opaque `If-Match` ETag;
-- authenticated `GetObject`, exact `DeleteObject`, and paginated
-  `ListObjectsV2`;
+- authenticated `GetObject`, conditional `HeadObject`, exact `DeleteObject`, and
+  paginated `ListObjectsV2`;
 - exact bytes, size, `Content-Type`, and `Cache-Control` verification after
   upload.
 
@@ -121,12 +121,35 @@ key uses the ETag captured during planning. `dists/trixie/InRelease` is the APT
 client commit point; `state/current.asc` follows as controller authority. A
 lost response is accepted only after an authenticated read proves the exact
 intended bytes and metadata. HTTP 412 is always a lost precondition, never a
-retry signal. Reads (`GetObject` and listings) retry a transport failure, such
-as a body-read timeout or a reset connection, HTTP 429, and a transient
+retry signal. Reads (`GetObject`, `HeadObject`, and listings) retry a transport
+failure, such as a body-read timeout or a reset connection, HTTP 429, and a
+transient
 500/502/503/504 response, at most three attempts in total. A write retries only
 HTTP 429, which the store did not process. Its other unknown outcomes are left
 to that authenticated-read reconciliation. See [PUBLISHING.md](PUBLISHING.md)
 and [RETENTION.md](RETENTION.md).
+
+The publisher reads each existing immutable object once and compares its full
+body and HTTP metadata before reusing it. It sends no `PutObject` for an exact
+match. After the APT commit, `HeadObject` with `If-Match` revalidates that same
+ETag, size, `Content-Type`, and `Cache-Control` without another body transfer.
+The ETag is an opaque validator for bytes verified in this execution, never a
+checksum or a persisted verification cache. A missing object, lost condition,
+changed size, or changed metadata stops publication before controller state
+commits. Newly created objects still receive a complete authenticated
+`GetObject` read-back. A backend must support conditional HEAD and return a
+valid size, ETag, and both HTTP metadata fields.
+
+Structured progress records are flushed as phases change, after each phase's
+final object, and at most every fifteen seconds between completed objects.
+They contain only fixed phase names, object and logical payload-byte counts,
+and elapsed time; they do not expose keys or connection details. A single
+request can take longer than the reporting interval. All arbitrary command
+output and tracebacks remain buffered and sanitized, including secrets split
+across writes. Publication evidence adds `progress.json` with phase durations
+and `summary.json` records how many immutable objects and bytes were created
+or reused. Progress bytes describe processed payloads, not measured wire
+traffic or retries.
 
 The toolbox image is resolved and verified before a storage step receives
 secrets. The secret-bearing `make` invocation explicitly disables image
@@ -141,6 +164,26 @@ credential only to a whole bucket, that code is the prefix guard. See
 [SITE.md](SITE.md#publication).
 
 ## Disposable qualification
+
+Before a real-service test, replay a saved, verified generation-zero repository
+against the local HTTPS S3 fixture:
+
+```sh
+make storage-publication-replay \
+  STORAGE_REPOSITORY_RESULT=/absolute/path/to/out/apt-repository/RUN
+```
+
+This offline target runs the actual publisher twice in a confined rootless
+container with no external network or production credentials. It verifies the
+saved repository's checksums and signatures, exercises the lease, conditional
+writes, final state and namespace checks, and proves that the retry uploads no
+pool bodies and downloads each exactly once. It accepts only a generation-zero
+repository so the initial publication starts from genuinely empty storage.
+Both publications' evidence and a byte-accounting summary remain under
+`out/storage-publication-replay/`. This fixture checks the wire protocol, not
+the real service's throughput or compatibility. The fast suite separately
+exercises HTTPS interruption/recovery, ambiguous success, transient HEAD errors,
+lost preconditions, and changed-object rejection.
 
 The local qualification target is:
 
@@ -158,7 +201,8 @@ _dkc-test/storage/<repository-hash>/<run-id>-<nonce>/
 ```
 
 It conditionally uploads the complete repository, authenticates and verifies
-every object directly through S3, forces `ListObjectsV2` pagination with a
+every object directly through S3, revalidates its headers with conditional
+HEAD, rejects a stale HEAD ETag, forces `ListObjectsV2` pagination with a
 ten-object page size, and executes an exactly-one-winner ETag race. It then
 deletes each fixture key exactly. The final authenticated prefix listing must
 contain zero objects. Missing S3 connection fields block before the repository

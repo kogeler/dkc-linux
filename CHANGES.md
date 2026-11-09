@@ -26,6 +26,13 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ### Changed
 
+- Repository publication reuses existing immutable objects without sending
+  their bodies again or downloading them twice. CI now shows sanitized phase,
+  object, byte, and elapsed-time progress and retains phase timings in its
+  publication evidence. See [docs/STORAGE.md](docs/STORAGE.md).
+- `make storage-publication-replay` tests a saved signed bootstrap repository
+  through the actual publisher and a local HTTPS fixture without production
+  credentials, external network access, or another kernel build.
 - The README opens with a link line and an at-a-glance summary so it also works
   as the site's home page.
 

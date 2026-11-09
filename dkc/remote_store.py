@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .s3 import ListedObject, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
+from .s3 import ListedObject, ObjectHead, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
 from .storage import ObjectMetadata
 
 __all__ = ["S3ObjectStore", "validate_namespace"]
@@ -58,6 +58,9 @@ class S3ObjectStore:
 
     def get(self, key: str) -> RemoteObject | None:
         return self.client.get_optional(self._key(key))
+
+    def head(self, key: str, *, if_match: str) -> ObjectHead:
+        return self.client.head(self._key(key), if_match=if_match)
 
     def put(
         self,

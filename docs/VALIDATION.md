@@ -22,6 +22,10 @@ workflow runs it for every pull request. The suite covers:
   create/update/delete behaviour;
 - lease acquisition, renewal, release, stale takeover, and fencing;
 - failure after every publication phase and idempotent convergence;
+- immutable reuse without redundant PUT or second body download, conditional
+  HEAD validation, pre-commit collision rejection, post-commit object changes,
+  and live structured progress alongside buffered secret redaction, including
+  real HTTPS socket tests at every interruption boundary;
 - two-mode three-series retention, patch-release atomicity, protected newest
   releases, whole-storage byte budgeting, and permanent signed tombstones;
 - complete exact GC, liveness, generation, byte, object-count, partial-plan,
@@ -53,6 +57,13 @@ attestation, KVM boot and selftests, cross-flavor package reconciliation,
 clean-client installation and DKMS, exact downstream source reconstruction,
 production-key signatures, by-hash acquisition, and final signed-repository
 verification.
+
+`make storage-publication-replay` additionally consumes an already verified,
+signed generation-zero repository and runs the real publisher twice against a
+local HTTPS fixture without external network access. It checks the full saved
+payload, signatures, lease, state, evidence checksums, and the exact reuse
+transfer budget without compiling kernels or using production credentials.
+See [STORAGE.md](STORAGE.md#disposable-qualification).
 
 The hosted build cache is intentionally not evidence by itself. A producer
 seals it only after all expensive gates pass, and each consumer recomputes its
