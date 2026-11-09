@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from dkc.s3 import PreconditionFailed, RemoteObject
+from dkc.s3 import ObjectHead, PreconditionFailed, RemoteObject
 from dkc.storage import ObjectMetadata
 from dkc.storage_disposable import (
     DisposableConfig,
@@ -217,6 +217,13 @@ class MemoryStore:
         with self.lock:
             return self.objects[key]
 
+    def head(self, key: str, *, if_match: str) -> ObjectHead:
+        with self.lock:
+            value = self.objects[key]
+            if value.etag != if_match:
+                raise PreconditionFailed(f"head {key}")
+            return ObjectHead(len(value.body), value.metadata, value.etag)
+
     def delete(self, key: str) -> None:
         with self.lock:
             self.objects.pop(key, None)
@@ -266,6 +273,8 @@ def test_complete_disposable_flow_proves_cas_reads_and_zero_leftovers(
         for event in events
     )
     assert any(event.operation == "paginated-list" for event in events)
+    assert any(event.operation == "conditional-head" for event in events)
+    assert any(event.operation == "stale-head" and event.status == "412" for event in events)
     assert events[-1].detail == "zero objects"
     assert all(event.key.startswith(_disposable_config().prefix) for event in events)
 

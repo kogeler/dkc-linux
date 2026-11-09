@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from .s3 import PreconditionFailed, RemoteObject
+from .s3 import ObjectHead, PreconditionFailed, RemoteObject
 from .storage import ObjectMetadata
 from .storage_repository import (
     MUTABLE_CACHE,
@@ -37,6 +37,8 @@ class Store(Protocol):
     ) -> str: ...
 
     def get(self, key: str) -> RemoteObject: ...
+
+    def head(self, key: str, *, if_match: str) -> ObjectHead: ...
 
     def delete(self, key: str) -> None: ...
 
@@ -124,6 +126,14 @@ class DisposableIntegration:
             if hashlib.sha256(remote.body).hexdigest() != item.sha256:
                 raise RuntimeError(f"authoritative digest verification failed for {key}")
             self._record("authoritative-read", key, "PASS", item.sha256)
+            head = self.store.head(key, if_match=remote.etag)
+            if (
+                head.etag != remote.etag
+                or head.size != item.size
+                or head.metadata != item.metadata
+            ):
+                raise RuntimeError(f"authoritative HEAD verification failed for {key}")
+            self._record("conditional-head", key, "PASS", item.sha256)
         expected = tuple(
             sorted(
                 f"{self.config.prefix}repository/{item.relative_key}"
@@ -181,6 +191,12 @@ class DisposableIntegration:
         if statuses != ["2xx", "412"]:
             raise RuntimeError(f"CAS race produced unsafe outcomes: {statuses}")
         winning = next(body for status, body in outcomes if status == "2xx")
+        try:
+            self.store.head(key, if_match=etag)
+        except PreconditionFailed:
+            self._record("stale-head", key, "412")
+        else:
+            raise RuntimeError("conditional HEAD accepted a stale ETag")
         remote = self.store.get(key)
         self._verify_remote(key, winning, metadata, remote)
         self._record("cas-race", key, "PASS", "one 2xx and one 412")

@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from typing import Callable, Protocol
 
 from .storage import ObjectMetadata
+from .storage_progress import StoragePhase, StorageProgressEvent
 
 __all__ = [
     "InjectedFailure",
     "PublicationExecutor",
     "PublicationObject",
     "PublicationPlan",
+    "PublicationTransfers",
 ]
 
 
@@ -58,6 +60,8 @@ class InjectedFailure(RuntimeError):
 class PublicationStore(Protocol):
     def get(self, key: str) -> PublicationValue | None: ...
 
+    def head(self, key: str, *, if_match: str) -> PublicationHead: ...
+
     def put(
         self,
         key: str,
@@ -82,6 +86,25 @@ class PublicationValue(Protocol):
 
     @property
     def etag(self) -> str: ...
+
+
+class PublicationHead(Protocol):
+    @property
+    def size(self) -> int: ...
+
+    @property
+    def metadata(self) -> ObjectMetadata: ...
+
+    @property
+    def etag(self) -> str: ...
+
+
+@dataclass(frozen=True)
+class PublicationTransfers:
+    created_objects: int
+    created_bytes: int
+    reused_objects: int
+    reused_bytes: int
 
 
 class PublicationExecutor:
@@ -111,13 +134,38 @@ class PublicationExecutor:
         if current is None or current.body != value.body or current.metadata != value.metadata:
             raise RuntimeError(f"origin verification failed for {key}")
 
+    def _prepare_immutable(self, key: str, value: PublicationObject) -> str | None:
+        # Reuse requires exact bytes before the client commit. Do not send an
+        # existing multi-gigabyte object merely to discover a 412 response.
+        current = self.store.get(key)
+        if current is not None:
+            if current.body != value.body or current.metadata != value.metadata:
+                raise RuntimeError(f"immutable object collision for {key}")
+            return current.etag
+        self.store.create_immutable(key, value.body, value.metadata)
+        return None
+
+    def _revalidate_immutable(
+        self, key: str, value: PublicationObject, etag: str
+    ) -> None:
+        # ETag is an opaque validator for bytes read during this execution,
+        # never a digest or evidence carried over from an earlier publication.
+        current = self.store.head(key, if_match=etag)
+        if (
+            current.etag != etag
+            or current.size != len(value.body)
+            or current.metadata != value.metadata
+        ):
+            raise RuntimeError(f"origin revalidation failed for {key}")
+
     def execute(
         self,
         plan: PublicationPlan,
         *,
         fail_after: int | None = None,
         mutation_checkpoint: Callable[[], None] | None = None,
-    ) -> None:
+        progress: Callable[[StorageProgressEvent], None] | None = None,
+    ) -> PublicationTransfers:
         if fail_after is not None and not 1 <= fail_after <= 12:
             raise ValueError("failure phase must be between 1 and 12")
 
@@ -127,26 +175,49 @@ class PublicationExecutor:
         for phase in range(1, 5):
             self._inject(phase, fail_after)
 
+        def report(
+            phase: StoragePhase,
+            objects: int = 0,
+            total_objects: int = 0,
+            size: int = 0,
+            total_size: int = 0,
+        ) -> None:
+            if progress is not None:
+                progress(StorageProgressEvent(phase, objects, total_objects, size, total_size))
+
+        reused: dict[str, str] = {}
+        immutable_size = sum(len(value.body) for value in plan.immutable.values())
+        prepared_objects = 0
+        prepared_bytes = 0
+
+        def prepare(key: str, value: PublicationObject) -> None:
+            nonlocal prepared_objects, prepared_bytes
+            if mutation_checkpoint is not None:
+                mutation_checkpoint()
+            etag = self._prepare_immutable(key, value)
+            if etag is not None:
+                reused[key] = etag
+            if mutation_checkpoint is not None:
+                mutation_checkpoint()
+            prepared_objects += 1
+            prepared_bytes += len(value.body)
+            report(
+                StoragePhase.IMMUTABLE, prepared_objects, len(plan.immutable),
+                prepared_bytes, immutable_size,
+            )
+
+        report(StoragePhase.IMMUTABLE, total_objects=len(plan.immutable), total_size=immutable_size)
         transaction = plan.immutable[plan.transaction_key]
-        if mutation_checkpoint is not None:
-            mutation_checkpoint()
-        self.store.create_immutable(
-            plan.transaction_key, transaction.body, transaction.metadata
-        )
-        if mutation_checkpoint is not None:
-            mutation_checkpoint()
+        prepare(plan.transaction_key, transaction)
         self._inject(5, fail_after)
 
         for key, value in sorted(plan.immutable.items()):
             if key == plan.transaction_key:
                 continue
-            if mutation_checkpoint is not None:
-                mutation_checkpoint()
-            self.store.create_immutable(key, value.body, value.metadata)
-            if mutation_checkpoint is not None:
-                mutation_checkpoint()
+            prepare(key, value)
         self._inject(6, fail_after)
 
+        report(StoragePhase.METADATA)
         for key, value in sorted(plan.mutable_before_commit.items()):
             if mutation_checkpoint is not None:
                 mutation_checkpoint()
@@ -155,6 +226,7 @@ class PublicationExecutor:
                 mutation_checkpoint()
         self._inject(7, fail_after)
 
+        report(StoragePhase.COMMIT_CLIENT)
         if mutation_checkpoint is not None:
             mutation_checkpoint()
         self._put_mutable(
@@ -166,13 +238,31 @@ class PublicationExecutor:
             mutation_checkpoint()
         self._inject(8, fail_after)
 
-        for key, value in plan.immutable.items():
-            self._verify(key, value)
-        for key, value in plan.mutable_before_commit.items():
-            self._verify(key, value)
-        self._verify(plan.inrelease_key, plan.inrelease)
+        verify_total = len(plan.immutable) + len(plan.mutable_before_commit) + 1
+        verify_bytes = immutable_size + sum(
+            len(value.body) for value in plan.mutable_before_commit.values()
+        ) + len(plan.inrelease.body)
+        verified_objects = 0
+        verified_bytes = 0
+        report(StoragePhase.VERIFY_REPOSITORY, total_objects=verify_total, total_size=verify_bytes)
+        for key, value in (
+            list(plan.immutable.items())
+            + list(plan.mutable_before_commit.items())
+            + [(plan.inrelease_key, plan.inrelease)]
+        ):
+            if key in reused:
+                self._revalidate_immutable(key, value, reused[key])
+            else:
+                self._verify(key, value)
+            verified_objects += 1
+            verified_bytes += len(value.body)
+            report(
+                StoragePhase.VERIFY_REPOSITORY, verified_objects, verify_total,
+                verified_bytes, verify_bytes,
+            )
         self._inject(9, fail_after)
 
+        report(StoragePhase.CONVENIENCES)
         for key, value in sorted(
             plan.conveniences.items(),
             key=lambda item: (not item[0].endswith(".asc"), item[0]),
@@ -186,6 +276,7 @@ class PublicationExecutor:
 
         # Controller authority moves last. Once this CAS succeeds there is no
         # remaining publication mutation that a later no-op run could skip.
+        report(StoragePhase.COMMIT_STATE)
         if mutation_checkpoint is not None:
             mutation_checkpoint()
         self._put_mutable(
@@ -197,6 +288,7 @@ class PublicationExecutor:
             mutation_checkpoint()
         self._inject(11, fail_after)
 
+        report(StoragePhase.VERIFY_STATE)
         for key, value in plan.mutable_before_commit.items():
             self._verify(key, value)
         self._verify(plan.inrelease_key, plan.inrelease)
@@ -204,3 +296,8 @@ class PublicationExecutor:
         for key, value in plan.conveniences.items():
             self._verify(key, value)
         self._inject(12, fail_after)
+        reused_bytes = sum(len(plan.immutable[key].body) for key in reused)
+        return PublicationTransfers(
+            len(plan.immutable) - len(reused), immutable_size - reused_bytes,
+            len(reused), reused_bytes,
+        )

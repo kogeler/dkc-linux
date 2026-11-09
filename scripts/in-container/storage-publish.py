@@ -11,6 +11,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+from dataclasses import asdict
 from datetime import datetime, timezone
 
 from dkc.gc import execute_gc, plan_gc
@@ -25,6 +26,7 @@ from dkc.state import parse_manifest, parse_state_pointer
 from dkc.storage_budget import project_storage
 from dkc.storage_connection import load_connection
 from dkc.storage_output import StorageRedactor, run_with_sanitized_output
+from dkc.storage_progress import StoragePhase, StorageProgress, StorageProgressEvent
 from dkc.storage_repository import load_verified_repository
 
 
@@ -141,7 +143,8 @@ def verify_current_generation(
         raise ValueError("desired publication does not follow authoritative state")
 
 
-def main(args: argparse.Namespace) -> int:
+def main(args: argparse.Namespace, progress: StorageProgress) -> int:
+    progress(StorageProgressEvent(StoragePhase.VALIDATE))
     output = args.output
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     connection = load_connection(args.connection)
@@ -174,6 +177,7 @@ def main(args: argparse.Namespace) -> int:
             terminal_proof=lambda old: workflow_attempt_terminal(token, old),
         )
         try:
+            progress(StorageProgressEvent(StoragePhase.ACQUIRE_LEASE))
             lease = manager.acquire(owner)
             verify_current_generation(
                 store,
@@ -184,9 +188,11 @@ def main(args: argparse.Namespace) -> int:
                 fingerprints=fingerprints,
                 workspace=workspace,
             )
+            progress(StorageProgressEvent(StoragePhase.PLAN))
             plan = plan_repository(
                 inventory, store, max_object_bytes=args.max_object_bytes
             )
+            progress(StorageProgressEvent(StoragePhase.PLAN_GC))
             gc_plan = plan_gc(
                 desired_manifest,
                 store,
@@ -194,6 +200,7 @@ def main(args: argparse.Namespace) -> int:
                 max_objects=args.gc_max_objects,
                 max_bytes=args.gc_max_bytes,
             )
+            progress(StorageProgressEvent(StoragePhase.PROJECT))
             projection = project_storage(
                 store.list_objects(""),
                 inventory,
@@ -216,8 +223,8 @@ def main(args: argparse.Namespace) -> int:
                 )
                 lease = manager.renew(lease)
 
-            PublicationExecutor(store).execute(
-                plan, mutation_checkpoint=checkpoint
+            transfers = PublicationExecutor(store).execute(
+                plan, mutation_checkpoint=checkpoint, progress=progress
             )
             desired_state_body = (
                 args.repository_result / "repository/state/current.asc"
@@ -231,12 +238,19 @@ def main(args: argparse.Namespace) -> int:
                     else -1
                 )
 
+            gc_bytes = sum(target.size for target in gc_plan.targets)
+            progress(StorageProgressEvent(
+                StoragePhase.GC, total_objects=len(gc_plan.targets), total_bytes=gc_bytes
+            ))
             deleted = execute_gc(
                 gc_plan,
                 store,
                 observed_generation=observed_generation,
                 mutation_checkpoint=checkpoint,
             )
+            progress(StorageProgressEvent(
+                StoragePhase.GC, len(deleted), len(gc_plan.targets), gc_bytes, gc_bytes
+            ))
         except BaseException:
             if lease is not None:
                 try:
@@ -250,7 +264,9 @@ def main(args: argparse.Namespace) -> int:
             raise
         else:
             if lease is not None:
+                progress(StorageProgressEvent(StoragePhase.RELEASE_LEASE))
                 lease = manager.release(lease)
+        progress(StorageProgressEvent(StoragePhase.VERIFY_STORAGE))
         final_inventory = store.list_objects("")
         final_storage_size = sum(item.size for item in final_inventory)
         if (
@@ -270,6 +286,7 @@ def main(args: argparse.Namespace) -> int:
         "storage_size": final_storage_size,
         "gc_deleted_bytes": sum(target.size for target in gc_plan.targets),
         "gc_deleted_objects": len(deleted),
+        "immutable_transfers": asdict(transfers),
         "publication_id_sha256": hashlib.sha256(
             desired.publication_id.encode("utf-8")
         ).hexdigest(),
@@ -282,6 +299,10 @@ def main(args: argparse.Namespace) -> int:
     )
     (output / "result.env").write_text(
         "status=PASS\nstorage_publication=PASS\n",
+        encoding="utf-8",
+    )
+    (output / "progress.json").write_text(
+        json.dumps({"phases": progress.summary()}, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
     records = []
@@ -323,6 +344,10 @@ if __name__ == "__main__":
     except BaseException:
         print("FAIL unable to initialize storage output sanitizer", file=sys.stderr)
         raise SystemExit(1) from None
+    publication_progress = StorageProgress(output_redactor, sys.stdout)
     raise SystemExit(
-        run_with_sanitized_output(output_redactor, lambda: main(parsed))
+        run_with_sanitized_output(
+            output_redactor,
+            lambda: main(parsed, publication_progress),
+        )
     )

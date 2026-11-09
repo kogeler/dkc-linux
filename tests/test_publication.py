@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 
 import pytest
 
@@ -11,6 +12,7 @@ from dkc.publication import (
     PublicationPlan,
 )
 from dkc.storage import ObjectMetadata
+from dkc.storage_progress import StoragePhase
 from tests.fake_storage import ConditionalObjectStore, PreconditionFailed
 
 
@@ -170,3 +172,98 @@ def test_convenience_signatures_are_published_before_payloads() -> None:
     PublicationExecutor(store).execute(_plan())
     assert store.writes.index("manifest.json.asc") < store.writes.index("manifest.json")
     assert store.writes.index("manifest.json") < store.writes.index("state/current.asc")
+
+
+def test_retained_objects_are_read_once_without_put_and_revalidated_by_head() -> None:
+    class RecordingStore(ConditionalObjectStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reads: list[str] = []
+            self.writes: list[str] = []
+            self.heads: list[str] = []
+
+        def get(self, key: str):  # type: ignore[no-untyped-def]
+            self.reads.append(key)
+            return super().get(key)
+
+        def put(self, key: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            self.writes.append(key)
+            return super().put(key, *args, **kwargs)  # type: ignore[arg-type]
+
+        def head(self, key: str, *, if_match: str):  # type: ignore[no-untyped-def]
+            self.heads.append(key)
+            return super().head(key, if_match=if_match)
+
+    plan = _plan()
+    store = RecordingStore()
+    retained = "pool/main/d/dkc-linux/package.deb"
+    value = plan.immutable[retained]
+    store.create_immutable(retained, value.body, value.metadata)
+    store.writes.clear()
+    result = PublicationExecutor(store).execute(plan)
+    assert retained not in store.writes
+    assert store.reads.count(retained) == 1
+    assert store.heads == [retained]
+    assert store.writes.count(plan.transaction_key) == 1
+    assert store.reads.count(plan.transaction_key) == 2  # absent probe + full read-back
+    assert result.reused_objects == 1
+    assert result.reused_bytes == len(value.body)
+    assert result.created_objects == len(plan.immutable) - 1
+
+
+@pytest.mark.parametrize("wrong_metadata", [False, True])
+def test_retained_collision_fails_before_the_client_commit(wrong_metadata: bool) -> None:
+    store = ConditionalObjectStore()
+    plan = _plan()
+    key = "pool/main/d/dkc-linux/package.deb"
+    value = plan.immutable[key]
+    store.put(
+        key, value.body if wrong_metadata else b"corrupt",
+        MUTABLE if wrong_metadata else value.metadata, if_none_match=True,
+    )
+    with pytest.raises(RuntimeError, match="immutable object collision"):
+        PublicationExecutor(store).execute(plan)
+    assert store.get(plan.inrelease_key) is None
+    assert store.get(plan.state_key) is None
+
+
+@pytest.mark.parametrize("change", ["bytes", "metadata", "size", "missing", "etag"])
+def test_reused_objects_must_still_match_at_the_post_commit_boundary(change: str) -> None:
+    store = ConditionalObjectStore()
+    plan = _plan()
+    key = "pool/main/d/dkc-linux/package.deb"
+    value = plan.immutable[key]
+    store.create_immutable(key, value.body, value.metadata)
+
+    def progress(event):  # type: ignore[no-untyped-def]
+        if event.phase != StoragePhase.VERIFY_REPOSITORY or event.objects:
+            return
+        current = store.get(key)
+        assert current is not None
+        if change == "missing":
+            store.delete(key)
+        else:
+            # Retain the validator for size/metadata to prove neither field
+            # is inferred from the ETag. Real S3 ETags need not cover metadata.
+            body = b"corrupt" if change == "bytes" else value.body
+            etag = '"changed"' if change in ("bytes", "etag") else current.etag
+            store._objects[key] = replace(
+                current, body=body + (b"x" if change == "size" else b""),
+                metadata=MUTABLE if change == "metadata" else value.metadata, etag=etag,
+            )
+
+    with pytest.raises((PreconditionFailed, RuntimeError)):
+        PublicationExecutor(store).execute(plan, progress=progress)
+    assert store.get(plan.state_key) is None
+
+
+def test_new_object_read_back_detects_a_corrupt_upload() -> None:
+    class CorruptingStore(ConditionalObjectStore):
+        def create_immutable(self, key, body, metadata):  # type: ignore[no-untyped-def]
+            return super().create_immutable(key, body + b"corrupt", metadata)
+
+    store = CorruptingStore()
+    plan = _plan()
+    with pytest.raises(RuntimeError, match="origin verification"):
+        PublicationExecutor(store).execute(plan)
+    assert store.get(plan.state_key) is None

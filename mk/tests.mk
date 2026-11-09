@@ -26,6 +26,11 @@ typecheck: image ## Static type check of the typed implementation (container, of
 fixtures: image ## Refresh test fixtures from the real Debian archive (needs network)
 	@$(DKC_ROOT)/scripts/refresh-sources-fixture.sh
 
+.PHONY: storage-publication-replay
+storage-publication-replay: image ## Replay a verified bootstrap repository against local HTTPS storage (offline)
+	@$(DKC_ROOT)/scripts/storage-publication-replay.sh \
+		'$(TOOLBOX_IMAGE)' '$(STORAGE_REPOSITORY_RESULT)'
+
 .PHONY: release-preflight
 release-preflight: build-image ## Verify source, overlay, toolchain, package graph, and dependency closure (needs network)
 	@$(CONTAINER_RUN) --net --image '$(BUILD_IMAGE)' --name release-preflight -- \

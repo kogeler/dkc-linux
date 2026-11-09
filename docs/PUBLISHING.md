@@ -105,7 +105,9 @@ The publication sequence is:
    key paths with their captured preconditions;
 6. update `dists/trixie/InRelease` with its captured precondition; this is the
    APT-client commit point;
-7. authenticated-read and verify every committed repository object;
+7. verify every committed repository object: full authenticated reads for new
+   immutable objects and mutable metadata; conditional HEAD revalidation of
+   immutable objects already compared byte-for-byte during this execution;
 8. update signed root manifest/checksum conveniences, signatures first;
 9. update `state/current.asc` last with its captured precondition; this is the
    controller commit point;
@@ -124,6 +126,14 @@ create precondition or one captured `If-Match` ETag. There is no unconditional
 write entry point. A lost 2xx response is reconciled only by an authenticated
 read of the exact intended bytes and HTTP metadata. A 412 is never reconciled
 or retried as success.
+
+Existing immutable objects are read and compared before any client commit.
+Equal bytes and metadata are reused without a PUT. Their ETags are held only
+for this execution; step 7 requires conditional HEAD with that exact validator,
+size, and HTTP metadata. No stored checksum, listing, or ETag alone substitutes
+for the initial byte comparison. New objects retain the complete read-back
+after upload. See [STORAGE.md](STORAGE.md) for the backend contract and live
+progress records.
 
 The state pointer is deliberately the final publication mutation. If a process
 stops before it, the previous signed state remains controller authority and a

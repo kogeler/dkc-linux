@@ -33,6 +33,7 @@ __all__ = [
     "S3Credentials",
     "S3Endpoint",
     "RemoteObject",
+    "ObjectHead",
     "RemoteStoreError",
     "SignedRequest",
     "exact_http_request",
@@ -148,6 +149,13 @@ class HttpResponse:
 @dataclass(frozen=True)
 class RemoteObject:
     body: bytes
+    metadata: ObjectMetadata
+    etag: str
+
+
+@dataclass(frozen=True)
+class ObjectHead:
+    size: int
     metadata: ObjectMetadata
     etag: str
 
@@ -499,6 +507,30 @@ class S3Client:
             return self.get(key)
         except NotFound:
             return None
+
+    def head(self, key: str, *, if_match: str) -> ObjectHead:
+        """Revalidate an already byte-verified object without downloading it."""
+        if not _ETAG_RE.fullmatch(if_match):
+            raise ValueError("If-Match requires one opaque quoted ETag")
+        operation = f"HeadObject {key}"
+        response = self._send(
+            operation, "HEAD", key, headers={"if-match": if_match}, read_only=True
+        )
+        size = _header(response.headers, "content-length")
+        content_type = _header(response.headers, "content-type")
+        cache_control = _header(response.headers, "cache-control")
+        etag = _etag(response.headers, operation)
+        if (
+            size is None
+            or not re.fullmatch(r"[0-9]+", size)
+            or content_type is None
+            or cache_control is None
+            or response.body
+        ):
+            raise RemoteStoreError(operation, 502, "invalid object headers")
+        if etag != if_match:
+            raise PreconditionFailed(operation)
+        return ObjectHead(int(size), ObjectMetadata(content_type, cache_control), etag)
 
     def delete(self, key: str) -> None:
         self._send(f"DeleteObject {key}", "DELETE", key, accepted=(200, 204))
