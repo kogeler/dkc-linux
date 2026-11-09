@@ -98,6 +98,47 @@ creates one bounded directory with its own exact root inventory; unit tests
 cover direct verification, omissions, tampering, links, and partial-failure
 evidence.
 
+## Local Linux 7.3 qualification
+
+On 2026-11-08, Debian `linux` 7.3.3-1 with DKC revision 3 completed the local
+non-publishing qualification flow using Clang/LLVM 22.1.8, Rust 1.96.1, and
+ThinLTO. Those tool versions also match the active published CI build image.
+
+- `make release-preflight` passed for 7.3.3-1 and for the reviewed 7.1.7-1 and
+  7.2.6-1 sources retrieved from Debian Snapshot, preserving both older overlay
+  spellings.
+- Both release flavors built ten packages and passed package attestation,
+  Lintian, all 32,434 saved Kbuild command records, and disassembly of
+  `vmlinux` plus all 4,225 shipped modules. Each compiled exactly 93 reviewed
+  FPU objects; neither SIMD audit found an unexpected or stale manual entry.
+- Exact-source selftests built with the futex atomic-load repair. Both KVM
+  guests passed direct installation, initramfs and bootloader integration,
+  the new-kernel boot, in-tree and DKMS modules, selftests, package removal,
+  and fallback to the stock Debian kernel. The v2 guest was repeated after the
+  shared package auditor was corrected.
+
+| Flavor | Selected / executed / passed | Baseline omissions | Nested skips | Failed |
+| --- | --- | --- | --- | --- |
+| v2 | 33 / 33 / 33 | 2 AVX-dependent programs | 8 | 0 |
+| v3 | 35 / 35 / 35 | 0 | 8 | 0 |
+
+The package matrix reconciled 20 inputs into 18 unique packages with identical
+common copies. Clean Debian 13 image-only and complete headers/DKMS clients
+passed, including source acquisition. The same matrix and client checks also
+passed on retained 7.2.13-1 packages with the updated source-template auditor.
+Both runs used the operator's private `umask 077`.
+
+`make github-apt-repository-qualify` then assembled and signed the common
+repository with a disposable key. The complete client passed APT signature and
+by-hash verification, keyring and both release-kernel installations, current
+version selection, source acquisition and source-only rebuild, and rejection
+of corrupt or absent signatures. The result records `publishable=false`.
+
+Both accepted flavor caches were sealed and independently verified. Compact
+flavor and APT evidence were prepared through the GitHub adapters, and all
+three artifact-root checksum manifests passed direct verification. This is
+local acceptance; it does not claim a hosted run or production publication.
+
 ## Real storage acceptance completed locally
 
 Before production activation, the selected empty S3-compatible bucket was used

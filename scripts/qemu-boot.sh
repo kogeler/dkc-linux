@@ -142,25 +142,22 @@ EOF
 	exported=1
 }
 
-on_error() {
+on_exit() {
 	local rc=$?
-	trap - ERR
+	trap - EXIT ERR INT TERM
 	set +e
-	export_run FAIL
-	dkc::warn "retained QEMU failure evidence: $output"
+	# Explicit failures use exit through dkc::die and do not fire ERR. Save
+	# diagnostics before cleanup for every unsuccessful exit, including signals.
+	if [ "$rc" -ne 0 ] && [ "$exported" -eq 0 ]; then
+		export_run FAIL
+		dkc::warn "retained QEMU failure evidence: $output"
+	fi
+	dkc::cleanup_run
 	exit "$rc"
 }
-trap on_error ERR
-on_signal() {
-	local rc="$1"
-	trap - ERR INT TERM
-	set +e
-	export_run FAIL
-	dkc::warn "retained interrupted QEMU evidence: $output"
-	exit "$rc"
-}
-trap 'on_signal 130' INT
-trap 'on_signal 143' TERM
+trap on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 prepare_name="dkc-qemu-inputs-${DKC_RUN_ID}"
 dkc::register_resource container "$prepare_name"

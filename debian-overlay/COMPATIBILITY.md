@@ -2,10 +2,10 @@
 
 What the current Debian Sid kernel source demands, what Debian 13 provides, and
 what DKC changes to close the difference. The rows below were measured against
-`linux` 7.1.7-1 on 2026-08-11 and reviewed again for `linux` 7.2.6-1, in a clean
-Trixie container, with the build profiles of the matching source profile in
+`linux` 7.1.7-1 on 2026-08-11 and reviewed again for `linux` 7.2.6-1 and
+7.3.3-1, in a clean Trixie container, with the matching build profiles in
 `config/source-profiles/`. The compiler row names whichever GCC the source
-selects: Debian Sid moved from `gcc-15` to `gcc-16` in 7.2.
+selects: Debian Sid moved from `gcc-15` to `gcc-16` in 7.2; 7.3 retains `gcc-16`.
 
 Regenerate the evidence with:
 
@@ -117,6 +117,23 @@ would otherwise compile a module with GCC against a kernel built with Clang.
    LLVM tool from a different major.
 
 ## Revalidation trigger
+
+Linux 7.3 renders the versioned image control and image-metapackage migration
+script with Jinja. The generator keeps both reviewed template spellings and
+requires exactly one to exist. It also omits the new stable modules
+metapackage and its redundant image-meta dependency: the versioned image
+already requires the exact modules package, so the DKC package graph stays the
+same. These adaptations use filename and text anchors, with no kernel-version
+branches or fuzzy patches.
+
+Package and VM audits read the metapackage migration templates from the
+checksum-verified downstream source bundle. They resolve only the package,
+ABI, and flavor data placeholders and require the generated maintainer scripts
+to invoke exactly that migration. Directory transitions stay within the
+package's own documentation or bug path and target an exact DKC package for
+the same kernel release. This preserves the old documentation transition and
+accepts 7.3's bug-directory transition without hard-coding either release's
+version threshold in the auditor.
 
 The overlay is generated from anchored text by
 `scripts/in-container/generate-overlay-patches.py`, and builds apply the same

@@ -19,6 +19,7 @@ from collections import defaultdict
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from dkc.debver import DebianVersion
+from dkc.maintscript import load_metapackage_templates, metapackage_transition
 from dkc.sourcepackage import validate_source_bundle
 from dkc.tarmetadata import (  # noqa: E402
     require_package_archive_evidence,
@@ -530,10 +531,11 @@ def validate_maintainer_scripts(
     package: str,
     releases: dict[str, str],
     scripts: dict[str, tuple[int, str]],
+    source_templates: dict[str, str] | None = None,
 ) -> None:
     required: dict[str, tuple[str, ...]] = {}
     exact_krel: str | None = None
-    doc_symlink_target: str | None = None
+    migration: list[str] | None = None
     for flavor, krel in releases.items():
         if package == f"dkc-linux-binary-{krel}":
             required = {
@@ -563,11 +565,15 @@ def validate_maintainer_scripts(
             break
         if package == f"dkc-linux-image-{flavor}-amd64":
             required = {name: () for name in ("preinst", "postinst", "prerm", "postrm")}
-            doc_symlink_target = f"dkc-linux-image-{krel}"
+            if source_templates is None:
+                fail("metapackage source templates are absent")
+            migration = metapackage_transition(source_templates["image"], package, krel)
             break
         if package == f"dkc-linux-headers-{flavor}-amd64":
             required = {name: () for name in ("preinst", "postinst", "prerm", "postrm")}
-            doc_symlink_target = f"dkc-linux-headers-{krel}"
+            if source_templates is None:
+                fail("metapackage source templates are absent")
+            migration = metapackage_transition(source_templates["headers"], package, krel)
             break
     if set(required) != set(scripts):
         fail(
@@ -578,7 +584,7 @@ def validate_maintainer_scripts(
         mode, text = scripts[name]
         if not mode & 0o111:
             fail(f"{package} maintainer script is not executable: {name}")
-        if doc_symlink_target is not None:
+        if migration is not None:
             commands = [
                 line
                 for line in text.splitlines()
@@ -590,17 +596,7 @@ def validate_maintainer_scripts(
                 arguments = shlex.split(commands[1], posix=True)
             except ValueError:
                 fail(f"{package} {name} has malformed shell quoting")
-            expected_arguments = [
-                "dpkg-maintscript-helper",
-                "dir_to_symlink",
-                f"/usr/share/doc/{package}",
-                doc_symlink_target,
-                "5.7~rc5-1~exp1",
-                package,
-                "--",
-                "$@",
-            ]
-            if arguments != expected_arguments:
+            if arguments != migration:
                 fail(f"{package} {name} has an unexpected documentation symlink transition")
             continue
         if exact_krel is None or f"version={exact_krel}" not in text:
@@ -943,6 +939,26 @@ def audit_one_flavor(arguments: list[str]) -> int:
     require_package_archive_metadata(
         attestation, attested_packages, identity, args.flavor
     )
+    source_root = args.root / "source"
+    if not source_root.is_dir() or source_root.is_symlink():
+        fail(f"{args.flavor} export lacks a plain source bundle directory")
+    source_report = load_json(evidence / "source-package/source-package.json")
+    require_source_archive_metadata(source_report, identity, args.flavor)
+    source_bundle = validate_source_bundle(
+        source_root,
+        package="dkc-linux",
+        version=package_version,
+        upstream_version=DebianVersion.parse(str(identity["debian_source_version"])).upstream_release,
+        expected_binary_packages=_expected_union,
+    )
+    if (
+        source_report.get("status") != "PASS"
+        or source_report.get("reconstruction") != "PASS"
+        or source_report.get("build_input_digest") != identity.get("build_input_digest")
+        or any(source_report.get(key) != value for key, value in source_bundle.to_dict().items())
+    ):
+        fail("flavor source bundle differs from its accepted report")
+    source_templates = load_metapackage_templates(source_root / source_bundle.debian)
 
     expected = expected_for_flavor(identity, args.flavor)
     found: set[str] = set()
@@ -982,7 +998,7 @@ def audit_one_flavor(arguments: list[str]) -> int:
         for path, kind, _mode, _size, _target in records:
             if kind != "directory":
                 payload_owners[path].append(package)
-        validate_maintainer_scripts(package, releases, control_scripts(deb))
+        validate_maintainer_scripts(package, releases, control_scripts(deb), source_templates)
         target = args.repository / deb.name
         if target.exists():
             fail(f"duplicate repository filename: {deb.name}")
@@ -1144,6 +1160,7 @@ def main() -> int:
             source_bundle_paths = [
                 source_root / item.name for item in source_bundle.files
             ]
+        source_templates = load_metapackage_templates(source_root / source_bundle.debian)
 
         attestation = load_json(evidence / "attestation.json")
         if (
@@ -1229,7 +1246,7 @@ def main() -> int:
                     payload_owners[path].append(package)
             package_payloads[package] = {record[0]: record for record in records}
             scripts = control_scripts(deb)
-            validate_maintainer_scripts(package, releases, scripts)
+            validate_maintainer_scripts(package, releases, scripts, source_templates)
             package_maintainer_scripts[package] = sorted(scripts)
             package_rows[package] = fields
             all_packages[package] = deb
