@@ -18,7 +18,7 @@ dkc::prepare_storage_connection() {
 	if [ -n "$provided" ]; then
 		arguments+=(--provided "$provided")
 	fi
-	"$DKC_ROOT/scripts/storage-connection.py" "${arguments[@]}"
+	PYTHONPATH="$DKC_ROOT" python3 -m dkc.cli.storage_connection "${arguments[@]}"
 	unset S3_ENDPOINT S3_REGION S3_BUCKET S3_ADDRESSING_STYLE
 	unset S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_SESSION_TOKEN
 	printf -v "$output_variable" '%s' "$stage/connection.json"

@@ -54,7 +54,9 @@ class Dependency:
     raw: str
 
     def applies_to(self, architecture: str, profiles: frozenset[str]) -> bool:
-        return self._architecture_matches(architecture) and self._profiles_match(profiles)
+        return self._architecture_matches(architecture) and self._profiles_match(
+            profiles
+        )
 
     def _architecture_matches(self, architecture: str) -> bool:
         if not self.architectures:
@@ -67,8 +69,10 @@ class Dependency:
             return not any(a[1:] == architecture for a in negated)
         # `linux-any` and `any` are wildcards this project only needs to
         # evaluate for Linux architectures.
-        return architecture in self.architectures or "linux-any" in self.architectures or (
-            "any" in self.architectures
+        return (
+            architecture in self.architectures
+            or "linux-any" in self.architectures
+            or ("any" in self.architectures)
         )
 
     def _profiles_match(self, profiles: frozenset[str]) -> bool:
@@ -77,7 +81,9 @@ class Dependency:
         # Groups are OR-ed; terms inside a group are AND-ed.
         return any(
             all(
-                (term[1:] not in profiles) if term.startswith("!") else (term in profiles)
+                (term[1:] not in profiles)
+                if term.startswith("!")
+                else (term in profiles)
                 for term in group
             )
             for group in self.profile_groups

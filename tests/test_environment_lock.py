@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 from pathlib import Path
 
 import pytest
 
+from dkc.cli import lock_build_environment as MODULE
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts/in-container/lock-build-environment.py"
-SPEC = importlib.util.spec_from_file_location("lock_build_environment", SCRIPT)
-assert SPEC is not None and SPEC.loader is not None
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+SCRIPT = ROOT / "dkc/cli/lock_build_environment.py"
 
 
 def test_retained_archives_are_filtered_hashed_and_sorted(tmp_path: Path) -> None:

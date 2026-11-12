@@ -27,8 +27,9 @@ are derived from the complete build-input digest at build time; they are not
 hard-coded into a generated patch.
 
 The patches are the reviewed record of the overlay, not a replay script.
-`release-preflight` and every build apply the generator's anchored edits to the
-authenticated source with `generate-overlay-patches.py --apply`, and first
+`release-preflight` and every build apply the anchored edits in
+[edits.py](edits.py) to the authenticated source with
+`python3 -m dkc.cli.generate_overlay_patches --apply`, and first
 require each committed patch to describe exactly the lines those edits change.
 A Debian or upstream update that only moves or rewrites neighbouring lines
 therefore still builds, and the log names the patches whose context differs

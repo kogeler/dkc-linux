@@ -19,7 +19,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .storage import ObjectMetadata
@@ -202,9 +202,7 @@ def exact_http_request(
                 body = response.read(max_response_bytes + 1)
                 if len(body) > max_response_bytes:
                     raise RuntimeError("exact HTTP response exceeded its size bound")
-            return HttpResponse(
-                response.status, dict(response.headers.items()), body
-            )
+            return HttpResponse(response.status, dict(response.headers.items()), body)
     except urllib.error.HTTPError as exc:
         return HttpResponse(exc.code, dict(exc.headers.items()), exc.read(4096))
 
@@ -276,7 +274,7 @@ class S3Client:
         self.endpoint = endpoint
         self._credentials = credentials
         self._transport = transport or self._urlopen
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._sleeper = sleeper
         self._max_attempts = max_attempts
 
@@ -300,7 +298,9 @@ class S3Client:
                 path = f"/{self.endpoint.bucket}/{key}"
             else:
                 port = f":{parsed_endpoint.port}" if parsed_endpoint.port else ""
-                request_host = f"{self.endpoint.bucket}.{parsed_endpoint.hostname}{port}"
+                request_host = (
+                    f"{self.endpoint.bucket}.{parsed_endpoint.hostname}{port}"
+                )
                 request_base_url = f"https://{request_host}"
                 path = f"/{key}"
         else:
@@ -308,13 +308,15 @@ class S3Client:
                 path = f"/{self.endpoint.bucket}"
             else:
                 port = f":{parsed_endpoint.port}" if parsed_endpoint.port else ""
-                request_host = f"{self.endpoint.bucket}.{parsed_endpoint.hostname}{port}"
+                request_host = (
+                    f"{self.endpoint.bucket}.{parsed_endpoint.hostname}{port}"
+                )
                 request_base_url = f"https://{request_host}"
                 path = "/"
         canonical_uri = _quote(path, keep_slash=True)
         canonical_query = _canonical_query(query or {})
         payload_hash = hashlib.sha256(body).hexdigest()
-        now = self._clock().astimezone(timezone.utc)
+        now = self._clock().astimezone(UTC)
         amz_date = now.strftime("%Y%m%dT%H%M%SZ")
         short_date = now.strftime("%Y%m%d")
         request_headers: dict[str, str] = {
@@ -354,7 +356,7 @@ class S3Client:
             )
         )
         date_key = _sign(
-            f"AWS4{self._credentials.secret_access_key}".encode("utf-8"), short_date
+            f"AWS4{self._credentials.secret_access_key}".encode(), short_date
         )
         region_key = _sign(date_key, self.endpoint.region)
         service_key = _sign(region_key, "s3")
@@ -370,7 +372,9 @@ class S3Client:
         url = f"{request_base_url}{canonical_uri}"
         if canonical_query:
             url = f"{url}?{canonical_query}"
-        return SignedRequest(method, url, request_headers, bytes(body), canonical_request)
+        return SignedRequest(
+            method, url, request_headers, bytes(body), canonical_request
+        )
 
     @staticmethod
     def _urlopen(request: SignedRequest) -> HttpResponse:
@@ -442,11 +446,7 @@ class S3Client:
                 )
                 self._sleeper(min(delay, 10.0))
                 continue
-            if (
-                read_only
-                and response.status in _TRANSIENT_STATUSES
-                and retry_allowed
-            ):
+            if read_only and response.status in _TRANSIENT_STATUSES and retry_allowed:
                 self._sleeper(min(2 ** (attempt - 1), 10.0))
                 continue
             # Remote bodies are untrusted and may reflect request values. Keep
@@ -571,7 +571,9 @@ class S3Client:
                 value = item.findtext(f"{namespace}Key")
                 if value is None or not value.startswith(prefix):
                     raise RemoteStoreError(
-                        f"ListObjectsV2 {prefix}", 502, "response escaped requested prefix"
+                        f"ListObjectsV2 {prefix}",
+                        502,
+                        "response escaped requested prefix",
                     )
                 _safe_key(value)
                 raw_size = item.findtext(f"{namespace}Size")

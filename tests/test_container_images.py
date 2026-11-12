@@ -115,7 +115,7 @@ if [ "$1" = run ]; then
 fi
 echo "unsupported fake podman command: $*" >&2
 exit 2
-""",
+""",  # noqa: E501
         encoding="utf-8",
     )
     fake.chmod(0o755)
@@ -247,7 +247,11 @@ def test_make_defaults_to_build_and_registry_mode_has_no_build_recipe() -> None:
     assert len(generation_lines) == 3
     assert len(set(generation_lines)) == 1
     config = subprocess.run(
-        ["make", "-s", "print-config"], cwd=ROOT, text=True, capture_output=True, check=True
+        ["make", "-s", "print-config"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
     ).stdout
     llvm_major = re.search(r"(?m)^LLVM_MAJOR +(\d+)$", config)
     assert llvm_major is not None
@@ -419,12 +423,8 @@ def test_resolver_emits_only_one_generation_of_immutable_references(
     values = dict(line.split("=", 1) for line in output.read_text().splitlines())
     assert values["bundle_input_sha256"] == INPUT_SHA
     assert values["bundle_generation"] == GENERATION
-    assert values["toolbox_image"].startswith(
-        "ghcr.io/kogeler/dkc-toolbox@sha256:"
-    )
-    assert values["build_image"].startswith(
-        "ghcr.io/kogeler/dkc-kernel-build@sha256:"
-    )
+    assert values["toolbox_image"].startswith("ghcr.io/kogeler/dkc-toolbox@sha256:")
+    assert values["build_image"].startswith("ghcr.io/kogeler/dkc-kernel-build@sha256:")
     assert values["apt_client_image"].startswith(
         "ghcr.io/kogeler/dkc-apt-client@sha256:"
     )
@@ -465,7 +465,9 @@ def test_resolver_rejects_mixed_or_partial_publications(
     assert "no coherent public latest image bundle" in result.stderr
 
 
-def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher() -> None:
+def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher() -> (
+    None
+):
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "container-images.yml").read_text()
     )
@@ -494,9 +496,13 @@ def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher(
     assert "make container-images" in str(publisher)
     assert "make container-images-push" in str(publisher)
     commands = "\n".join(str(step.get("run", "")) for step in publisher["steps"])
-    publication = next(step for step in publisher["steps"] if step.get("id") == "publish")
+    publication = next(
+        step for step in publisher["steps"] if step.get("id") == "publish"
+    )
     publication_run = publication["run"]
-    assert commands.index("make container-images") < commands.index("podman login ghcr.io")
+    assert commands.index("make container-images") < commands.index(
+        "podman login ghcr.io"
+    )
     assert commands.count("make current-main") == 2
     assert publication_run.index("container-images-push") < publication_run.rindex(
         "podman logout ghcr.io"
@@ -508,7 +514,9 @@ def test_image_workflow_has_one_read_only_candidate_path_and_one_main_publisher(
     assert "upload-artifact" not in str(publisher)
 
 
-def test_pull_requests_build_their_own_images_and_trusted_runs_use_published_ones() -> None:
+def test_pull_requests_build_their_own_images_and_trusted_runs_use_published_ones() -> (
+    None
+):
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
     jobs = workflow["jobs"]
     images = jobs["container_images"]
@@ -537,7 +545,10 @@ def test_pull_requests_build_their_own_images_and_trusted_runs_use_published_one
     }
     for name, roles in pull_request_consumers.items():
         job = jobs[name]
-        assert job["env"]["DKC_IMAGE_MODE"] == "${{ needs.container_images.outputs.image_mode }}"
+        assert (
+            job["env"]["DKC_IMAGE_MODE"]
+            == "${{ needs.container_images.outputs.image_mode }}"
+        )
         loads = [
             step
             for step in job["steps"]

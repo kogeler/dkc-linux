@@ -4,10 +4,11 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LINK = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
-FENCE = re.compile(r"^```(?:sh|bash|shell|console)\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+FENCE = re.compile(
+    r"^```(?:sh|bash|shell|console)\s*\n(.*?)^```", re.MULTILINE | re.DOTALL
+)
 INLINE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 MAKE = re.compile(r"(?:^|\s)make\s+([A-Za-z0-9][A-Za-z0-9_-]*)")
 TARGET = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_-]*):(?:[^=]|$)", re.MULTILINE)
@@ -52,9 +53,17 @@ def test_relative_markdown_links_and_anchors_resolve() -> None:
             if destination.startswith(("https://", "http://", "mailto:")):
                 continue
             relative, separator, fragment = destination.partition("#")
-            target = document if not relative else (document.parent / unquote(relative)).resolve()
-            assert target.exists(), f"{document.relative_to(ROOT)} links to missing {relative}"
-            assert target.is_file(), f"{document.relative_to(ROOT)} link is not a file: {relative}"
+            target = (
+                document
+                if not relative
+                else (document.parent / unquote(relative)).resolve()
+            )
+            assert target.exists(), (
+                f"{document.relative_to(ROOT)} links to missing {relative}"
+            )
+            assert target.is_file(), (
+                f"{document.relative_to(ROOT)} link is not a file: {relative}"
+            )
             if separator and fragment:
                 assert unquote(fragment) in _anchors(target), (
                     f"{document.relative_to(ROOT)} links to missing anchor "
@@ -102,10 +111,14 @@ def test_changes_file_follows_its_recording_rules() -> None:
         version = tuple(int(part) for part in match.groups()[:3])
         releases.append((version, match[4]))
         if version != (0, 1, 0):
-            assert groups == [group for group in CHANGE_GROUPS if group in groups], title
+            assert groups == [group for group in CHANGE_GROUPS if group in groups], (
+                title
+            )
     assert releases, "CHANGES.md records no version"
     assert releases == sorted(releases, reverse=True)
     assert len({version for version, _ in releases}) == len(releases)
-    assert sections[0][1] == [group for group in CHANGE_GROUPS if group in sections[0][1]]
+    assert sections[0][1] == [
+        group for group in CHANGE_GROUPS if group in sections[0][1]
+    ]
     for document in ("AGENTS.md", "README.md", "docs/README.md"):
         assert "CHANGES.md" in (ROOT / document).read_text(encoding="utf-8"), document

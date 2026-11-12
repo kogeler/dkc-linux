@@ -21,43 +21,10 @@ DEBIAN_TAR_SHA256="${4:?debian tar sha256 required}"
 work="$(mktemp -d /work/regen-XXXXXX)"
 trap 'rm -rf -- "$work"' EXIT
 
-python3 - "$ORIG_TAR_URL" "$DEBIAN_TAR_URL" "$work" <<'PY'
-import pathlib
-import sys
-import time
-import urllib.request
-
-
-def fetch(url: str, output: pathlib.Path) -> None:
-    partial = output.with_suffix(output.suffix + ".partial")
-    for attempt in range(1, 5):
-        try:
-            request = urllib.request.Request(
-                url, headers={"User-Agent": "dkc-source-audit/1"}
-            )
-            with urllib.request.urlopen(request, timeout=180) as response, partial.open(
-                "wb"
-            ) as stream:
-                while chunk := response.read(1024 * 1024):
-                    stream.write(chunk)
-            partial.replace(output)
-            return
-        except Exception as error:
-            partial.unlink(missing_ok=True)
-            if attempt == 4:
-                raise
-            print(
-                f"download attempt {attempt}/4 failed for {url}: {error}; retrying",
-                file=sys.stderr,
-                flush=True,
-            )
-            time.sleep(attempt)
-
-
-root = pathlib.Path(sys.argv[3])
-for url, name in ((sys.argv[1], "orig.tar.xz"), (sys.argv[2], "debian.tar.xz")):
-    fetch(url, root / name)
-PY
+PYTHONPATH=/work/src python3 -m dkc.cli.download \
+	--user-agent dkc-source-audit/1 "$ORIG_TAR_URL" "$work/orig.tar.xz"
+PYTHONPATH=/work/src python3 -m dkc.cli.download \
+	--user-agent dkc-source-audit/1 "$DEBIAN_TAR_URL" "$work/debian.tar.xz"
 echo "${ORIG_TAR_SHA256}  ${work}/orig.tar.xz" | sha256sum -c - >&2
 echo "${DEBIAN_TAR_SHA256}  ${work}/debian.tar.xz" | sha256sum -c - >&2
 tar -C "$work" -xf "${work}/orig.tar.xz"
@@ -79,7 +46,7 @@ profile_id="$(PYTHONPATH=/work/src python3 -m dkc.sourceprofile \
 	/work/src "$source_version" id)"
 out="${work}/patches/${profile_id}"
 mkdir -p "$out"
-python3 /work/src/scripts/in-container/generate-overlay-patches.py \
+PYTHONPATH=/work/src python3 -m dkc.cli.generate_overlay_patches \
 	"$source_root" "$out"
 
 tar --create --file=- --directory="${work}/patches" "$profile_id"

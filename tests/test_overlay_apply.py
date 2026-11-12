@@ -2,41 +2,50 @@
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 import re
-import sys
-from types import ModuleType
 
 import pytest
 
+from dkc import overlay as GENERATOR
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-
-def _load_generator() -> ModuleType:
-    path = ROOT / "scripts" / "in-container" / "generate-overlay-patches.py"
-    spec = importlib.util.spec_from_file_location("overlay_generator_under_test", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-GENERATOR = _load_generator()
+EDITS = GENERATOR.load_overlay()
 
 
 @pytest.mark.parametrize("present", [("in",), ("j2",), (), ("in", "j2")])
 def test_template_migration_requires_one_reviewed_filename_before_editing(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, present: tuple[str, ...],
+    tmp_path: pathlib.Path,
+    present: tuple[str, ...],
 ) -> None:
-    monkeypatch.setattr(GENERATOR, "PATCHES", {
-        "0001-template.patch": [GENERATOR.FileVariants(
-            ("image.control.in", [("Package: linux-image-@abi@", "Package: dkc-linux-image-@abi@")]),
-            ("image.control.j2", [("Package: linux-image-{{abi}}", "Package: dkc-linux-image-{{abi}}")]),
-        )],
-    })
-    monkeypatch.setattr(GENERATOR, "NEW_FILES", {})
+    overlay = GENERATOR.Overlay(
+        patches={
+            "0001-template.patch": [
+                GENERATOR.FileVariants(
+                    (
+                        "image.control.in",
+                        [
+                            (
+                                "Package: linux-image-@abi@",
+                                "Package: dkc-linux-image-@abi@",
+                            )
+                        ],
+                    ),
+                    (
+                        "image.control.j2",
+                        [
+                            (
+                                "Package: linux-image-{{abi}}",
+                                "Package: dkc-linux-image-{{abi}}",
+                            )
+                        ],
+                    ),
+                )
+            ],
+        },
+        new_files={},
+        llvm_tools=(),
+    )
     for suffix in present:
         expression = "@abi@" if suffix == "in" else "{{abi}}"
         (tmp_path / f"image.control.{suffix}").write_text(
@@ -44,28 +53,29 @@ def test_template_migration_requires_one_reviewed_filename_before_editing(
         )
     before = _snapshot(tmp_path)
     if len(present) != 1:
-        with pytest.raises(SystemExit, match="exactly one reviewed file name must exist"):
-            GENERATOR.generate(tmp_path)
+        with pytest.raises(
+            SystemExit, match="exactly one reviewed file name must exist"
+        ):
+            GENERATOR.generate(tmp_path, overlay)
     else:
-        edited = GENERATOR.edit_tree(tmp_path, "22")
+        edited = GENERATOR.edit_tree(tmp_path, "22", overlay)
         filename = f"image.control.{present[0]}"
         assert edited.files[filename] == before[filename].decode().replace(
             "Package: linux-image-", "Package: dkc-linux-image-"
         )
     assert _snapshot(tmp_path) == before
 
+
 FILLER = "".join(f"# unrelated line {number}\n" for number in range(12))
 REVIEWED_MAKEFILE = (
-    FILLER
-    + "ifdef CONFIG_X86_NATIVE_CPU\n"
+    FILLER + "ifdef CONFIG_X86_NATIVE_CPU\n"
     "        KBUILD_CFLAGS += -march=native\n"
     "        KBUILD_RUSTFLAGS += -Ctarget-cpu=native\n"
     "else\n"
     "        KBUILD_CFLAGS += -march=x86-64 -mtune=generic\n"
     "endif\n"
     "\n"
-    "        KBUILD_CFLAGS += -mno-red-zone\n"
-    + FILLER
+    "        KBUILD_CFLAGS += -mno-red-zone\n" + FILLER
 )
 # The shape of the Linux 7.2.8 stable update: new lines inside the native branch
 # that DKC does not edit, within the three lines of context of the reviewed patch.
@@ -78,45 +88,40 @@ DRIFTED_MAKEFILE = REVIEWED_MAKEFILE.replace(
 ).replace("# unrelated line 3\n", "")
 
 
-@pytest.fixture
-def series(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        GENERATOR,
-        "PATCHES",
-        {
-            "0001-baseline.patch": [
-                (
-                    "arch/x86/Makefile",
-                    [
-                        (
-                            "else\n"
-                            "        KBUILD_CFLAGS += -march=x86-64 -mtune=generic\n"
-                            "endif\n",
-                            "else\n"
-                            "        KBUILD_CFLAGS += -march=$(DKC_TARGET) -mtune=generic\n"
-                            "endif\n",
-                        )
-                    ],
-                )
-            ],
-            "0002-defines.patch": [
-                (
-                    "debian/config/defines.toml",
-                    [
-                        GENERATOR.LinePattern(
-                            r"c_compiler = 'gcc-[0-9]+'",
-                            "@LINE@llvm_major = @LLVM_MAJOR@\n",
-                        )
-                    ],
-                )
-            ],
-        },
-    )
-    monkeypatch.setattr(
-        GENERATOR,
-        "NEW_FILES",
-        {"0001-baseline.patch": {"debian/config/amd64/config.v3": "CONFIG_V3=y\n"}},
-    )
+SERIES = GENERATOR.Overlay(
+    patches={
+        "0001-baseline.patch": [
+            (
+                "arch/x86/Makefile",
+                [
+                    (
+                        "else\n"
+                        "        KBUILD_CFLAGS += -march=x86-64 -mtune=generic\n"
+                        "endif\n",
+                        "else\n"
+                        "        KBUILD_CFLAGS += -march=$(DKC_TARGET) -mtune=generic\n"
+                        "endif\n",
+                    )
+                ],
+            )
+        ],
+        "0002-defines.patch": [
+            (
+                "debian/config/defines.toml",
+                [
+                    GENERATOR.LinePattern(
+                        r"c_compiler = 'gcc-[0-9]+'",
+                        "@LINE@llvm_major = @LLVM_MAJOR@\n",
+                    )
+                ],
+            )
+        ],
+    },
+    new_files={
+        "0001-baseline.patch": {"debian/config/amd64/config.v3": "CONFIG_V3=y\n"}
+    },
+    llvm_tools=(),
+)
 
 
 def _tree(
@@ -126,7 +131,8 @@ def _tree(
     (root / "arch/x86/Makefile").write_text(makefile, encoding="utf-8")
     (root / "debian/config").mkdir(parents=True)
     (root / "debian/config/defines.toml").write_text(
-        f"[build]\nc_compiler = '{compiler}'\nrust_build_depends = []\n", encoding="utf-8"
+        f"[build]\nc_compiler = '{compiler}'\nrust_build_depends = []\n",
+        encoding="utf-8",
     )
     return root
 
@@ -143,37 +149,44 @@ def _committed(tmp_path: pathlib.Path) -> pathlib.Path:
     reviewed = _tree(tmp_path / "reviewed")
     patches = tmp_path / "patches"
     patches.mkdir()
-    for name, patch in GENERATOR.generate(reviewed).items():
+    for name, patch in GENERATOR.generate(reviewed, SERIES).items():
         (patches / name).write_text(patch, encoding="utf-8")
     return patches
 
 
-@pytest.mark.usefixtures("series")
 def test_apply_tolerates_changes_next_to_the_edited_lines(
     tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     patches = _committed(tmp_path)
     target = _tree(tmp_path / "target", DRIFTED_MAKEFILE, compiler="gcc-17")
 
-    GENERATOR.apply(target, 21, patches)
+    GENERATOR.apply(target, 21, patches, SERIES)
 
     makefile = (target / "arch/x86/Makefile").read_text(encoding="utf-8")
-    assert makefile == DRIFTED_MAKEFILE.replace("-march=x86-64 ", "-march=$(DKC_TARGET) ")
+    assert makefile == DRIFTED_MAKEFILE.replace(
+        "-march=x86-64 ", "-march=$(DKC_TARGET) "
+    )
     assert (target / "debian/config/defines.toml").read_text(encoding="utf-8") == (
         "[build]\nc_compiler = 'gcc-17'\nllvm_major = 21\nrust_build_depends = []\n"
     )
     assert (target / "debian/config/amd64/config.v3").read_text() == "CONFIG_V3=y\n"
     # The reviewed patch no longer matches byte for byte; the build still
     # proceeds because only its context and positions moved.
-    regenerated = GENERATOR.generate(_tree(tmp_path / "again", DRIFTED_MAKEFILE, "gcc-17"))
-    assert regenerated["0001-baseline.patch"] != (patches / "0001-baseline.patch").read_text()
+    regenerated = GENERATOR.generate(
+        _tree(tmp_path / "again", DRIFTED_MAKEFILE, "gcc-17"), SERIES
+    )
+    assert (
+        regenerated["0001-baseline.patch"]
+        != (patches / "0001-baseline.patch").read_text()
+    )
     notes = capsys.readouterr().err
     assert "0001-baseline.patch (context differs from the reviewed source" in notes
     assert "0002-defines.patch (context differs from the reviewed source" in notes
 
 
-@pytest.mark.usefixtures("series")
-def test_apply_rejects_an_upstream_change_to_an_edited_line(tmp_path: pathlib.Path) -> None:
+def test_apply_rejects_an_upstream_change_to_an_edited_line(
+    tmp_path: pathlib.Path,
+) -> None:
     patches = _committed(tmp_path)
     target = _tree(
         tmp_path / "target",
@@ -181,12 +194,13 @@ def test_apply_rejects_an_upstream_change_to_an_edited_line(tmp_path: pathlib.Pa
     )
     before = _snapshot(target)
 
-    with pytest.raises(SystemExit, match="anchor no longer matches exactly once in arch/x86/Makefile"):
-        GENERATOR.apply(target, 21, patches)
+    with pytest.raises(
+        SystemExit, match="anchor no longer matches exactly once in arch/x86/Makefile"
+    ):
+        GENERATOR.apply(target, 21, patches, SERIES)
     assert _snapshot(target) == before
 
 
-@pytest.mark.usefixtures("series")
 def test_apply_rejects_a_committed_patch_the_generator_no_longer_produces(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -199,14 +213,19 @@ def test_apply_rejects_a_committed_patch_the_generator_no_longer_produces(
     target = _tree(tmp_path / "target")
     before = _snapshot(target)
 
-    with pytest.raises(SystemExit, match="0001-baseline.patch does not describe") as error:
-        GENERATOR.apply(target, 21, patches)
-    assert "-+        KBUILD_CFLAGS += -march=$(OLD_TARGET) -mtune=generic" in str(error.value)
-    assert "++        KBUILD_CFLAGS += -march=$(DKC_TARGET) -mtune=generic" in str(error.value)
+    with pytest.raises(
+        SystemExit, match="0001-baseline.patch does not describe"
+    ) as error:
+        GENERATOR.apply(target, 21, patches, SERIES)
+    assert "-+        KBUILD_CFLAGS += -march=$(OLD_TARGET) -mtune=generic" in str(
+        error.value
+    )
+    assert "++        KBUILD_CFLAGS += -march=$(DKC_TARGET) -mtune=generic" in str(
+        error.value
+    )
     assert _snapshot(target) == before
 
 
-@pytest.mark.usefixtures("series")
 def test_committed_patches_render_whichever_llvm_major_is_selected(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -214,13 +233,12 @@ def test_committed_patches_render_whichever_llvm_major_is_selected(
     assert GENERATOR.LLVM_PLACEHOLDER in (patches / "0002-defines.patch").read_text()
     for major in (21, 22):
         target = _tree(tmp_path / f"target-{major}")
-        GENERATOR.apply(target, major, patches)
+        GENERATOR.apply(target, major, patches, SERIES)
         defines = (target / "debian/config/defines.toml").read_text(encoding="utf-8")
         assert f"llvm_major = {major}\n" in defines
         assert GENERATOR.LLVM_PLACEHOLDER not in defines
 
 
-@pytest.mark.usefixtures("series")
 def test_apply_requires_exactly_the_generated_series(tmp_path: pathlib.Path) -> None:
     patches = _committed(tmp_path)
     (patches / "0002-defines.patch").rename(patches / "0009-renamed.patch")
@@ -228,9 +246,11 @@ def test_apply_requires_exactly_the_generated_series(tmp_path: pathlib.Path) -> 
 
     with pytest.raises(
         SystemExit,
-        match=re.escape("missing=['0002-defines.patch'], unexpected=['0009-renamed.patch']"),
+        match=re.escape(
+            "missing=['0002-defines.patch'], unexpected=['0009-renamed.patch']"
+        ),
     ):
-        GENERATOR.apply(target, 21, patches)
+        GENERATOR.apply(target, 21, patches, SERIES)
 
 
 def test_change_groups_ignore_positions_and_context_but_not_changed_lines() -> None:
@@ -238,7 +258,9 @@ def test_change_groups_ignore_positions_and_context_but_not_changed_lines() -> N
     after = "a\nb\nadded\nc\nd\n"
     shifted = "".join(f"x{number}\n" for number in range(20))
     reviewed = GENERATOR.unified_diff("f", before, after)
-    moved = GENERATOR.unified_diff("f", shifted + "z\n" + before, shifted + "z\n" + after)
+    moved = GENERATOR.unified_diff(
+        "f", shifted + "z\n" + before, shifted + "z\n" + after
+    )
 
     # A removed line that itself starts with "-- " must not read as a header.
     assert "\n--- removed marker\n" in reviewed
@@ -254,7 +276,13 @@ def test_change_groups_ignore_positions_and_context_but_not_changed_lines() -> N
 
 
 def test_line_patterns_match_exactly_one_whole_line() -> None:
-    edit = GENERATOR.DEFINES[1][0]
+    edit = next(
+        edit
+        for group in EDITS.patches["0001-select-llvm-toolchain.patch"]
+        if not isinstance(group, GENERATOR.FileVariants)
+        and group[0] == "debian/config/defines.toml"
+        for edit in group[1]
+    )
     assert isinstance(edit, GENERATOR.LinePattern)
     for compiler in ("gcc-15", "gcc-16", "gcc-17"):
         text = f"[build]\nc_compiler = '{compiler}'\nx = 1\n"
@@ -277,7 +305,10 @@ def _unchanged_edges(anchor: str, replacement: str) -> int:
     while prefix < min(len(old), len(new)) and old[prefix] == new[prefix]:
         prefix += 1
     suffix = 0
-    while suffix < min(len(old), len(new)) - prefix and old[-1 - suffix] == new[-1 - suffix]:
+    while (
+        suffix < min(len(old), len(new)) - prefix
+        and old[-1 - suffix] == new[-1 - suffix]
+    ):
         suffix += 1
     return prefix + suffix
 
@@ -286,16 +317,23 @@ def test_upstream_kernel_anchors_pin_only_the_lines_they_change() -> None:
     """Stable updates edit arch/x86 every few weeks; anchors must not span them."""
 
     checked = 0
-    for groups in GENERATOR.PATCHES.values():
+    for groups in EDITS.patches.values():
         for group in groups:
-            items = group.groups if isinstance(group, GENERATOR.FileVariants) else [group]
+            items = (
+                group.groups if isinstance(group, GENERATOR.FileVariants) else [group]
+            )
             for path, edits in items:
                 if not path.startswith("arch/"):
                     continue
                 for edit in edits:
-                    variants = edit.variants if isinstance(edit, GENERATOR.OneOf) else (edit,)
+                    variants = (
+                        edit.variants if isinstance(edit, GENERATOR.OneOf) else (edit,)
+                    )
                     for anchor, replacement in variants:
-                        assert _unchanged_edges(anchor, replacement) <= 1, (path, anchor)
+                        assert _unchanged_edges(anchor, replacement) <= 1, (
+                            path,
+                            anchor,
+                        )
                         checked += 1
     assert checked >= 4
 

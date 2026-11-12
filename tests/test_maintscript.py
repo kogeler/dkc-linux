@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 import tarfile
+from pathlib import Path
 
 import pytest
 
 from dkc.maintscript import load_metapackage_templates, metapackage_transition
-
 
 PACKAGE = "dkc-linux-image-v2-amd64"
 KREL = "7.3.3+dkc13.r3.g0123456789ab-v2-amd64"
@@ -20,10 +19,20 @@ TEMPLATE = (
 
 
 @pytest.mark.parametrize("cutoff", ["7.3-1~exp1", "99.42-1~exp7"])
-def test_jinja_migration_uses_the_source_cutoff_without_a_version_branch(cutoff: str) -> None:
-    assert metapackage_transition(TEMPLATE.replace("7.3-1~exp1", cutoff), PACKAGE, KREL) == [
-        "dpkg-maintscript-helper", "dir_to_symlink", f"/usr/share/bug/{PACKAGE}",
-        f"dkc-linux-base-{KREL}", cutoff, PACKAGE, "--", "$@",
+def test_jinja_migration_uses_the_source_cutoff_without_a_version_branch(
+    cutoff: str,
+) -> None:
+    assert metapackage_transition(
+        TEMPLATE.replace("7.3-1~exp1", cutoff), PACKAGE, KREL
+    ) == [
+        "dpkg-maintscript-helper",
+        "dir_to_symlink",
+        f"/usr/share/bug/{PACKAGE}",
+        f"dkc-linux-base-{KREL}",
+        cutoff,
+        PACKAGE,
+        "--",
+        "$@",
     ]
 
 
@@ -33,7 +42,11 @@ def test_legacy_documentation_migration_retains_its_exact_target() -> None:
         "dkc-linux-image-@abiname@@localversion@ 5.7~rc5-1~exp1 @package@\n"
     )
     arguments = metapackage_transition(template, PACKAGE, KREL)
-    assert arguments[2:5] == [f"/usr/share/doc/{PACKAGE}", f"dkc-linux-image-{KREL}", "5.7~rc5-1~exp1"]
+    assert arguments[2:5] == [
+        f"/usr/share/doc/{PACKAGE}",
+        f"dkc-linux-image-{KREL}",
+        "5.7~rc5-1~exp1",
+    ]
 
 
 def test_kernel_identity_cannot_introduce_shell_expressions() -> None:
@@ -41,16 +54,19 @@ def test_kernel_identity_cannot_introduce_shell_expressions() -> None:
         metapackage_transition(TEMPLATE, PACKAGE, KREL.replace("7.3.3", "$(id)"))
 
 
-@pytest.mark.parametrize("template", [
-    TEMPLATE + "rm /unrelated\n",
-    TEMPLATE.replace("dir_to_symlink", "rm_conffile"),
-    TEMPLATE.replace("/usr/share/bug/{{package}}", "/etc/unrelated"),
-    TEMPLATE.replace("dkc-linux-base-", "linux-base-"),
-    TEMPLATE.replace("{{abiname}}", "{{unknown}}"),
-    TEMPLATE.replace("{{package}}", "{{package.upper()}}"),
-    TEMPLATE.replace("7.3-1~exp1", "not-a-version"),
-    TEMPLATE.replace("7.3-1~exp1 {{package}}", "7.3-1~exp1 unrelated"),
-])
+@pytest.mark.parametrize(
+    "template",
+    [
+        TEMPLATE + "rm /unrelated\n",
+        TEMPLATE.replace("dir_to_symlink", "rm_conffile"),
+        TEMPLATE.replace("/usr/share/bug/{{package}}", "/etc/unrelated"),
+        TEMPLATE.replace("dkc-linux-base-", "linux-base-"),
+        TEMPLATE.replace("{{abiname}}", "{{unknown}}"),
+        TEMPLATE.replace("{{package}}", "{{package.upper()}}"),
+        TEMPLATE.replace("7.3-1~exp1", "not-a-version"),
+        TEMPLATE.replace("7.3-1~exp1 {{package}}", "7.3-1~exp1 unrelated"),
+    ],
+)
 def test_unreviewed_commands_paths_and_expressions_are_rejected(template: str) -> None:
     with pytest.raises(ValueError):
         metapackage_transition(template, PACKAGE, KREL)
@@ -58,7 +74,8 @@ def test_unreviewed_commands_paths_and_expressions_are_rejected(template: str) -
 
 @pytest.mark.parametrize("extra", ["duplicate", "both-formats", "link", "oversized"])
 def test_source_template_reader_rejects_ambiguous_or_non_plain_members(
-    tmp_path: Path, extra: str,
+    tmp_path: Path,
+    extra: str,
 ) -> None:
     path = tmp_path / "debian.tar.xz"
     with tarfile.open(path, "w:xz") as archive:

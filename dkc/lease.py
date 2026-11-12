@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from .records import LeaseOwner, LeaseRecord
@@ -67,13 +67,11 @@ TerminalProof = Callable[[LeaseOwner], bool]
 def _utc(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError("lease clock must return an aware UTC datetime")
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _parse_utc(value: str) -> datetime:
-    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 def parse_lease(body: bytes) -> LeaseRecord:
@@ -154,7 +152,7 @@ class LeaseManager:
         self.ttl_seconds = ttl_seconds
         self.takeover_grace_seconds = takeover_grace_seconds
         self.terminal_proof = terminal_proof
-        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.clock = clock or (lambda: datetime.now(UTC))
 
     def _now(self) -> datetime:
         value = self.clock()
@@ -206,7 +204,9 @@ class LeaseManager:
                 old_run_terminal=self.terminal_proof(observed.owner),
             )
             if not allowed:
-                raise LeaseBusy("production lease is held and cannot be safely taken over")
+                raise LeaseBusy(
+                    "production lease is held and cannot be safely taken over"
+                )
             takeover = True
 
         record = self._held_record(owner, now)

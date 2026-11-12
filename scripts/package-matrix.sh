@@ -115,7 +115,8 @@ if dkc::archive_worktree |
 		mkdir -p /work/repo "$HOME"
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
-		exec python3 scripts/in-container/audit-package-matrix.py "$@"
+		export PYTHONPATH=/work/repo
+		exec python3 -m dkc.cli.audit_package_matrix "$@"
 	' sh /input/v2 /input/v3 \
 		/matrix/repository /matrix/evidence/package-matrix.json \
 		2>&1 | tee "$stage/evidence/package-audit.log"; then

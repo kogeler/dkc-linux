@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import jsonschema
 import pytest
 
 from dkc import schema
@@ -25,9 +26,16 @@ SHA = "a" * 64
 NOW = "2026-08-11T00:00:00Z"
 
 
-def _artifact(key: str = "pool/main/d/dkc-linux/x.deb", cache: str = "immutable") -> Artifact:
-    return Artifact(key=key, sha256=SHA, size=1, media_type="application/vnd.debian.binary-package",
-                    cache_class=cache)  # type: ignore[arg-type]
+def _artifact(
+    key: str = "pool/main/d/dkc-linux/x.deb", cache: str = "immutable"
+) -> Artifact:
+    return Artifact(
+        key=key,
+        sha256=SHA,
+        size=1,
+        media_type="application/vnd.debian.binary-package",
+        cache_class=cache,
+    )  # type: ignore[arg-type]
 
 
 def _manifest(**overrides: object) -> PublicationManifest:
@@ -159,18 +167,33 @@ def test_transaction_matches_schema() -> None:
         expected_generation=1,
         intended_inrelease_sha256=SHA,
         started_utc=NOW,
-        phases=[{"phase": 5, "name": "upload-transaction", "state": "committed", "utc": NOW}],
-        owner={"repository": "kogeler/dkc-linux", "run_id": "1", "run_attempt": "1", "nonce": "b" * 32},
+        phases=[
+            {"phase": 5, "name": "upload-transaction", "state": "committed", "utc": NOW}
+        ],
+        owner={
+            "repository": "kogeler/dkc-linux",
+            "run_id": "1",
+            "run_attempt": "1",
+            "nonce": "b" * 32,
+        },
     )
     schema.validate("transaction", record.to_dict())
 
 
 def test_decision_matches_schema() -> None:
     decision = DiscoveryDecision(
-        decision="build", source_version="7.1.7-1", source_dsc_sha256=SHA, utc=NOW,
-        dkc_revision=1, build_policy_sha256="c" * 64, lto_mode="thin",
-        build_required=True, authoritative_state_read=True, publish_allowed=True,
-        state_generation=3, state_publication_id="20260817-abcdef12",
+        decision="build",
+        source_version="7.1.7-1",
+        source_dsc_sha256=SHA,
+        utc=NOW,
+        dkc_revision=1,
+        build_policy_sha256="c" * 64,
+        lto_mode="thin",
+        build_required=True,
+        authoritative_state_read=True,
+        publish_allowed=True,
+        state_generation=3,
+        state_publication_id="20260817-abcdef12",
     )
     schema.validate("discovery-decision", decision.to_dict())
 
@@ -218,8 +241,14 @@ def test_qualification_requires_build_without_state_or_publication_authority() -
 def test_gc_plan_matches_schema() -> None:
     plan = GcPlan(
         expected_generation=4,
-        targets=[GcTarget(key="pool/main/d/dkc-linux/old.deb", sha256=SHA,
-                          reason="series retired", size=10)],
+        targets=[
+            GcTarget(
+                key="pool/main/d/dkc-linux/old.deb",
+                sha256=SHA,
+                reason="series retired",
+                size=10,
+            )
+        ],
         caps={"max_objects": 100, "max_bytes": 1_000_000},
         planned_utc=NOW,
     )
@@ -264,7 +293,12 @@ def test_liveness_comes_only_from_live_objects() -> None:
 
 def test_manifest_predecessor_is_exactly_the_previous_generation() -> None:
     with pytest.raises(ValueError, match="not the predecessor"):
-        _manifest(previous_publication={"publication_id": "20260810-99999999", "generation": 1})
+        _manifest(
+            previous_publication={
+                "publication_id": "20260810-99999999",
+                "generation": 1,
+            }
+        )
     with pytest.raises(ValueError, match="must identify its predecessor"):
         _manifest(previous_publication=None)
     assert _manifest(generation=0, previous_publication=None).generation == 0
@@ -279,9 +313,14 @@ def test_a_key_cannot_be_live_and_queued_for_deletion() -> None:
     """The invariant that stops a suspended GC run from deleting served content."""
     with pytest.raises(ValueError, match="both live and queued"):
         _manifest(
-            gc_queue=[GcQueueEntry(key="pool/main/d/dkc-linux/x.deb",
-                                   sha256=SHA, size=1,
-                                   reason="retired")]
+            gc_queue=[
+                GcQueueEntry(
+                    key="pool/main/d/dkc-linux/x.deb",
+                    sha256=SHA,
+                    size=1,
+                    reason="retired",
+                )
+            ]
         )
 
 
@@ -313,11 +352,12 @@ def test_artifact_rejects_an_unknown_cache_class() -> None:
 
 def test_tombstones_are_permanent() -> None:
     with pytest.raises(ValueError, match="permanent tombstone"):
-        GcQueueEntry(key="pool/x", sha256=SHA, size=1,
-                     reason="r", tombstoned=False)
+        GcQueueEntry(key="pool/x", sha256=SHA, size=1, reason="r", tombstoned=False)
 
 
-@pytest.mark.parametrize("key", ["state/current.asc", "keys/archive.asc", "pool/", "pool//x"])
+@pytest.mark.parametrize(
+    "key", ["state/current.asc", "keys/archive.asc", "pool/", "pool//x"]
+)
 def test_gc_queue_accepts_only_exact_immutable_keys(key: str) -> None:
     with pytest.raises(ValueError):
         GcQueueEntry(key=key, sha256=SHA, size=1, reason="retired")
@@ -331,17 +371,28 @@ def test_gc_queue_accepts_only_exact_immutable_keys(key: str) -> None:
 def test_a_public_hint_cannot_authorize_publication() -> None:
     with pytest.raises(ValueError, match="authoritative state read"):
         DiscoveryDecision(
-            decision="build", source_version="7.1.7-1", source_dsc_sha256=SHA, utc=NOW,
-            dkc_revision=1, build_policy_sha256="c" * 64, lto_mode="thin",
-            publish_allowed=True, authoritative_state_read=False,
+            decision="build",
+            source_version="7.1.7-1",
+            source_dsc_sha256=SHA,
+            utc=NOW,
+            dkc_revision=1,
+            build_policy_sha256="c" * 64,
+            lto_mode="thin",
+            publish_allowed=True,
+            authoritative_state_read=False,
         )
 
 
 def test_blocked_never_carries_work_or_permission() -> None:
     with pytest.raises(ValueError, match="blocked decision"):
         DiscoveryDecision(
-            decision="blocked", source_version="7.1.7-1", source_dsc_sha256=SHA, utc=NOW,
-            dkc_revision=1, build_policy_sha256="c" * 64, lto_mode="thin",
+            decision="blocked",
+            source_version="7.1.7-1",
+            source_dsc_sha256=SHA,
+            utc=NOW,
+            dkc_revision=1,
+            build_policy_sha256="c" * 64,
+            lto_mode="thin",
             build_required=True,
         )
 
@@ -349,14 +400,27 @@ def test_blocked_never_carries_work_or_permission() -> None:
 @pytest.mark.parametrize(
     ("decision", "fields"),
     (
-        ("no_op", {"publish_allowed": True, "authoritative_state_read": True,
-                   "state_generation": 1,
-                   "state_publication_id": "20260817-abcdef12"}),
+        (
+            "no_op",
+            {
+                "publish_allowed": True,
+                "authoritative_state_read": True,
+                "state_generation": 1,
+                "state_publication_id": "20260817-abcdef12",
+            },
+        ),
         ("build", {"authoritative_state_read": True}),
-        ("maintenance", {"build_required": True, "maintenance_required": True,
-                         "publish_allowed": True, "authoritative_state_read": True,
-                         "state_generation": 1,
-                         "state_publication_id": "20260817-abcdef12"}),
+        (
+            "maintenance",
+            {
+                "build_required": True,
+                "maintenance_required": True,
+                "publish_allowed": True,
+                "authoritative_state_read": True,
+                "state_generation": 1,
+                "state_publication_id": "20260817-abcdef12",
+            },
+        ),
         ("qualification", {"maintenance_required": True}),
     ),
 )
@@ -378,8 +442,13 @@ def test_decision_routing_flags_are_not_independent_booleans(
 
 def test_missing_state_is_distinct_from_generation_zero() -> None:
     decision = DiscoveryDecision(
-        decision="blocked", source_version="7.1.7-1", source_dsc_sha256=SHA, utc=NOW,
-        dkc_revision=1, build_policy_sha256="c" * 64, lto_mode="thin",
+        decision="blocked",
+        source_version="7.1.7-1",
+        source_dsc_sha256=SHA,
+        utc=NOW,
+        dkc_revision=1,
+        build_policy_sha256="c" * 64,
+        lto_mode="thin",
         reason="authoritative state unreadable",
     )
     assert decision.state_generation is None
@@ -393,20 +462,29 @@ def test_missing_state_is_distinct_from_generation_zero() -> None:
 
 def test_pointer_key_must_match_its_publication() -> None:
     with pytest.raises(ValueError, match="does not match"):
-        StatePointer(generation=1, publication_id=PUB,
-                     manifest_key="state/publications/other/manifest.json",
-                     manifest_sha256=SHA, committed_utc=NOW)
+        StatePointer(
+            generation=1,
+            publication_id=PUB,
+            manifest_key="state/publications/other/manifest.json",
+            manifest_sha256=SHA,
+            committed_utc=NOW,
+        )
 
 
 def test_generation_must_increase() -> None:
     with pytest.raises(ValueError, match="must increase"):
-        StatePointer(generation=1, publication_id=PUB,
-                     manifest_key=f"state/publications/{PUB}/manifest.json",
-                     manifest_sha256=SHA, committed_utc=NOW, previous_generation=1)
+        StatePointer(
+            generation=1,
+            publication_id=PUB,
+            manifest_key=f"state/publications/{PUB}/manifest.json",
+            manifest_sha256=SHA,
+            committed_utc=NOW,
+            previous_generation=1,
+        )
 
 
 def test_record_timestamps_are_real_canonical_utc() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(jsonschema.ValidationError):
         schema.validate(
             "gc-plan",
             {
@@ -463,17 +541,26 @@ def test_deletion_accepts_immutable_keys(key: str) -> None:
 
 
 def test_plan_enforces_object_cap() -> None:
-    targets = [GcTarget(key=f"pool/x{i}", sha256=SHA, reason="r", size=1) for i in range(3)]
+    targets = [
+        GcTarget(key=f"pool/x{i}", sha256=SHA, reason="r", size=1) for i in range(3)
+    ]
     with pytest.raises(ValueError, match="over the cap"):
-        GcPlan(expected_generation=1, targets=targets,
-               caps={"max_objects": 2, "max_bytes": 100}, planned_utc=NOW)
+        GcPlan(
+            expected_generation=1,
+            targets=targets,
+            caps={"max_objects": 2, "max_bytes": 100},
+            planned_utc=NOW,
+        )
 
 
 def test_plan_enforces_byte_cap() -> None:
     with pytest.raises(ValueError, match="bytes, over the cap"):
-        GcPlan(expected_generation=1,
-               targets=[GcTarget(key="pool/x", sha256=SHA, reason="r", size=101)],
-               caps={"max_objects": 10, "max_bytes": 100}, planned_utc=NOW)
+        GcPlan(
+            expected_generation=1,
+            targets=[GcTarget(key="pool/x", sha256=SHA, reason="r", size=101)],
+            caps={"max_objects": 10, "max_bytes": 100},
+            planned_utc=NOW,
+        )
 
 
 def test_target_refuses_negative_size() -> None:
@@ -514,7 +601,11 @@ def test_mutable_preconditions_bind_etags_to_their_kind() -> None:
         TransactionRecord(
             **base,
             mutable_preconditions=[
-                {"key": "dists/trixie/InRelease", "precondition": "if-match", "etag": None}
+                {
+                    "key": "dists/trixie/InRelease",
+                    "precondition": "if-match",
+                    "etag": None,
+                }
             ],
         )
 
@@ -522,5 +613,9 @@ def test_mutable_preconditions_bind_etags_to_their_kind() -> None:
 def test_plan_refuses_duplicate_keys() -> None:
     target = GcTarget(key="pool/x", sha256=SHA, reason="r", size=1)
     with pytest.raises(ValueError, match="duplicate"):
-        GcPlan(expected_generation=1, targets=[target, target],
-               caps={"max_objects": 10, "max_bytes": 100}, planned_utc=NOW)
+        GcPlan(
+            expected_generation=1,
+            targets=[target, target],
+            caps={"max_objects": 10, "max_bytes": 100},
+            planned_utc=NOW,
+        )

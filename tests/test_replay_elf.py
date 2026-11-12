@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
-import sys
 from types import SimpleNamespace
 
 import pytest
 
+from dkc.cli import verify_replay_elf as VERIFY
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "verify-replay-elf.py"
-spec = importlib.util.spec_from_file_location("verify_replay_elf", SCRIPT)
-assert spec and spec.loader
-VERIFY = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = VERIFY
-spec.loader.exec_module(VERIFY)
+SCRIPT = ROOT / "dkc" / "cli" / "verify_replay_elf.py"
 
 
 def test_executable_section_parser_selects_every_x_section(

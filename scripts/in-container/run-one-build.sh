@@ -93,9 +93,9 @@ trap 'record_controller_error "$?" "$LINENO"' ERR
 
 echo "[$label] extracting the verified source inventory with network disabled" >&2
 dpkg-source -x "/work/inputs/$dsc_name" "$prepared_source" >/dev/null
-python3 /work/repo/scripts/in-container/generate-overlay-patches.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.generate_overlay_patches \
 	--apply "$prepared_source" "$llvm_major" "$overlay_dir"
-python3 /work/repo/scripts/in-container/prepare-build-identity.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.prepare_build_identity \
 	"$prepared_source" /work/repo /work/inputs "$dkc_revision" "$lto_mode"
 /work/repo/scripts/in-container/build-source-package.sh \
 	"$prepared_source" /work/repo /work/inputs /work/source-package \
@@ -128,7 +128,7 @@ cd "$source"
 # without refreshing control.md5sum. Our one-flavor transform is such an input,
 # so use Debian's explicit maintainer target once before dpkg-buildpackage.
 make -f debian/rules debian/control-real >/dev/null
-python3 /work/repo/scripts/in-container/prepare-source-tree.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.prepare_source_tree \
 	--normalize-public-metadata "$source" "$SOURCE_DATE_EPOCH"
 dpkg-checkbuilddeps debian/control
 
@@ -173,36 +173,7 @@ check_tool_minimum llvm "$llvm_actual"
 
 selected_packages="$(dh_listpackages "${dh_listpackages_args[@]}")"
 printf '%s\n' "$selected_packages" >"$evidence/selected-packages.txt"
-python3 - /work/inputs/publication-identity.json "$flavor" "$evidence/selected-packages.txt" <<'PY'
-import json
-import pathlib
-import sys
-
-identity_path, flavor, selected_path = sys.argv[1:]
-identity = json.load(open(identity_path, encoding="utf-8"))
-names = identity.get("package_names")
-abi = identity.get("abi")
-if not isinstance(names, dict) or not isinstance(abi, str):
-    raise SystemExit("malformed package inventory in publication identity")
-versioned = names.get("versioned")
-meta = names.get("meta")
-if not isinstance(versioned, list) or not isinstance(meta, list):
-    raise SystemExit("malformed versioned/meta package inventory")
-all_names = versioned + meta
-if not all(isinstance(name, str) for name in all_names):
-    raise SystemExit("non-string package in publication identity")
-expected = {name for name in all_names if name.endswith(f"-{flavor}-amd64")}
-expected.update(
-    {f"dkc-linux-headers-{abi}-common", f"dkc-linux-kbuild-{abi}"}
-)
-selected_lines = pathlib.Path(selected_path).read_text(encoding="utf-8").splitlines()
-if len(selected_lines) != len(set(selected_lines)) or set(selected_lines) != expected:
-    raise SystemExit(
-        "selected binary target set differs before compilation: "
-        f"missing={sorted(expected - set(selected_lines))}, "
-        f"unexpected={sorted(set(selected_lines) - expected)}"
-    )
-PY
+PYTHONPATH=/work/repo python3 -m dkc.cli.run_one_build /work/inputs/publication-identity.json "$flavor" "$evidence/selected-packages.txt"
 if grep -q -- '-di$' <<<"$selected_packages"; then
 	echo "installer packages remained selected despite the noudeb profiles" >&2
 	exit 1
@@ -406,7 +377,7 @@ test "$(find "$artifacts" -maxdepth 1 -name '*.buildinfo' | wc -l)" -eq 1 || {
 	"$evidence" "$llvm_major"
 
 if timeout --signal=TERM --kill-after=30s 30m \
-	python3 /work/repo/scripts/in-container/audit-kernel-simd.py \
+	env PYTHONPATH=/work/repo python3 -m dkc.cli.audit_kernel_simd \
 	"$source/debian/build/build_amd64_none_${flavor}-amd64/vmlinux" \
 	"$artifacts" \
 	"$profile_dir" \
@@ -424,7 +395,7 @@ else
 fi
 
 timeout --signal=TERM --kill-after=30s 15m \
-	python3 /work/repo/scripts/in-container/attest-one-build.py \
+	env PYTHONPATH=/work/repo python3 -m dkc.cli.attest_one_build \
 	"$source" "$artifacts" "$evidence" "$llvm_major" \
 	/work/inputs/publication-identity.json "$flavor" "$lto_mode" &
 attestation_pid=$!
@@ -443,7 +414,7 @@ sample_resources true
 if [ "$attestation_rc" -ne 0 ]; then
 	echo "[$label] package attestation failed with rc=${attestation_rc}" >&2
 	kbuild_audit_rc=125
-elif python3 /work/repo/scripts/in-container/audit-kbuild-commands.py \
+elif PYTHONPATH=/work/repo python3 -m dkc.cli.audit_kbuild_commands \
 	"$evidence/kbuild-commands.tsv.xz" \
 	"/work/repo/config/flavors/${flavor}.toml" "$profile_dir" \
 	"$evidence/kbuild-command-audit.json" "$lto_mode"; then

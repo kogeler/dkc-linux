@@ -132,7 +132,11 @@ class SitePage:
 
 def _check_relative(path: str, label: str) -> str:
     parts = path.split("/")
-    if not path or path.startswith("/") or any(part in ("", ".", "..") for part in parts):
+    if (
+        not path
+        or path.startswith("/")
+        or any(part in ("", ".", "..") for part in parts)
+    ):
         raise SiteError(f"{label} is not a safe relative path: {path!r}")
     return path
 
@@ -278,7 +282,9 @@ def stage_pages(
     for page in pages:
         text = (root / page.source).read_text(encoding="utf-8")
         if text.startswith("---\n"):
-            raise SiteError(f"{page.source}: front matter is reserved for the generator")
+            raise SiteError(
+                f"{page.source}: front matter is reserved for the generator"
+            )
         staged = rewrite_links(
             text,
             page=page,
@@ -542,7 +548,9 @@ def parse_manifest(value: object) -> SiteManifest:
         if not isinstance(raw, dict) or set(raw) != fields:
             raise SiteError("site manifest object has an invalid field set")
         size = raw["size"]
-        strings = [raw[name] for name in ("cache_control", "content_type", "key", "sha256")]
+        strings = [
+            raw[name] for name in ("cache_control", "content_type", "key", "sha256")
+        ]
         if isinstance(size, bool) or not isinstance(size, int):
             raise SiteError("site manifest object size is invalid")
         if not all(isinstance(item, str) for item in strings):
@@ -639,7 +647,8 @@ def audit_site(
     if html != expected_pages:
         raise SiteError(
             "generated pages differ from the source pages: "
-            f"missing={sorted(expected_pages - html)}, extra={sorted(html - expected_pages)}"
+            f"missing={sorted(expected_pages - html)}, "
+            f"extra={sorted(html - expected_pages)}"
         )
     if any(key.endswith(".md") for key in keys):
         raise SiteError("generated site contains Markdown source")
@@ -728,9 +737,12 @@ def _check_reference(
         raise SiteError(f"{key}: directory reference has no index document: {value}")
     if path not in documents and not (site_dir / path).is_file():
         raise SiteError(f"{key}: {tag} target does not exist: {value}")
-    if target.fragment and path.endswith(".html"):
-        if unquote(target.fragment) not in documents[path].ids:
-            raise SiteError(f"{key}: missing anchor in {value}")
+    if (
+        target.fragment
+        and path.endswith(".html")
+        and unquote(target.fragment) not in documents[path].ids
+    ):
+        raise SiteError(f"{key}: missing anchor in {value}")
 
 
 def _check_sitemap(path: Path, expected: set[str]) -> None:

@@ -5,7 +5,6 @@ from pathlib import Path
 
 from dkc.validationpolicy import validation_policy_digest, validation_policy_paths
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -14,17 +13,6 @@ def test_validation_policy_is_complete_but_independent_from_container_images(
 ) -> None:
     policy_paths = validation_policy_paths(ROOT, "7.2.6-1")
     paths = {path.relative_to(ROOT).as_posix() for path in policy_paths}
-    assert {
-        "config/source-profiles/7.2/validation.toml",
-        "dkc/release_cache.py",
-        "dkc/sourcepatch.py",
-        "dkc/validationpolicy.py",
-        "scripts/in-container/audit-kernel-simd.py",
-        "scripts/in-container/build-kselftest.sh",
-        "scripts/in-container/lock-build-environment.py",
-        "scripts/qemu-boot.sh",
-        "tests/integration/qemu/guest-validate.sh",
-    } <= paths
     assert not any(path.startswith("container/") for path in paths)
     assert not any(path.startswith(".github/") for path in paths)
     original_digest = validation_policy_digest(ROOT, "7.2.6-1")

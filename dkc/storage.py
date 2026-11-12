@@ -9,6 +9,8 @@ __all__ = ["ObjectMetadata"]
 
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
 @dataclass(frozen=True)
 class ObjectMetadata:
     content_type: str

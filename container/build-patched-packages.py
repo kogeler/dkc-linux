@@ -135,7 +135,9 @@ def parse_ledger(data: dict[str, object]) -> Ledger:
             _require(raw_source, dict, source_where)
             if set(raw_source) - {"package", "patch"}:
                 raise LedgerError(f"{source_where} has unknown keys")
-            package = _require(raw_source.get("package"), str, f"{source_where}.package")
+            package = _require(
+                raw_source.get("package"), str, f"{source_where}.package"
+            )
             assert isinstance(package, str)
             if not _NAME_RE.fullmatch(package) or package in seen_sources:
                 raise LedgerError(f"{source_where}.package is unsafe or duplicated")
@@ -144,7 +146,9 @@ def parse_ledger(data: dict[str, object]) -> Ledger:
             for raw_patch in raw_source.get("patch", []):
                 _require(raw_patch, dict, f"{source_where}.patch")
                 if set(raw_patch) != {"name", "diff"}:
-                    raise LedgerError(f"{source_where}.patch needs exactly name and diff")
+                    raise LedgerError(
+                        f"{source_where}.patch needs exactly name and diff"
+                    )
                 name, diff = raw_patch["name"], raw_patch["diff"]
                 if not isinstance(name, str) or not _PATCH_RE.fullmatch(name):
                     raise LedgerError(f"{source_where}.patch name is unsafe")
@@ -200,7 +204,7 @@ def newest_source_version(package: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
-    versions = sorted(set(re.findall(r"(?m)^Version: (\S+)$", output)))
+    versions: list[str] = sorted(set(re.findall(r"(?m)^Version: (\S+)$", output)))
     if not versions:
         raise RuntimeError(f"no Debian source found for {package}")
     best = versions[0]
@@ -210,9 +214,13 @@ def newest_source_version(package: str) -> str:
     return best
 
 
-def run(command: list[str], *, cwd: pathlib.Path | None = None, log: pathlib.Path) -> None:
+def run(
+    command: list[str], *, cwd: pathlib.Path | None = None, log: pathlib.Path
+) -> None:
     with log.open("a", encoding="utf-8") as stream:
-        result = subprocess.run(command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT)
+        result = subprocess.run(
+            command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT
+        )
     if result.returncode:
         tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
         sys.stderr.write("\n".join(tail) + "\n")
@@ -277,20 +285,19 @@ def configure_apt() -> None:
     _LOCAL_REPO.mkdir(parents=True, exist_ok=True)
     (_LOCAL_REPO / "Packages").write_text("")
     pathlib.Path("/etc/apt/sources.list.d/dkc-patched.sources").write_text(
-        "Types: deb\n"
-        f"URIs: file:{_LOCAL_REPO}\n"
-        "Suites: ./\n"
-        "Trusted: yes\n"
+        f"Types: deb\nURIs: file:{_LOCAL_REPO}\nSuites: ./\nTrusted: yes\n"
     )
     pathlib.Path("/etc/apt/preferences.d/dkc-patched").write_text(
-        f'Package: *\nPin: origin ""\nPin-Priority: 1001\n'
+        'Package: *\nPin: origin ""\nPin-Priority: 1001\n'
     )
 
 
 def build_fix(
     fix: Fix, work: pathlib.Path, output: pathlib.Path, log: pathlib.Path
 ) -> list[tuple[str, ...]]:
-    versions = {source.package: newest_source_version(source.package) for source in fix.sources}
+    versions = {
+        source.package: newest_source_version(source.package) for source in fix.sources
+    }
     first = fix.sources[0].package
     if fix.obsolete_from_upstream_version is not None and not version_gt(
         fix.obsolete_from_upstream_version, upstream_version(versions[first])
@@ -305,11 +312,20 @@ def build_fix(
     for source in fix.sources:
         version = versions[source.package]
         target = rebuilt_version(version, fix.revision)
-        print(f"fix {fix.id}: rebuilding {source.package} {version} as {target}", flush=True)
+        print(
+            f"fix {fix.id}: rebuilding {source.package} {version} as {target}",
+            flush=True,
+        )
         stage = work / source.package
         stage.mkdir(parents=True)
         run(
-            ["apt-get", "source", "-qq", "--only-source", f"{source.package}={version}"],
+            [
+                "apt-get",
+                "source",
+                "-qq",
+                "--only-source",
+                f"{source.package}={version}",
+            ],
             cwd=stage,
             log=log,
         )
@@ -325,13 +341,20 @@ def build_fix(
         run(["dpkg-buildpackage", "-b", "-us", "-uc"], cwd=tree, log=log)
         for deb in sorted(stage.glob("*.deb")):
             fields = subprocess.run(
-                ["dpkg-deb", "--showformat=${Package}\t${Version}\t${Architecture}", "--show", deb],
+                [
+                    "dpkg-deb",
+                    "--showformat=${Package}\t${Version}\t${Architecture}",
+                    "--show",
+                    deb,
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             ).stdout.split("\t")
             if fields[1] != target:
-                raise RuntimeError(f"{deb.name} has version {fields[1]}, expected {target}")
+                raise RuntimeError(
+                    f"{deb.name} has version {fields[1]}, expected {target}"
+                )
             shutil.copy2(deb, _LOCAL_REPO / deb.name)
             built[fields[0]] = (source.package, fields[2], _LOCAL_REPO / deb.name)
         publish_local_repository(log)
@@ -385,7 +408,10 @@ def main() -> int:
         stream.write("\t".join(_MANIFEST_HEADER) + "\n")
         for row in rows:
             stream.write("\t".join(row) + "\n")
-    print(f"patched packages PASS: {len(rows)} binary package(s) for the image", flush=True)
+    print(
+        f"patched packages PASS: {len(rows)} binary package(s) for the image",
+        flush=True,
+    )
     return 0
 
 

@@ -158,7 +158,15 @@ def test_kernel_essentials_survive_the_profiles(
     declared: list, configured_profiles: frozenset[str]
 ) -> None:
     names = filter_dependencies(declared, "amd64", configured_profiles)
-    for required in ("bc", "bison", "flex", "kmod", "libelf-dev", "libssl-dev", "pahole"):
+    for required in (
+        "bc",
+        "bison",
+        "flex",
+        "kmod",
+        "libelf-dev",
+        "libssl-dev",
+        "pahole",
+    ):
         assert required in names, required
 
 
@@ -170,7 +178,8 @@ def test_profiles_drop_the_tools_and_docs_closure(
     with_profiles = filter_dependencies(declared, "amd64", configured_profiles)
 
     assert len(with_profiles) < len(without) / 1.5, (
-        f"profiles should roughly halve the closure: {len(without)} -> {len(with_profiles)}"
+        f"profiles should roughly halve the closure: {len(without)} -> "
+        f"{len(with_profiles)}"
     )
     for dropped in (
         "asciidoctor",
@@ -213,7 +222,7 @@ def test_all_three_fields_are_declared_in_one_place() -> None:
 
 
 def test_control_file_actually_uses_all_three(control: str) -> None:
-    """If the source stops using one, the audit should be revisited, not silently pass."""
+    """If the source stops using one, revisit the audit instead of passing silently."""
     for field in BUILD_DEPENDS_FIELDS:
         assert f"{field}:" in control, field
 

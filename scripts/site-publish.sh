@@ -87,7 +87,7 @@ if dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/site-publish.py \
+		exec python3 -m dkc.cli.site_publish \
 			--site-result /input/site-result \
 			--connection /run/secrets/storage.json \
 			--github-token-file /run/secrets/github-token \

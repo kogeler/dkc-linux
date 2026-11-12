@@ -38,7 +38,7 @@ scenario="$stage/scenarios/$flavor"
 seed="$scenario/seed"
 mkdir -p "$packages" "$support" "$evidence" "$seed"
 
-python3 scripts/in-container/audit-package-matrix.py --flavor \
+PYTHONPATH=/work/repo python3 -m dkc.cli.audit_package_matrix --flavor \
 	"$flavor" "$root" "$packages" "$evidence/package-audit.json"
 [ "$(find "$packages" -maxdepth 1 -type f -name '*.deb' | wc -l)" -eq 10 ]
 [ "$(find "$packages" -mindepth 1 -maxdepth 1 -type f ! -name '*.deb' | wc -l)" -eq 0 ]

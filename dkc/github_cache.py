@@ -15,9 +15,7 @@ __all__ = ["delete_release_caches", "delete_run_image_artifacts"]
 
 
 _REPOSITORY_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
-_KEY_RE = re.compile(
-    rf"^dkc-release-v{RELEASE_CACHE_REVISION}-v[23]-[0-9a-f]{{64}}$"
-)
+_KEY_RE = re.compile(rf"^dkc-release-v{RELEASE_CACHE_REVISION}-v[23]-[0-9a-f]{{64}}$")
 _API_ROOT = "https://api.github.com"
 Transport = Callable[[str, str, dict[str, str]], tuple[int, bytes]]
 
@@ -72,7 +70,9 @@ def _list_caches(
                 or isinstance(entry.get("id"), bool)
                 or entry["id"] < 1
             ):
-                raise RuntimeError("GitHub cache API returned an unexpected cache record")
+                raise RuntimeError(
+                    "GitHub cache API returned an unexpected cache record"
+                )
             result.append(entry["id"])
         if len(entries) < 100:
             break
@@ -128,12 +128,13 @@ def delete_release_caches(
         for identifier in identifiers:
             status, body = request("DELETE", f"{base}/{identifier}", headers)
             if status != 204 or body:
-                raise RuntimeError("GitHub cache API returned an unexpected delete result")
+                raise RuntimeError(
+                    "GitHub cache API returned an unexpected delete result"
+                )
             removed += 1
         if _list_caches(repository, selected_ref, key, headers, request):
             raise RuntimeError("GitHub cache deletion did not reach an empty exact key")
     return removed
-
 
 
 def _list_run_artifacts(
@@ -157,7 +158,9 @@ def _list_run_artifacts(
         try:
             payload = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("GitHub artifact API returned malformed list data") from exc
+            raise RuntimeError(
+                "GitHub artifact API returned malformed list data"
+            ) from exc
         entries = payload.get("artifacts") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
             raise RuntimeError("GitHub artifact API returned an invalid artifact list")
@@ -170,13 +173,17 @@ def _list_run_artifacts(
                 or identifier < 1
                 or not isinstance(name, str)
             ):
-                raise RuntimeError("GitHub artifact API returned an unexpected artifact record")
+                raise RuntimeError(
+                    "GitHub artifact API returned an unexpected artifact record"
+                )
             result.append((identifier, name))
         if len(entries) < 100:
             break
         page += 1
         if page > 100:
-            raise RuntimeError("GitHub artifact API pagination exceeded its safety bound")
+            raise RuntimeError(
+                "GitHub artifact API pagination exceeded its safety bound"
+            )
     return tuple(result)
 
 
@@ -216,12 +223,16 @@ def delete_run_image_artifacts(
         f"/{urllib.parse.quote(repo, safe='')}/actions/artifacts"
     )
     removed = 0
-    for identifier, name in _list_run_artifacts(repository, int(run_id), headers, request):
+    for identifier, name in _list_run_artifacts(
+        repository, int(run_id), headers, request
+    ):
         if not pattern.fullmatch(name):
             continue
         status, body = request("DELETE", f"{base}/{identifier}", headers)
         if status != 204 or body:
-            raise RuntimeError("GitHub artifact API returned an unexpected delete result")
+            raise RuntimeError(
+                "GitHub artifact API returned an unexpected delete result"
+            )
         removed += 1
     if any(
         pattern.fullmatch(name)

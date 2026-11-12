@@ -107,10 +107,7 @@ def require_source_archive_evidence(
     if value.get("status") != "PASS" or value.get("epoch") != checked_epoch:
         raise ValueError(f"{label} does not match the publication epoch")
     return _metadata_record(
-        {
-            key: value[key]
-            for key in ("maximum_mtime", "member_count", "minimum_mtime")
-        },
+        {key: value[key] for key in ("maximum_mtime", "member_count", "minimum_mtime")},
         checked_epoch,
         label,
     )
@@ -235,8 +232,10 @@ def validate_tar_stream(
                 name = _canonical_member_name(member.name, label)
                 if name in names:
                     raise ValueError(f"{label} contains a duplicate tar member: {name}")
-                if prefix is not None and name != prefix and not name.startswith(
-                    f"{prefix}/"
+                if (
+                    prefix is not None
+                    and name != prefix
+                    and not name.startswith(f"{prefix}/")
                 ):
                     raise ValueError(
                         f"{label} member escapes the {prefix} tree: {member.name!r}"
@@ -256,14 +255,13 @@ def validate_tar_stream(
                 if member.pax_headers:
                     raise ValueError(f"{label} member {name} contains PAX metadata")
                 if member.uid != 0 or member.gid != 0:
-                    raise ValueError(f"{label} member {name} does not have numeric root ownership")
+                    raise ValueError(
+                        f"{label} member {name} does not have numeric root ownership"
+                    )
                 if member.uname not in ("", "root") or member.gname not in ("", "root"):
                     raise ValueError(f"{label} member {name} has unstable owner names")
                 if not (
-                    member.isreg()
-                    or member.isdir()
-                    or member.issym()
-                    or member.islnk()
+                    member.isreg() or member.isdir() or member.issym() or member.islnk()
                 ):
                     raise ValueError(f"{label} member {name} has a special tar type")
                 if member.islnk():
@@ -274,7 +272,8 @@ def validate_tar_stream(
                 mtime = int(member.mtime)
                 if exact_mtime and mtime != checked_epoch:
                     raise ValueError(
-                        f"{label} member {name} mtime {mtime} differs from {checked_epoch}"
+                        f"{label} member {name} mtime {mtime} differs from "
+                        f"{checked_epoch}"
                     )
                 if not exact_mtime and mtime > checked_epoch:
                     raise ValueError(
@@ -290,7 +289,9 @@ def validate_tar_stream(
                     if member.issym() and mode != 0o777:
                         raise ValueError(f"{label} symlink {name} mode is not 0777")
                     if member.islnk():
-                        raise ValueError(f"{label} unexpectedly stores a hard link: {name}")
+                        raise ValueError(
+                            f"{label} unexpectedly stores a hard link: {name}"
+                        )
 
                 minimum_mtime = (
                     mtime if minimum_mtime is None else min(minimum_mtime, mtime)

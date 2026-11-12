@@ -15,7 +15,6 @@ from dkc.storage import ObjectMetadata
 from dkc.storage_progress import StoragePhase
 from tests.fake_storage import ConditionalObjectStore, PreconditionFailed
 
-
 IMMUTABLE = ObjectMetadata(
     content_type="application/octet-stream",
     cache_control="public, max-age=31536000, immutable",
@@ -86,7 +85,9 @@ def test_one_of_two_same_etag_updates_loses_with_412_semantics() -> None:
         else:
             outcomes.append("2xx")
 
-    threads = [threading.Thread(target=writer, args=(body,)) for body in (b"one", b"two")]
+    threads = [
+        threading.Thread(target=writer, args=(body,)) for body in (b"one", b"two")
+    ]
     for thread in threads:
         thread.start()
     barrier.wait()
@@ -109,7 +110,9 @@ def test_one_of_two_absent_path_creates_loses_with_412_semantics() -> None:
         else:
             outcomes.append("2xx")
 
-    threads = [threading.Thread(target=writer, args=(body,)) for body in (b"one", b"two")]
+    threads = [
+        threading.Thread(target=writer, args=(body,)) for body in (b"one", b"two")
+    ]
     for thread in threads:
         thread.start()
     barrier.wait()
@@ -119,7 +122,9 @@ def test_one_of_two_absent_path_creates_loses_with_412_semantics() -> None:
 
 
 @pytest.mark.parametrize("phase", range(1, 13))
-def test_failure_after_every_phase_is_recovered_by_an_idempotent_retry(phase: int) -> None:
+def test_failure_after_every_phase_is_recovered_by_an_idempotent_retry(
+    phase: int,
+) -> None:
     store = ConditionalObjectStore()
     executor = PublicationExecutor(store)
     plan = _plan()
@@ -134,9 +139,11 @@ def test_repeated_completed_publication_is_an_exact_no_op() -> None:
     plan = _plan()
     executor = PublicationExecutor(store)
     executor.execute(plan)
-    before = {key: store.get(key) for key in store.keys()}
+    keys = store.keys()
+    before = {key: store.get(key) for key in keys}
     executor.execute(plan)
-    assert {key: store.get(key) for key in store.keys()} == before
+    assert store.keys() == keys
+    assert {key: store.get(key) for key in keys} == before
 
 
 def test_recovery_rejects_same_inrelease_bytes_with_wrong_metadata() -> None:
@@ -212,14 +219,18 @@ def test_retained_objects_are_read_once_without_put_and_revalidated_by_head() ->
 
 
 @pytest.mark.parametrize("wrong_metadata", [False, True])
-def test_retained_collision_fails_before_the_client_commit(wrong_metadata: bool) -> None:
+def test_retained_collision_fails_before_the_client_commit(
+    wrong_metadata: bool,
+) -> None:
     store = ConditionalObjectStore()
     plan = _plan()
     key = "pool/main/d/dkc-linux/package.deb"
     value = plan.immutable[key]
     store.put(
-        key, value.body if wrong_metadata else b"corrupt",
-        MUTABLE if wrong_metadata else value.metadata, if_none_match=True,
+        key,
+        value.body if wrong_metadata else b"corrupt",
+        MUTABLE if wrong_metadata else value.metadata,
+        if_none_match=True,
     )
     with pytest.raises(RuntimeError, match="immutable object collision"):
         PublicationExecutor(store).execute(plan)
@@ -228,7 +239,9 @@ def test_retained_collision_fails_before_the_client_commit(wrong_metadata: bool)
 
 
 @pytest.mark.parametrize("change", ["bytes", "metadata", "size", "missing", "etag"])
-def test_reused_objects_must_still_match_at_the_post_commit_boundary(change: str) -> None:
+def test_reused_objects_must_still_match_at_the_post_commit_boundary(
+    change: str,
+) -> None:
     store = ConditionalObjectStore()
     plan = _plan()
     key = "pool/main/d/dkc-linux/package.deb"
@@ -248,8 +261,10 @@ def test_reused_objects_must_still_match_at_the_post_commit_boundary(change: str
             body = b"corrupt" if change == "bytes" else value.body
             etag = '"changed"' if change in ("bytes", "etag") else current.etag
             store._objects[key] = replace(
-                current, body=body + (b"x" if change == "size" else b""),
-                metadata=MUTABLE if change == "metadata" else value.metadata, etag=etag,
+                current,
+                body=body + (b"x" if change == "size" else b""),
+                metadata=MUTABLE if change == "metadata" else value.metadata,
+                etag=etag,
             )
 
     with pytest.raises((PreconditionFailed, RuntimeError)):

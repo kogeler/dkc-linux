@@ -51,9 +51,9 @@ inventories; the new display directories are not blanket SIMD exceptions.
    requires a complete overlay directory even during regeneration. This seed
    is replaced by the next step and is not evidence of compatibility.
 2. Run `make overlay-patches` with the new source, which regenerates only that
-   profile's overlay through `scripts/in-container/generate-overlay-patches.py`.
+   profile's overlay from the anchored edits in `debian-overlay/edits.py`.
    Generation fails and names the anchor when an edit no longer applies; add the
-   new reviewed spelling to the generator rather than letting a patch apply with
+   new reviewed spelling to those edits rather than letting a patch apply with
    fuzz. Keep each anchor to the lines the edit changes: builds apply these
    anchored edits, so text an anchor does not include may change in a later
    Debian upload of the series without stopping the build.

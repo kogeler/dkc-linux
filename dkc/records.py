@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from .serialize import sha256_of
@@ -60,9 +60,7 @@ def _utc(value: str, field_name: str) -> datetime:
     if not _UTC_RE.fullmatch(value):
         raise ValueError(f"{field_name} must use canonical UTC YYYY-MM-DDTHH:MM:SSZ")
     try:
-        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
-        )
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError as exc:
         raise ValueError(f"{field_name} is not a real UTC date: {value!r}") from exc
     return parsed
@@ -182,7 +180,9 @@ class DiscoveryDecision(_Record):
                 "a public hint cannot authorize publication"
             )
         if self.decision == "blocked" and (self.build_required or self.publish_allowed):
-            raise ValueError("a blocked decision cannot also require work or allow publishing")
+            raise ValueError(
+                "a blocked decision cannot also require work or allow publishing"
+            )
         expected_flags = {
             "no_op": (False, False, False),
             "build": (True, False, True),
@@ -281,7 +281,9 @@ class StatePointer(_Record):
         _utc(self.committed_utc, "committed_utc")
         expected = f"state/publications/{self.publication_id}/manifest.json"
         if self.manifest_key != expected:
-            raise ValueError(f"manifest key {self.manifest_key!r} does not match the publication id")
+            raise ValueError(
+                f"manifest key {self.manifest_key!r} does not match the publication id"
+            )
         if self.generation == 0:
             if self.previous_generation is not None:
                 raise ValueError("bootstrap generation cannot name a predecessor")
@@ -317,8 +319,13 @@ class PublicationManifest(_Record):
 
     def __post_init__(self) -> None:
         if self.generation < 0 or self.dkc_revision < 1:
-            raise ValueError("generation must be non-negative and DKC revision positive")
-        for name, value in (("publication", self.publication_id), ("transaction", self.transaction_id)):
+            raise ValueError(
+                "generation must be non-negative and DKC revision positive"
+            )
+        for name, value in (
+            ("publication", self.publication_id),
+            ("transaction", self.transaction_id),
+        ):
             if not _ID_RE.fullmatch(value):
                 raise ValueError(f"unsafe {name} id: {value!r}")
         if not self.source_version or not self.dkc_version:
@@ -334,7 +341,8 @@ class PublicationManifest(_Record):
             raise ValueError("retention keeps at most the newest three upstream series")
         normalized_series = [tuple(series) for series in self.retained_series]
         if any(
-            len(series) != 2 or any(not isinstance(part, int) or part < 0 for part in series)
+            len(series) != 2
+            or any(not isinstance(part, int) or part < 0 for part in series)
             for series in self.retained_series
         ):
             raise ValueError("every retained series must be a non-negative [X, Y] pair")
@@ -373,7 +381,9 @@ class PublicationManifest(_Record):
 
         if self.previous_publication is None:
             if self.generation != 0:
-                raise ValueError("a non-bootstrap publication must identify its predecessor")
+                raise ValueError(
+                    "a non-bootstrap publication must identify its predecessor"
+                )
         else:
             if set(self.previous_publication) != {"publication_id", "generation"}:
                 raise ValueError("previous_publication has an unexpected field set")
@@ -386,7 +396,10 @@ class PublicationManifest(_Record):
                 or isinstance(previous_generation, bool)
                 or previous_generation != self.generation - 1
             ):
-                raise ValueError("previous_publication generation is not the predecessor")
+                raise ValueError(
+                    "previous_publication generation is not the predecessor"
+                )
+
 
 # --------------------------------------------------------------------------
 # Transactions
@@ -432,7 +445,11 @@ class LeaseRecord(_Record):
             raise ValueError("lease status must be held or free")
         updated = _utc(self.updated_utc, "updated_utc")
         if self.status == "held":
-            if self.owner is None or self.acquired_utc is None or self.expires_utc is None:
+            if (
+                self.owner is None
+                or self.acquired_utc is None
+                or self.expires_utc is None
+            ):
                 raise ValueError("a held lease requires owner, acquisition, and expiry")
             if not isinstance(self.owner, LeaseOwner):
                 raise ValueError("a held lease owner must be a validated LeaseOwner")
@@ -443,9 +460,16 @@ class LeaseRecord(_Record):
             if not acquired <= updated < expires:
                 raise ValueError("held lease timestamps are not monotonic")
         else:
-            if self.owner is not None or self.acquired_utc is not None or self.expires_utc is not None:
+            if (
+                self.owner is not None
+                or self.acquired_utc is not None
+                or self.expires_utc is not None
+            ):
                 raise ValueError("a free lease cannot retain active ownership")
-            if self.released_utc is None or _utc(self.released_utc, "released_utc") != updated:
+            if (
+                self.released_utc is None
+                or _utc(self.released_utc, "released_utc") != updated
+            ):
                 raise ValueError("a free lease requires its exact release timestamp")
 
     def stale_takeover_allowed(
@@ -458,6 +482,7 @@ class LeaseRecord(_Record):
         now = _utc(now_utc, "now_utc")
         expires = _utc(self.expires_utc, "expires_utc")
         return (now - expires).total_seconds() >= grace_seconds
+
 
 @dataclass(frozen=True)
 class TransactionRecord(_Record):
@@ -472,7 +497,10 @@ class TransactionRecord(_Record):
     schema: str = "dkc.transaction.v1"
 
     def __post_init__(self) -> None:
-        for name, value in (("transaction", self.transaction_id), ("publication", self.publication_id)):
+        for name, value in (
+            ("transaction", self.transaction_id),
+            ("publication", self.publication_id),
+        ):
             if not _ID_RE.fullmatch(value):
                 raise ValueError(f"unsafe {name} id: {value!r}")
         if self.expected_generation < 0:
@@ -485,16 +513,22 @@ class TransactionRecord(_Record):
             if set(self.owner) != expected_owner_fields:
                 raise ValueError("transaction owner has an unexpected field set")
             if not _REPOSITORY_RE.fullmatch(self.owner["repository"]):
-                raise ValueError("transaction owner repository must be an owner/name pair")
+                raise ValueError(
+                    "transaction owner repository must be an owner/name pair"
+                )
             if (
                 not self.owner["run_id"].isdecimal()
                 or not self.owner["run_attempt"].isdecimal()
                 or int(self.owner["run_id"]) < 1
                 or int(self.owner["run_attempt"]) < 1
             ):
-                raise ValueError("transaction owner run identifiers must be decimal strings")
+                raise ValueError(
+                    "transaction owner run identifiers must be decimal strings"
+                )
             if not re.fullmatch(r"[0-9a-f]{32,128}", self.owner["nonce"]):
-                raise ValueError("transaction owner nonce must contain at least 128 random bits")
+                raise ValueError(
+                    "transaction owner nonce must contain at least 128 random bits"
+                )
 
         phase_numbers: list[int] = []
         for phase in self.phases:
@@ -529,6 +563,7 @@ class TransactionRecord(_Record):
             precondition_keys.append(key)
         if len(precondition_keys) != len(set(precondition_keys)):
             raise ValueError("mutable preconditions must have unique keys")
+
 
 # --------------------------------------------------------------------------
 # Garbage collection
@@ -568,11 +603,14 @@ class GcPlan(_Record):
                 raise ValueError(f"caps.{required} must be a positive integer")
         if len(self.targets) > self.caps["max_objects"]:
             raise ValueError(
-                f"plan has {len(self.targets)} targets, over the cap of {self.caps['max_objects']}"
+                f"plan has {len(self.targets)} targets, over the cap of "
+                f"{self.caps['max_objects']}"
             )
         total = sum(t.size for t in self.targets)
         if total > self.caps["max_bytes"]:
-            raise ValueError(f"plan totals {total} bytes, over the cap of {self.caps['max_bytes']}")
+            raise ValueError(
+                f"plan totals {total} bytes, over the cap of {self.caps['max_bytes']}"
+            )
         keys = [t.key for t in self.targets]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate keys in a deletion plan")

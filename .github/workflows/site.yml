@@ -20,6 +20,8 @@ on:
       - "**.md"
       - .github/workflows/site.yml
       - container/Containerfile.toolbox
+      - dkc/cli/site_build.py
+      - dkc/cli/site_publish.py
       - dkc/github_runs.py
       - dkc/lease.py
       - dkc/site.py
@@ -27,8 +29,6 @@ on:
       - keys/archive-primary.fingerprint
       - mk/site.mk
       - schemas/site-build.schema.json
-      - scripts/in-container/site-build.py
-      - scripts/in-container/site-publish.py
       - scripts/site-build.sh
       - scripts/site-publish.sh
       - site/**

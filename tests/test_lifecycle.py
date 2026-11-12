@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from dkc.lifecycle import decide
 from dkc.records import Artifact, PublicationManifest, StatePointer
-from dkc.state import AuthoritativeState, parse_manifest, parse_state_pointer
 from dkc.serialize import canonical_bytes
+from dkc.state import AuthoritativeState, parse_manifest, parse_state_pointer
 
-
-UTC = timezone.utc
+UTC = UTC
 SHA = "a" * 64
 PUB = "20260817-abcdef123456"
 
@@ -22,7 +21,9 @@ def state(
     retention_max_bytes: int | None = 9_500_000_000,
     storage_size: int = 1_000,
 ) -> AuthoritativeState:
-    artifact = Artifact("pool/main/d/dkc-linux/x.deb", SHA, 1, "application/octet-stream", "immutable")
+    artifact = Artifact(
+        "pool/main/d/dkc-linux/x.deb", SHA, 1, "application/octet-stream", "immutable"
+    )
     manifest = PublicationManifest(
         generation=3,
         publication_id=PUB,

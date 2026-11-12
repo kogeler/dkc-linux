@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -17,7 +17,7 @@ __all__ = ["decide"]
 def _utc(value: datetime) -> str:
     if value.tzinfo is None:
         raise ValueError("decision clock must be timezone-aware")
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _valid_until(state: AuthoritativeState) -> datetime:
@@ -27,7 +27,7 @@ def _valid_until(state: AuthoritativeState) -> datetime:
     parsed = parsedate_to_datetime(raw)
     if parsed.tzinfo is None:
         raise ValueError("authoritative Valid-Until lacks a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def decide(
@@ -234,9 +234,7 @@ def decide(
             reason="repository retention policy requires metadata convergence",
         )
 
-    horizon = now.astimezone(timezone.utc) + timedelta(
-        seconds=maintenance_horizon_seconds
-    )
+    horizon = now.astimezone(UTC) + timedelta(seconds=maintenance_horizon_seconds)
     if _valid_until(state) <= horizon:
         return DiscoveryDecision(
             decision="maintenance",

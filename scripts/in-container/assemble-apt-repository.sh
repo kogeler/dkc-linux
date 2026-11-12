@@ -107,7 +107,7 @@ retention_args=(--retention-mode "$retention_mode")
 if [ -n "$retention_max_bytes" ]; then
 	retention_args+=(--retention-max-bytes "$retention_max_bytes")
 fi
-python3 scripts/in-container/build-signed-repository.py assemble \
+PYTHONPATH=/work/repo python3 -m dkc.cli.build_signed_repository assemble \
 	"${assembly_args[@]}" \
 	--keyring-bundle /work/keyring-bundle \
 	--public-keyring "$public_keyring" \

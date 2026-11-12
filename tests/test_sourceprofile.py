@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 import shlex
 import shutil
-import sys
 
 import pytest
 
+from dkc import overlay
 from dkc.buildpolicy import build_policy_digest
 from dkc.sourceprofile import (
     SourceProfile,
@@ -23,7 +22,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _copy_registry(destination: pathlib.Path) -> None:
-    for relative in ("config", "dkc", "container", "scripts", "debian-overlay", "tests"):
+    for relative in (
+        "config",
+        "dkc",
+        "container",
+        "scripts",
+        "debian-overlay",
+        "tests",
+    ):
         shutil.copytree(
             ROOT / relative,
             destination / relative,
@@ -53,20 +59,27 @@ def test_every_profile_is_complete_and_covers_its_reviewed_source() -> None:
         ("7.3~rc7-1~exp1", "7.3"),
     ],
 )
-def test_one_profile_covers_each_known_source_version(version: str, expected: str) -> None:
+def test_one_profile_covers_each_known_source_version(
+    version: str, expected: str
+) -> None:
     assert select_profile(ROOT, version).profile_id == expected
 
 
 def test_an_unreviewed_series_is_named_rather_than_guessed() -> None:
-    with pytest.raises(SourceProfileError, match="no source profile covers linux 999.1-1"):
+    with pytest.raises(
+        SourceProfileError, match="no source profile covers linux 999.1-1"
+    ):
         select_profile(ROOT, "999.1-1")
     with pytest.raises(SourceProfileError, match="invalid Debian source version"):
         select_profile(ROOT, "not a version")
 
 
-@pytest.mark.parametrize("selected", load_profiles(ROOT), ids=lambda profile: profile.profile_id)
+@pytest.mark.parametrize(
+    "selected", load_profiles(ROOT), ids=lambda profile: profile.profile_id
+)
 def test_build_identity_depends_only_on_the_selected_profile(
-    tmp_path: pathlib.Path, selected: SourceProfile,
+    tmp_path: pathlib.Path,
+    selected: SourceProfile,
 ) -> None:
     version = selected.reviewed_source_version
     original = build_policy_digest(ROOT, version)
@@ -103,7 +116,8 @@ def test_profiles_of_one_series_may_not_overlap(tmp_path: pathlib.Path) -> None:
     split = tmp_path / "config/source-profiles/7.2-b"
     shutil.copytree(tmp_path / "config/source-profiles/7.2", split)
     shutil.copytree(
-        tmp_path / "debian-overlay/patches/7.2", tmp_path / "debian-overlay/patches/7.2-b"
+        tmp_path / "debian-overlay/patches/7.2",
+        tmp_path / "debian-overlay/patches/7.2-b",
     )
     with pytest.raises(SourceProfileError, match="overlap"):
         load_profiles(tmp_path)
@@ -150,7 +164,9 @@ def test_rendered_shell_inputs_are_exact() -> None:
         )
     }
     assert environment["DKC_KSELFTEST_PROFILE_KIND"] == profile.kselftest.kind
-    assert environment["DKC_KSELFTEST_TARGETS"].split() == list(profile.kselftest.targets)
+    assert environment["DKC_KSELFTEST_TARGETS"].split() == list(
+        profile.kselftest.targets
+    )
     assert environment["DKC_KSELFTEST_TESTS"].split() == list(profile.kselftest.tests)
     assert environment["DKC_KSELFTEST_PER_TEST_TIMEOUT"] == "180"
 
@@ -163,43 +179,37 @@ def test_rendered_shell_inputs_are_exact() -> None:
     assert "name = 'x86'\nenable = false" not in restriction
 
 
-def _generator():
-    path = ROOT / "scripts" / "in-container" / "generate-overlay-patches.py"
-    spec = importlib.util.spec_from_file_location("generate_overlay_patches", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_committed_overlays_are_named_by_the_generator() -> None:
-    generator = _generator()
-    known = set(generator.PATCHES)
+    known = set(overlay.load_overlay().patches)
     for profile in load_profiles(ROOT):
         names = {path.name for path in profile.overlay_patches}
-        assert names <= known, f"{profile.profile_id} has patches the generator cannot produce"
+        assert names <= known, (
+            f"{profile.profile_id} has patches the generator cannot produce"
+        )
         assert names, profile.profile_id
 
 
 def test_every_generation_specific_edit_keeps_its_reviewed_spellings() -> None:
-    generator = _generator()
-    for name, groups in generator.PATCHES.items():
+    for name, groups in overlay.load_overlay().patches.items():
         for group in groups:
             variants = (
-                [item for item in group.groups] if isinstance(group, generator.FileVariants) else [group]
+                [item for item in group.groups]
+                if isinstance(group, overlay.FileVariants)
+                else [group]
             )
             for path, edits in variants:
                 assert path.startswith(("debian/", "arch/")), (name, path)
                 for edit in edits:
-                    if isinstance(edit, generator.LinePattern):
+                    if isinstance(edit, overlay.LinePattern):
                         assert "\n" not in edit.regex and "@LINE@" in edit.replacement
                         continue
-                    if not isinstance(edit, generator.OneOf):
+                    if not isinstance(edit, overlay.OneOf):
                         assert isinstance(edit, tuple) and len(edit) == 2
                         continue
                     anchors = [
-                        variant.marker if isinstance(variant, generator.Absent) else variant[0]
+                        variant.marker
+                        if isinstance(variant, overlay.Absent)
+                        else variant[0]
                         for variant in edit.variants
                     ]
                     assert len(anchors) >= 2

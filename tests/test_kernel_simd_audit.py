@@ -3,25 +3,18 @@
 from __future__ import annotations
 
 import dataclasses
-import importlib.util
 import pathlib
-import sys
 from collections import Counter
 
 import pytest
 
-
+from dkc.cli import audit_kernel_simd as audit
 from dkc.sourceprofile import select_profile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "audit-kernel-simd.py"
+SCRIPT = ROOT / "dkc" / "cli" / "audit_kernel_simd.py"
 PROFILE_7_1 = select_profile(ROOT, "7.1.7-1")
 PROFILE_7_2 = select_profile(ROOT, "7.2.6-1")
-spec = importlib.util.spec_from_file_location("audit_kernel_simd", SCRIPT)
-assert spec and spec.loader
-audit = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = audit
-spec.loader.exec_module(audit)
 
 
 def test_audit_has_no_non_fatal_discovery_mode() -> None:
@@ -135,18 +128,21 @@ def test_fpu_symbols_are_derived_from_exact_reviewed_objects(
     entries, object_count = audit.derive_fpu_symbols(tmp_path, PROFILE_7_1, 21)
     assert object_count == 66
     assert len(entries) >= 500
-    assert {
-        entry.artifact for entry in entries.values()
-    } == {"kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"}
+    assert {entry.artifact for entry in entries.values()} == {
+        "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
+    }
 
 
 def test_lto_internal_suffix_resolves_only_to_an_existing_exact_symbol() -> None:
     entry = audit.AllowEntry("vmlinux", "symbol", "fpregs_restore_userregs", "reviewed")
     allowlist = {entry.key: entry}
-    assert audit.reviewed_key(
-        ("vmlinux", "symbol", "fpregs_restore_userregs.llvm.16097277919764810943"),
-        allowlist,
-    ) == entry.key
+    assert (
+        audit.reviewed_key(
+            ("vmlinux", "symbol", "fpregs_restore_userregs.llvm.16097277919764810943"),
+            allowlist,
+        )
+        == entry.key
+    )
     for key in (
         ("vmlinux", "symbol", "unreviewed.llvm.1"),
         ("vmlinux", "symbol", "fpregs_restore_userregs.llvm.not-a-number"),
@@ -165,15 +161,18 @@ def test_full_lto_numeric_suffix_is_limited_to_derived_fpu_symbols() -> None:
     )
     manual = audit.AllowEntry("vmlinux", "symbol", "xsaves", "reviewed")
     allowlist = {derived.key: derived, manual.key: manual}
-    assert audit.reviewed_key(
-        (
-            "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko",
-            "symbol",
-            "CalculateFlipSchedule.21322",
-        ),
-        allowlist,
-        {derived.key},
-    ) == derived.key
+    assert (
+        audit.reviewed_key(
+            (
+                "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko",
+                "symbol",
+                "CalculateFlipSchedule.21322",
+            ),
+            allowlist,
+            {derived.key},
+        )
+        == derived.key
+    )
     for key in (
         ("vmlinux", "symbol", "xsaves.42"),
         (
@@ -238,16 +237,46 @@ def test_thin_lto_symbol_aliases_resolve_to_the_existing_reviewed_policy() -> No
         )
         allowlist[entry.key] = entry
     observed = (
-        ("kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko", "dcn_bw_pow.llvm.283786859739323551"),
-        ("kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko", "dml_core_mode_programming.llvm.8275309366420712261"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_2data_recov_avx2.llvm.10557344844962565219"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_2data_recov_avx512.llvm.4684959856459538586"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_2data_recov_ssse3.llvm.13827144924319529485"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_avx5124_gen_syndrome.llvm.15708548373724094443"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_avx5124_xor_syndrome.llvm.15708548373724094443"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_datap_recov_avx2.llvm.10557344844962565219"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_datap_recov_avx512.llvm.4684959856459538586"),
-        ("kernel/lib/raid6/raid6_pq.ko", "raid6_datap_recov_ssse3.llvm.13827144924319529485"),
+        (
+            "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko",
+            "dcn_bw_pow.llvm.283786859739323551",
+        ),
+        (
+            "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko",
+            "dml_core_mode_programming.llvm.8275309366420712261",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_2data_recov_avx2.llvm.10557344844962565219",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_2data_recov_avx512.llvm.4684959856459538586",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_2data_recov_ssse3.llvm.13827144924319529485",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_avx5124_gen_syndrome.llvm.15708548373724094443",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_avx5124_xor_syndrome.llvm.15708548373724094443",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_datap_recov_avx2.llvm.10557344844962565219",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_datap_recov_avx512.llvm.4684959856459538586",
+        ),
+        (
+            "kernel/lib/raid6/raid6_pq.ko",
+            "raid6_datap_recov_ssse3.llvm.13827144924319529485",
+        ),
         ("vmlinux", "fpregs_restore_userregs.llvm.16097277919764810943"),
     )
     for artifact, symbol in observed:

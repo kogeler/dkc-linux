@@ -78,6 +78,44 @@ network access. `make fast` is offline once the toolbox image exists. After a
 documentation change, also run `make site`, which builds and audits the
 documentation site described in [SITE.md](SITE.md).
 
+## Python layout and tooling
+
+Shell and Make orchestrate; Python parses, compares, hashes, and decides. All
+project Python is the `dkc` package: library modules in `dkc/` and one
+command-line entry point per module in `dkc/cli/`. Callers run an entry point
+as `python3 -m dkc.cli.<name>` with the repository root on `PYTHONPATH`; no
+module edits `sys.path`, and shell scripts embed no Python programs. When a
+shell script needs several Python steps, its module offers them as
+subcommands, for example `python3 -m dkc.cli.verify_overlay package-graph`.
+
+Three kinds of entry point run without the package and therefore import only
+the standard library: the host-side `github_ci`, `release_gate`, and
+`storage_connection`, which Make runs with the host interpreter;
+`prepare_flavor`, copied into the published source package as
+`debian/dkc/prepare-flavor.py`; and `normalize_quilt_patch`, which
+`dpkg-source` runs directly as its editor.
+`container/build-patched-packages.py` stays beside its Containerfile because it
+runs in an image build stage before any repository exists.
+
+The packaging overlay separates mechanism from data. `dkc/overlay.py` applies
+anchored edits, renders the committed patches, and checks them during a build;
+the reviewed edits themselves, which quote and modify Debian and Linux text,
+are `debian-overlay/edits.py` and keep its GPL-2.0-only license.
+
+A build- or validation-policy input is accepted only with every Python module
+it runs: `tests/test_python_layout.py` requires each entry point that a policy
+input imports or invokes, and everything that entry point imports, to be hashed
+by a policy, and requires every module that the published source package runs
+to be embedded in it.
+
+Python libraries and tools come from Debian 13 packages declared in the
+Containerfiles; nothing is installed from PyPI. `make typecheck` runs
+`mypy --strict` over `dkc/`, the patched-package builder, and the overlay
+edits. Ruff, pinned by index digest in `container/Containerfile.toolbox`
+because Debian 13 does not ship it, lints and checks formatting in `make fast`
+with the rule set in `ruff.toml`; `make fmt` applies its formatting and import
+order together with `shfmt`.
+
 ## Source profiles
 
 Everything that is only true for one upstream kernel series lives in that

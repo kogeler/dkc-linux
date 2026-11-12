@@ -166,7 +166,11 @@ def plan_site_publication(
         body = build.bodies[item.key]
         metadata = _metadata(item)
         current = store.get(key)
-        if current is not None and current.body == body and current.metadata == metadata:
+        if (
+            current is not None
+            and current.body == body
+            and current.metadata == metadata
+        ):
             unchanged.append(key)
             continue
         writes.append(

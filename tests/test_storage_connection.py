@@ -76,8 +76,8 @@ def test_every_connection_value_and_encoded_endpoint_are_redacted(
     _write(path, value)
     redactor = StorageRedactor.from_path(path)
     raw_markers = tuple(value.values())
-    hostile = " ".join(raw_markers) + " " + urllib.parse.quote(
-        value["s3_endpoint"], safe=""
+    hostile = (
+        " ".join(raw_markers) + " " + urllib.parse.quote(value["s3_endpoint"], safe="")
     )
     rendered = redactor.redact(hostile)
     assert not any(marker in rendered for marker in raw_markers)
@@ -141,7 +141,10 @@ def test_sanitized_output_covers_common_encodings_and_an_additional_secret(
     captured = capsys.readouterr()
     combined = captured.out + captured.err
     assert value["s3_secret_access_key"] not in combined
-    assert base64.b64encode(value["s3_secret_access_key"].encode()).decode() not in combined
+    assert (
+        base64.b64encode(value["s3_secret_access_key"].encode()).decode()
+        not in combined
+    )
     assert value["s3_secret_access_key"].encode().hex() not in combined
     assert token not in combined
     assert "\n::warning::" not in combined

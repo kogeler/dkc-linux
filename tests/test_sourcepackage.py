@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import io
 import os
 import pathlib
@@ -12,6 +11,8 @@ from email.utils import format_datetime
 
 import pytest
 
+from dkc.cli import audit_source_package as audit_source
+from dkc.cli import prepare_source_tree as prepare_source
 from dkc.sourcepackage import (
     build_tree_manifest,
     parse_checksums_sha256,
@@ -20,20 +21,7 @@ from dkc.sourcepackage import (
 )
 from dkc.tarmetadata import normalize_tree_metadata, validate_tar_stream
 
-
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-AUDIT_SPEC = importlib.util.spec_from_file_location(
-    "audit_source_package", ROOT / "scripts/in-container/audit-source-package.py"
-)
-assert AUDIT_SPEC and AUDIT_SPEC.loader
-audit_source = importlib.util.module_from_spec(AUDIT_SPEC)
-AUDIT_SPEC.loader.exec_module(audit_source)
-PREPARE_SPEC = importlib.util.spec_from_file_location(
-    "prepare_source_tree", ROOT / "scripts/in-container/prepare-source-tree.py"
-)
-assert PREPARE_SPEC and PREPARE_SPEC.loader
-prepare_source = importlib.util.module_from_spec(PREPARE_SPEC)
-PREPARE_SPEC.loader.exec_module(prepare_source)
 
 
 PACKAGE = "dkc-linux"
@@ -153,7 +141,9 @@ def test_source_bundle_rejects_a_mutated_member(tmp_path: pathlib.Path) -> None:
         )
 
 
-def test_source_tree_manifest_covers_modes_files_and_links(tmp_path: pathlib.Path) -> None:
+def test_source_tree_manifest_covers_modes_files_and_links(
+    tmp_path: pathlib.Path,
+) -> None:
     (tmp_path / "dir").mkdir()
     source = tmp_path / "dir/file"
     source.write_text("one\n", encoding="utf-8")
@@ -167,14 +157,8 @@ def test_source_tree_manifest_covers_modes_files_and_links(tmp_path: pathlib.Pat
 
 
 def test_manifest_difference_is_bounded_and_classified() -> None:
-    prepared = (
-        "f\t0644\t1\ta\tkept\nf\t0644\t1\tb\tmissing\n"
-        "l\t0777\tlink\ttarget\n"
-    )
-    reconstructed = (
-        "f\t0755\t1\ta\tkept\nf\t0644\t1\tc\tnew\n"
-        "l\t0777\tlink\tother\n"
-    )
+    prepared = "f\t0644\t1\ta\tkept\nf\t0644\t1\tb\tmissing\nl\t0777\tlink\ttarget\n"
+    reconstructed = "f\t0755\t1\ta\tkept\nf\t0644\t1\tc\tnew\nl\t0777\tlink\tother\n"
     difference = audit_source.manifest_difference(prepared, reconstructed)
     assert difference["changed_count"] == 2
     assert difference["missing_sample"] == ["missing"]
@@ -288,7 +272,9 @@ def test_source_tar_requires_exact_normalized_metadata() -> None:
 def test_source_tar_accepts_sorted_recursive_directory_traversal() -> None:
     epoch = 1_760_000_000
     output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:xz", format=tarfile.GNU_FORMAT) as archive:
+    with tarfile.open(
+        fileobj=output, mode="w:xz", format=tarfile.GNU_FORMAT
+    ) as archive:
         for name, kind in (
             ("debian", tarfile.DIRTYPE),
             ("debian/config", tarfile.DIRTYPE),

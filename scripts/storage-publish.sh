@@ -95,7 +95,7 @@ if dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/storage-publish.py \
+		exec python3 -m dkc.cli.storage_publish \
 			--repository-result /input/repository-result \
 			--connection /run/secrets/storage.json \
 			--keyring /input/keys/dkc-archive-keyring.gpg \

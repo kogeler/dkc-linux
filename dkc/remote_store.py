@@ -5,7 +5,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .s3 import ListedObject, ObjectHead, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
+from .s3 import (
+    ListedObject,
+    ObjectHead,
+    PreconditionFailed,
+    RemoteObject,
+    RemoteStoreError,
+    S3Client,
+)
 from .storage import ObjectMetadata
 
 __all__ = ["S3ObjectStore", "validate_namespace"]
@@ -94,7 +101,11 @@ class S3ObjectStore:
             ):
                 raise
             current = self.client.get_optional(remote_key)
-            if current is not None and current.body == body and current.metadata == metadata:
+            if (
+                current is not None
+                and current.body == body
+                and current.metadata == metadata
+            ):
                 return current
             raise
 
@@ -106,7 +117,9 @@ class S3ObjectStore:
         except PreconditionFailed:
             current = self.get(key)
             if current is None or current.body != body or current.metadata != metadata:
-                raise PreconditionFailed(f"immutable object collision for {key}") from None
+                raise PreconditionFailed(
+                    f"immutable object collision for {key}"
+                ) from None
             return current
 
     def delete(self, key: str) -> None:

@@ -9,7 +9,6 @@ import pytest
 
 from dkc.sourceprofile import KselftestPolicy, load_profiles
 
-
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCUMENTATION = ROOT / "docs" / "KERNEL_TESTING.md"
 PROFILES = {profile.profile_id: profile for profile in load_profiles(ROOT)}

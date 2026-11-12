@@ -7,7 +7,6 @@ import pytest
 
 from dkc.github_cache import delete_release_caches, delete_run_image_artifacts
 
-
 KEY_V2 = "dkc-release-v2-v2-" + "a" * 64
 KEY_V3 = "dkc-release-v2-v3-" + "b" * 64
 
@@ -26,7 +25,9 @@ def test_exact_main_cache_cleanup_is_idempotent() -> None:
             return 200, json.dumps({"actions_caches": entries[key]}).encode()
         identifier = int(url.rsplit("/", 1)[1])
         for key in entries:
-            entries[key] = [entry for entry in entries[key] if entry["id"] != identifier]
+            entries[key] = [
+                entry for entry in entries[key] if entry["id"] != identifier
+            ]
         return 204, b""
 
     assert (
@@ -66,11 +67,7 @@ def test_cache_cleanup_rejects_other_refs_and_unexpected_records() -> None:
     ) -> tuple[int, bytes]:
         del method, url, headers
         return 200, json.dumps(
-            {
-                "actions_caches": [
-                    {"id": 12, "key": KEY_V2, "ref": "refs/heads/other"}
-                ]
-            }
+            {"actions_caches": [{"id": 12, "key": KEY_V2, "ref": "refs/heads/other"}]}
         ).encode()
 
     with pytest.raises(RuntimeError, match="unexpected cache record"):
@@ -81,7 +78,6 @@ def test_cache_cleanup_rejects_other_refs_and_unexpected_records() -> None:
             token="token",
             transport=wrong_record,
         )
-
 
 
 def test_run_image_cleanup_deletes_only_this_runs_image_archives() -> None:
@@ -105,18 +101,26 @@ def test_run_image_cleanup_deletes_only_this_runs_image_archives() -> None:
         del artifacts[identifier]
         return 204, b""
 
-    assert delete_run_image_artifacts(
-        repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
-    ) == 2
+    assert (
+        delete_run_image_artifacts(
+            repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
+        )
+        == 2
+    )
     assert sorted(deleted) == [11, 12]
-    assert delete_run_image_artifacts(
-        repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
-    ) == 0
+    assert (
+        delete_run_image_artifacts(
+            repository="kogeler/dkc-linux", run_id="7", token="t", transport=transport
+        )
+        == 0
+    )
 
 
 def test_run_image_cleanup_rejects_a_malformed_record() -> None:
     def transport(method: str, url: str, headers: dict[str, str]):  # type: ignore[no-untyped-def]
-        return 200, json.dumps({"artifacts": [{"id": "x", "name": "dkc-images-7-1-toolbox"}]}).encode()
+        return 200, json.dumps(
+            {"artifacts": [{"id": "x", "name": "dkc-images-7-1-toolbox"}]}
+        ).encode()
 
     with pytest.raises(RuntimeError, match="unexpected artifact record"):
         delete_run_image_artifacts(

@@ -38,7 +38,9 @@ def test_progress_throttles_updates_and_records_phase_duration() -> None:
     now = [0.0]
     stream = io.StringIO()
     progress = StorageProgress(StorageRedactor(()), stream, clock=lambda: now[0])
-    progress(StorageProgressEvent(StoragePhase.IMMUTABLE, total_objects=4, total_bytes=40))
+    progress(
+        StorageProgressEvent(StoragePhase.IMMUTABLE, total_objects=4, total_bytes=40)
+    )
     now[0] = 1
     progress(StorageProgressEvent(StoragePhase.IMMUTABLE, 1, 4, 10, 40))
     assert len(stream.getvalue().splitlines()) == 1
@@ -50,8 +52,12 @@ def test_progress_throttles_updates_and_records_phase_duration() -> None:
     progress(StorageProgressEvent(StoragePhase.VERIFY_REPOSITORY))
     assert len(stream.getvalue().splitlines()) == 4
     assert progress.summary()[0] == {
-        "phase": "prepare-immutable-objects", "elapsed_seconds": 17,
-        "objects": 4, "total_objects": 4, "bytes": 40, "total_bytes": 40,
+        "phase": "prepare-immutable-objects",
+        "elapsed_seconds": 17,
+        "objects": 4,
+        "total_objects": 4,
+        "bytes": 40,
+        "total_bytes": 40,
     }
 
 

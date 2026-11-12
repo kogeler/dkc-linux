@@ -74,11 +74,17 @@ def plan_repository(
             or key.startswith("state/publications/")
             or key.startswith("state/transactions/")
         ):
-            raise ValueError(f"object is classified immutable outside allowed paths: {key}")
-    mutable = set(mutable_before) | set(conveniences) | {
-        "dists/trixie/InRelease",
-        "state/current.asc",
-    }
+            raise ValueError(
+                f"object is classified immutable outside allowed paths: {key}"
+            )
+    mutable = (
+        set(mutable_before)
+        | set(conveniences)
+        | {
+            "dists/trixie/InRelease",
+            "state/current.asc",
+        }
+    )
     preconditions = {}
     for key in sorted(mutable):
         current = store.get(key)

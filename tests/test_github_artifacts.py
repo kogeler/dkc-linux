@@ -243,8 +243,14 @@ def test_failure_report_carries_everything_each_stage_retained(tmp_path: Path) -
     # Nothing is selected in advance: every retained file travels except the
     # upstream tarball, which the report names.
     omitted = "flavor/source/dkc-linux_7.2.6.orig.tar.xz"
-    assert names == (retained - {omitted}) | {"bundle.json", "evidence.sha256", "omitted.tsv"}
-    assert (bundle / "omitted.tsv").read_text(encoding="utf-8").startswith(f"{omitted}\t")
+    assert names == (retained - {omitted}) | {
+        "bundle.json",
+        "evidence.sha256",
+        "omitted.tsv",
+    }
+    assert (
+        (bundle / "omitted.tsv").read_text(encoding="utf-8").startswith(f"{omitted}\t")
+    )
     document = json.loads((bundle / "bundle.json").read_text(encoding="utf-8"))
     assert document["kind"] == "flavor-failure"
     assert document["stages"] == ["flavor", "qemu", "selftest"]

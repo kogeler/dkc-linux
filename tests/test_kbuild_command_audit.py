@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 from dataclasses import replace
 
 import pytest
 
+from dkc.cli import audit_kbuild_commands as audit_module
 from dkc.flavors import load_flavor_policy
 from dkc.sourceprofile import KbuildAuditPolicy, select_profile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "audit-kbuild-commands.py"
-spec = importlib.util.spec_from_file_location("audit_kbuild_commands", SCRIPT)
-assert spec and spec.loader
-audit_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(audit_module)
+SCRIPT = ROOT / "dkc" / "cli" / "audit_kbuild_commands.py"
 
 
 def _audit(
@@ -27,10 +23,7 @@ def _audit(
 ) -> dict[str, object]:
     path = tmp_path / "commands.tsv"
     path.write_text(
-        "".join(
-            f"{target}\t.{target}.cmd\t{command}\n"
-            for target, command in commands
-        )
+        "".join(f"{target}\t.{target}.cmd\t{command}\n" for target, command in commands)
     )
     profile = select_profile(ROOT, "7.2.6-1")
     policy = replace(
@@ -54,7 +47,9 @@ def _normal(*extra: str) -> str:
     )
 
 
-def test_normal_c_requires_final_no_simd_flags_after_baseline(tmp_path: pathlib.Path) -> None:
+def test_normal_c_requires_final_no_simd_flags_after_baseline(
+    tmp_path: pathlib.Path,
+) -> None:
     report = _audit(tmp_path, [("kernel/foo.o", _normal())])
     assert report["status"] == "PASS"
 
@@ -100,19 +95,31 @@ def test_reviewed_lto_exclusion_requires_explicit_fno_lto(
 
     missing_disable = _audit(tmp_path, [(target, _normal())], "thin", exclusions)
     assert missing_disable["status"] == "FAIL"
-    assert {item["kind"] for item in missing_disable["errors"]} == {
-        "c-lto-exclusion"
-    }
+    assert {item["kind"] for item in missing_disable["errors"]} == {"c-lto-exclusion"}
 
 
 def test_lto_exclusion_inventory_must_be_exact(tmp_path: pathlib.Path) -> None:
     target = "arch/x86/power/cpu.o"
-    report = _audit(tmp_path, [("kernel/foo.o", _normal("-fno-lto", "-flto=thin", "-fsplit-lto-unit", "-fvisibility=hidden"))], "thin", frozenset({target}))
+    report = _audit(
+        tmp_path,
+        [
+            (
+                "kernel/foo.o",
+                _normal(
+                    "-fno-lto", "-flto=thin", "-fsplit-lto-unit", "-fvisibility=hidden"
+                ),
+            )
+        ],
+        "thin",
+        frozenset({target}),
+    )
     assert report["status"] == "FAIL"
     assert {item["kind"] for item in report["errors"]} == {"stale-lto-exclusion"}
 
 
-def test_baseline_after_the_only_disable_set_is_rejected(tmp_path: pathlib.Path) -> None:
+def test_baseline_after_the_only_disable_set_is_rejected(
+    tmp_path: pathlib.Path,
+) -> None:
     command = (
         "clang-21 -D__KERNEL__ -mno-sse -mno-mmx -mno-sse2 -mno-3dnow "
         "-mno-avx -mno-sse4a -march=x86-64-v3 "
@@ -123,7 +130,9 @@ def test_baseline_after_the_only_disable_set_is_rejected(tmp_path: pathlib.Path)
     assert {error["kind"] for error in report["errors"]} == {"c-order"}
 
 
-def test_boot_and_host_tools_must_not_receive_flavor_march(tmp_path: pathlib.Path) -> None:
+def test_boot_and_host_tools_must_not_receive_flavor_march(
+    tmp_path: pathlib.Path,
+) -> None:
     boot = (
         "clang-21 -D__KERNEL__ -march=x86-64-v3 -mno-mmx -mno-sse "
         "-c -o arch/x86/boot/foo.o /src/arch/x86/boot/foo.c"
@@ -134,10 +143,15 @@ def test_boot_and_host_tools_must_not_receive_flavor_march(tmp_path: pathlib.Pat
         [("arch/x86/boot/foo.o", boot), ("scripts/foo.o", host)],
     )
     assert report["status"] == "FAIL"
-    assert {error["kind"] for error in report["errors"]} == {"host-c", "special-baseline"}
+    assert {error["kind"] for error in report["errors"]} == {
+        "host-c",
+        "special-baseline",
+    }
 
 
-def test_startup_and_realmode_wrapper_are_normal_64_bit_targets(tmp_path: pathlib.Path) -> None:
+def test_startup_and_realmode_wrapper_are_normal_64_bit_targets(
+    tmp_path: pathlib.Path,
+) -> None:
     report = _audit(
         tmp_path,
         [
@@ -162,13 +176,17 @@ def test_special_assembly_must_not_receive_the_flavor_baseline(
     }
 
 
-def test_positive_simd_needs_marker_and_exact_object_allowlist(tmp_path: pathlib.Path) -> None:
+def test_positive_simd_needs_marker_and_exact_object_allowlist(
+    tmp_path: pathlib.Path,
+) -> None:
     report = _audit(tmp_path, [("kernel/foo.o", _normal("-msse", "-msse2"))])
     kinds = {error["kind"] for error in report["errors"]}
     assert {"fpu-marker", "fpu-allowlist"} <= kinds
 
 
-def test_kernel_rust_requires_matching_cpu_and_final_feature_disable(tmp_path: pathlib.Path) -> None:
+def test_kernel_rust_requires_matching_cpu_and_final_feature_disable(
+    tmp_path: pathlib.Path,
+) -> None:
     rust = (
         "rustc --target=./scripts/target.json -Ctarget-cpu=x86-64-v3 "
         "-Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2 "
@@ -178,7 +196,9 @@ def test_kernel_rust_requires_matching_cpu_and_final_feature_disable(tmp_path: p
     assert report["status"] == "PASS"
 
 
-def test_kernel_rust_rejects_late_vector_feature_reenable(tmp_path: pathlib.Path) -> None:
+def test_kernel_rust_rejects_late_vector_feature_reenable(
+    tmp_path: pathlib.Path,
+) -> None:
     rust = (
         "rustc --target=./scripts/target.json -Ctarget-cpu=x86-64-v3 "
         "-Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2 "

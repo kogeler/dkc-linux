@@ -21,12 +21,30 @@ from tests.fake_storage import ConditionalObjectStore, PreconditionFailed
 def certificate(root: Path) -> tuple[Path, Path]:
     cert = root / "cert.pem"
     key = root / "key.pem"
-    subprocess.run([
-        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-        "-keyout", str(key), "-out", str(cert), "-days", "1",
-        "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1",
-        "-addext", "basicConstraints=critical,CA:TRUE",
-    ], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+            "-addext",
+            "basicConstraints=critical,CA:TRUE",
+        ],
+        check=True,
+        capture_output=True,
+    )
     return cert, key
 
 
@@ -51,12 +69,16 @@ class HttpStorage:
                     keys = fixture.store.list_keys(query.get("prefix", [""])[0])
                     start = int(query.get("continuation-token", ["0"])[0])
                     limit = int(query.get("max-keys", ["1000"])[0])
-                    page = keys[start:start + limit]
+                    page = keys[start : start + limit]
                     root = ET.Element("ListBucketResult")
                     more = start + len(page) < len(keys)
-                    ET.SubElement(root, "IsTruncated").text = "true" if more else "false"
+                    ET.SubElement(root, "IsTruncated").text = (
+                        "true" if more else "false"
+                    )
                     if more:
-                        ET.SubElement(root, "NextContinuationToken").text = str(start + len(page))
+                        ET.SubElement(root, "NextContinuationToken").text = str(
+                            start + len(page)
+                        )
                     for item in page:
                         value = fixture.store.get(item)
                         assert value is not None
@@ -96,13 +118,20 @@ class HttpStorage:
                 if self.command == "PUT":
                     body = self.rfile.read(int(self.headers["Content-Length"]))
                     fixture.received_bytes[logical] += len(body)
-                    if self.headers["x-amz-content-sha256"] != hashlib.sha256(body).hexdigest():
+                    if (
+                        self.headers["x-amz-content-sha256"]
+                        != hashlib.sha256(body).hexdigest()
+                    ):
                         self.send_error(400)
                         return
                     try:
                         written = fixture.store.put(
-                            logical, body,
-                            ObjectMetadata(self.headers["Content-Type"], self.headers["Cache-Control"]),
+                            logical,
+                            body,
+                            ObjectMetadata(
+                                self.headers["Content-Type"],
+                                self.headers["Cache-Control"],
+                            ),
                             if_none_match=self.headers.get("If-None-Match") == "*",
                             if_match=self.headers.get("If-Match"),
                         )
@@ -140,7 +169,9 @@ class HttpStorage:
         self.client = S3Client(
             S3Endpoint.validated(
                 f"https://127.0.0.1:{self.server.server_port}",
-                "fixture", "test-region", "path",
+                "fixture",
+                "test-region",
+                "path",
             ),
             S3Credentials("fixture-access", "fixture-secret"),
             sleeper=lambda _: None,

@@ -33,7 +33,6 @@ from dkc.site import (
     validate_key,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "0123456789abcdef0123456789abcdef01234567"
 REPOSITORY = "https://github.com/example/dkc"
@@ -46,7 +45,9 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _rewrite(text: str, page: SitePage, pages: list[SitePage], existing: set[str]) -> str:
+def _rewrite(
+    text: str, page: SitePage, pages: list[SitePage], existing: set[str]
+) -> str:
     directories = {
         "/".join(path.split("/")[:index])
         for path in existing
@@ -91,7 +92,8 @@ def test_links_are_rewritten_for_the_site_location() -> None:
     ]
     existing = {"README.md", "TODO.md", "keys/dkc-archive-keyring.gpg", "Makefile"}
     text = (
-        "[home](../README.md#install) [peer](B.md) [ci](../.github/workflows/README.md)\n"
+        "[home](../README.md#install) [peer](B.md) "
+        "[ci](../.github/workflows/README.md)\n"
         "[todo](../TODO.md#pending) [keys](../keys/) [make](../Makefile)\n"
         "[web](https://example.org/x.md) [here](#local)\n"
         "Inline `[code](B.md)` and [`label`](B.md#part).\n"
@@ -132,21 +134,27 @@ def test_broken_or_unsafe_links_fail_closed(target: str, message: str) -> None:
         _rewrite(f"[x]({target})\n", page, [page], set())
 
 
-def test_staging_marks_only_the_home_page_and_rejects_front_matter(tmp_path: Path) -> None:
+def test_staging_marks_only_the_home_page_and_rejects_front_matter(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source"
     _write(source / "README.md", "# Home\n\nSee [docs](docs/A.md).\n")
     _write(source / "docs/A.md", "# A\n\nBack [home](../README.md).\n")
     _write(source / "AGENTS.md", "# Agents\n")
     _write(source / ".github/workflows/README.md", "# Workflows\n")
     destination = tmp_path / "pages"
-    pages = stage_pages(source, destination, repository_url=REPOSITORY, revision=REVISION)
+    pages = stage_pages(
+        source, destination, repository_url=REPOSITORY, revision=REVISION
+    )
     assert [page.target for page in pages] == ["ci/README.md", "README.md", "docs/A.md"]
     assert (destination / "README.md").read_text().startswith("---\nhide:\n")
     assert (destination / "docs/A.md").read_text().startswith("# A\n")
     assert not (destination / "AGENTS.md").exists()
     _write(source / "docs/A.md", "---\ntitle: x\n---\n# A\n")
     with pytest.raises(SiteError, match="front matter"):
-        stage_pages(source, tmp_path / "again", repository_url=REPOSITORY, revision=REVISION)
+        stage_pages(
+            source, tmp_path / "again", repository_url=REPOSITORY, revision=REVISION
+        )
 
 
 def test_readme_keeps_the_structure_the_home_hero_styles() -> None:
@@ -204,7 +212,9 @@ def test_schema_and_code_agree_on_the_site_object_contract() -> None:
     assert document["properties"]["objects"]["maxItems"] == MAX_OBJECTS
     suffixes = re.search(r"\\\.\(([a-z|]+)\)\$$", item["key"]["pattern"])
     assert suffixes is not None
-    assert {f".{suffix}" for suffix in suffixes.group(1).split("|")} == set(CONTENT_TYPES)
+    assert {f".{suffix}" for suffix in suffixes.group(1).split("|")} == set(
+        CONTENT_TYPES
+    )
 
 
 def test_delivery_rules_match_the_site_key_contract() -> None:
@@ -212,7 +222,9 @@ def test_delivery_rules_match_the_site_key_contract() -> None:
     clause = text[text.index('starts_with(http.request.uri.path, "/site/") and') :]
     clause = clause[: clause.index("```")]
     assert f"le {len('/site/') + MAX_KEY_LENGTH}" in clause
-    allowed = set(re.findall(r'ends_with\(http\.request\.uri\.path, "(\.[a-z]+)"\)', clause))
+    allowed = set(
+        re.findall(r'ends_with\(http\.request\.uri\.path, "(\.[a-z]+)"\)', clause)
+    )
     assert allowed == set(CONTENT_TYPES)
     rewrite = text[text.index("`dkc-linux site: map pages`") :]
     rewrite = rewrite[: rewrite.index("concat(")]
@@ -259,7 +271,7 @@ def _page(title: str, url: str, body: str) -> str:
         f'<link rel="canonical" href="{url}">'
         '<link rel="stylesheet" href="ASSET/style.css">'
         "</head><body>"
-        f"<h1 id=\"top\">{title}</h1>{body}"
+        f'<h1 id="top">{title}</h1>{body}'
         "</body></html>"
     )
 
@@ -270,7 +282,7 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
     home = _page(
         "Home",
         f"{SITE_URL}index.html",
-        f'<p><code>{format_fingerprint(FINGERPRINT)}</code></p>'
+        f"<p><code>{format_fingerprint(FINGERPRINT)}</code></p>"
         '<a href="docs/A.html#top">A</a>'
         f'<a href="{SITE_URL}keys/dkc-archive-keyring.gpg">key</a>'
         '<a href="https://github.com/example/dkc">source</a>',
@@ -278,7 +290,10 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
     page = _page("A", f"{SITE_URL}docs/A.html", '<a href="../index.html">home</a>')
     _write(site / "index.html", home)
     _write(site / "docs/A.html", page.replace("ASSET", "../assets"))
-    _write(site / "assets/style.css", "body { background: url(data:image/png;base64,AA==); }\n")
+    _write(
+        site / "assets/style.css",
+        "body { background: url(data:image/png;base64,AA==); }\n",
+    )
     _write(
         site / "sitemap.xml",
         '<?xml version="1.0" encoding="UTF-8"?>'
@@ -304,7 +319,9 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
 
 def test_a_complete_site_passes_the_audit(tmp_path: Path) -> None:
     site, pages = _site(tmp_path)
-    audit = audit_site(site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT)
+    audit = audit_site(
+        site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
+    )
     assert audit.pages == 2
     assert [item.key for item in audit.objects] == [
         "assets/style.css",
@@ -320,16 +337,36 @@ def test_a_complete_site_passes_the_audit(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("path", "old", "new", "message"),
     [
-        ("index.html", "</head>", '<script src="https://cdn.example/x.js"></script></head>', "external"),
+        (
+            "index.html",
+            "</head>",
+            '<script src="https://cdn.example/x.js"></script></head>',
+            "external",
+        ),
         ("index.html", "docs/A.html#top", "docs/A.html#missing", "missing anchor"),
         ("index.html", "docs/A.html#top", "docs/A.html?h=x", "query"),
         ("index.html", "docs/A.html#top", "docs/", "directory reference"),
         ("index.html", "docs/A.html#top", "docs/B.html", "does not exist"),
         ("index.html", "7B98", "0000", "fingerprint"),
-        ("index.html", '<h1 id="top">Home</h1>', "<h1>Home</h1><h1>Again</h1>", "one h1"),
+        (
+            "index.html",
+            '<h1 id="top">Home</h1>',
+            "<h1>Home</h1><h1>Again</h1>",
+            "one h1",
+        ),
         ("docs/A.html", "docs/A.html", "docs/other.html", "canonical"),
-        ("index.html", "</body>", '<div data-md-component="source"></div></body>', "third party"),
-        ("assets/style.css", "data:image/png;base64,AA==", "https://fonts.example/a.woff2", "external"),
+        (
+            "index.html",
+            "</body>",
+            '<div data-md-component="source"></div></body>',
+            "third party",
+        ),
+        (
+            "assets/style.css",
+            "data:image/png;base64,AA==",
+            "https://fonts.example/a.woff2",
+            "external",
+        ),
         ("robots.txt", "Allow: /", "Disallow: /", "robots"),
         ("sitemap.xml", "docs/A.html", "docs/B.html", "sitemap"),
     ],
@@ -343,18 +380,24 @@ def test_the_audit_rejects_each_contract_violation(
     assert old in text
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
     with pytest.raises(SiteError, match=message):
-        audit_site(site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT)
+        audit_site(
+            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
+        )
 
 
 def test_the_audit_rejects_unexpected_and_forbidden_files(tmp_path: Path) -> None:
     site, pages = _site(tmp_path)
     _write(site / "extra.html", "<html></html>")
     with pytest.raises(SiteError, match="extra"):
-        audit_site(site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT)
+        audit_site(
+            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
+        )
     (site / "extra.html").unlink()
     _write(site / "font.woff2", "x")
     with pytest.raises(SiteError, match="not allowed"):
-        audit_site(site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT)
+        audit_site(
+            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
+        )
 
 
 def test_pruning_removes_only_unserved_generator_output(tmp_path: Path) -> None:
@@ -371,8 +414,14 @@ def test_pruning_removes_only_unserved_generator_output(tmp_path: Path) -> None:
     ):
         _write(site / path, "x")
     prune_output(site)
-    remaining = sorted(path.relative_to(site).as_posix() for path in site.rglob("*") if path.is_file())
-    assert remaining == ["assets/javascripts/bundle.min.js", "index.html", "sitemap.xml"]
+    remaining = sorted(
+        path.relative_to(site).as_posix() for path in site.rglob("*") if path.is_file()
+    )
+    assert remaining == [
+        "assets/javascripts/bundle.min.js",
+        "index.html",
+        "sitemap.xml",
+    ]
 
 
 def test_llms_index_lists_navigation_pages_by_section() -> None:

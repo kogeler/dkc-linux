@@ -54,4 +54,4 @@ dkc::register_resource path "$resolved"
 make -C "$DKC_ROOT" container-images-resolve \
 	DKC_IMAGE_RESOLVE_TIMEOUT="$remaining" \
 	DKC_IMAGE_RESOLVE_OUTPUT="$resolved"
-"$DKC_ROOT/scripts/github-ci.py" export-image-bundle --input "$resolved"
+PYTHONPATH="$DKC_ROOT" python3 -m dkc.cli.github_ci export-image-bundle --input "$resolved"

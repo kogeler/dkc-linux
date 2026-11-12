@@ -17,7 +17,6 @@ from dkc.release_cache import (
 from dkc.release_gate import discovery_decision_outputs
 from dkc.serialize import dumps
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SHA = "a" * 64
 IMAGE = "ghcr.io/kogeler/dkc-kernel-build@sha256:" + "d" * 64
@@ -55,14 +54,14 @@ def _decision(root: Path, kind: str = "build") -> DiscoveryDecision:
             for key, field in sorted(discovery_decision_outputs(value).items())
         )
     )
-    (root / "result.env").write_text(
-        f"status=PASS\nlifecycle_decision={kind}\n"
-    )
+    (root / "result.env").write_text(f"status=PASS\nlifecycle_decision={kind}\n")
     _inventory(root)
     return value
 
 
-def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Path, Path]:
+def _accepted_results(
+    root: Path, decision: DiscoveryDecision
+) -> tuple[Path, Path, Path]:
     flavor = root / "flavor"
     selftest = root / "selftest"
     qemu = root / "qemu"
@@ -107,10 +106,7 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
         "provider=registry\nregistry_manifest_digest=sha256:" + "d" * 64 + "\n"
     )
     (flavor / "evidence/post-build-gates.env").write_text(
-        "package_attestation_rc=0\n"
-        "kbuild_audit_rc=0\n"
-        "simd_audit_rc=0\n"
-        "lintian_rc=0\n"
+        "package_attestation_rc=0\nkbuild_audit_rc=0\nsimd_audit_rc=0\nlintian_rc=0\n"
     )
     (flavor / "evidence/source-package/source-package.json").write_text(
         dumps(
@@ -191,8 +187,7 @@ def _accepted_results(root: Path, decision: DiscoveryDecision) -> tuple[Path, Pa
         )
     )
     (qemu / "v3/guest/result.env").write_text(
-        "status=PASS\nflavor=v3\n"
-        f"target_kernel={kernel_release}\nqualification=PASS\n"
+        f"status=PASS\nflavor=v3\ntarget_kernel={kernel_release}\nqualification=PASS\n"
     )
     return flavor, selftest, qemu
 
@@ -286,7 +281,8 @@ def test_release_cache_rejects_unattested_source_archive_metadata(
 
 @pytest.mark.parametrize("decision_kind", ["build", "qualification"])
 def test_release_cache_is_sealed_verified_idempotent_and_tamper_evident(
-    tmp_path: Path, decision_kind: str,
+    tmp_path: Path,
+    decision_kind: str,
 ) -> None:
     decision_root = tmp_path / "decision"
     decision = _decision(decision_root, decision_kind)

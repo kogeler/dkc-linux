@@ -72,54 +72,10 @@ fi
 )
 
 mkdir -p "$output/evidence" /work/replay
-python3 - "$replay/manifest.json" "$replay/vmlinux.zst" \
+PYTHONPATH=/work/repo python3 -m dkc.cli.reattest_flavor "$replay/manifest.json" "$replay/vmlinux.zst" \
 	"$replay/System.map" "$replay/config" "$replay/executable-sections.json" \
 	"$evidence/kbuild-commands.tsv.xz" "$replay/build-tree-inventory.json" \
-	"$llvm_major" <<'PY'
-import hashlib
-import json
-import pathlib
-import sys
-
-
-def digest(path: pathlib.Path) -> tuple[int, str]:
-    value = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(chunk)
-    return path.stat().st_size, value.hexdigest()
-
-
-(
-    manifest_path,
-    compressed,
-    system_map,
-    config,
-    executable_sections,
-    kbuild_commands,
-    build_tree_inventory,
-    llvm_major,
-) = sys.argv[1:]
-manifest = json.load(open(manifest_path, encoding="utf-8"))
-if (
-    manifest.get("schema_version") != 2
-    or manifest.get("status") != "COMPLETE"
-    or manifest.get("llvm_major") != int(llvm_major)
-    or manifest.get("executable_sections_comparison") != "PASS"
-):
-    raise SystemExit("attestation replay manifest identity is invalid")
-for key, name in (
-    ("vmlinux_zst", compressed),
-    ("system_map", system_map),
-    ("config", config),
-    ("executable_sections", executable_sections),
-    ("kbuild_commands", kbuild_commands),
-    ("build_tree_inventory", build_tree_inventory),
-):
-    size, sha256 = digest(pathlib.Path(name))
-    if manifest.get(key) != {"size": size, "sha256": sha256}:
-        raise SystemExit(f"attestation replay input differs: {key}")
-PY
+	"$llvm_major"
 
 identity="$evidence/publication-identity.json"
 lto_mode="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["lto_mode"])' \
@@ -135,12 +91,12 @@ case "$lto_mode" in none | thin | full) ;; *)
 esac
 
 zstd -q -d -c "$replay/vmlinux.zst" >/work/replay/vmlinux
-python3 /work/repo/scripts/in-container/attest-one-build.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.attest_one_build \
 	/work/replay/vmlinux "$artifacts" "$output/evidence" "$llvm_major" \
 	"$identity" "$flavor" "$lto_mode" \
 	--replay-evidence "$evidence"
 
-python3 /work/repo/scripts/in-container/audit-kbuild-commands.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.audit_kbuild_commands \
 	"$output/evidence/kbuild-commands.tsv.xz" \
 	"/work/repo/config/flavors/${flavor}.toml" "$profile_dir" \
 	"$output/evidence/kbuild-command-audit.json" "$lto_mode"
@@ -154,11 +110,11 @@ simd_common=(
 	--derived-fpu-inventory "$replay/derived-fpu-symbols.json"
 )
 if [ "$mode" = observations ]; then
-	python3 /work/repo/scripts/in-container/audit-kernel-simd.py \
+	PYTHONPATH=/work/repo python3 -m dkc.cli.audit_kernel_simd \
 		/dev/null "${simd_common[@]}" \
 		--observations-input "$replay/kernel-simd-observations.json.xz"
 else
-	python3 /work/repo/scripts/in-container/audit-kernel-simd.py \
+	PYTHONPATH=/work/repo python3 -m dkc.cli.audit_kernel_simd \
 		/work/replay/vmlinux "${simd_common[@]}" \
 		--system-map "$replay/System.map" \
 		--observations-output "$output/evidence/kernel-simd-observations.json.xz"

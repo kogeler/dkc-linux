@@ -187,14 +187,14 @@ apt-repository-verify-decision: image apt-client-image ## Verify a signed reposi
 		'$(APT_PREVIOUS_POOL_RESULT)' '$(APT_PREVIOUS_STATE_RESULT)' \
 		'$(APT_RETENTION_MODE)' '$(if $(filter series,$(APT_RETENTION_MODE)),,$(APT_RETENTION_MAX_BYTES))' \
 		'$(LIFECYCLE_DECISION_RESULT)'
-	@$(DKC_ROOT)/scripts/release-gate.py publication-decision \
+	@$(DKC_CLI) dkc.cli.release_gate publication-decision \
 		--decision '$(LIFECYCLE_DECISION_RESULT)' \
 		--repository-result '$(DKC_ROOT)/out/apt-repository/$(DKC_RUN_ID)'
 
 .PHONY: storage-state-require-generation
 storage-state-require-generation: ## Require one verified authoritative-state handoff generation
 	@test -n '$(EXPECTED_STATE_GENERATION)' || { echo 'usage: make storage-state-require-generation EXPECTED_STATE_GENERATION=N'; exit 1; }
-	@$(DKC_ROOT)/scripts/release-gate.py state-generation \
+	@$(DKC_CLI) dkc.cli.release_gate state-generation \
 		--state '$(AUTHORITATIVE_STATE_RESULT)' \
 		--expected '$(EXPECTED_STATE_GENERATION)' \
 		--keyring '$(APT_KEYS_DIR)/dkc-archive-keyring.gpg' \

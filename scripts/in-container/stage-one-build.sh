@@ -65,29 +65,8 @@ mkdir -p "$inputs"
 
 fetch() {
 	local url="$1" output="$2" expected_sha="$3" expected_size="$4"
-	python3 - "$url" "$output" <<'PY'
-import pathlib
-import sys
-import time
-import urllib.request
-
-url, output = sys.argv[1:]
-target = pathlib.Path(output)
-partial = target.with_suffix(target.suffix + ".partial")
-for attempt in range(1, 5):
-    try:
-        request = urllib.request.Request(url, headers={"User-Agent": "dkc-source-stage/1"})
-        with urllib.request.urlopen(request, timeout=180) as response, partial.open("wb") as stream:
-            while chunk := response.read(1024 * 1024):
-                stream.write(chunk)
-        partial.replace(target)
-        break
-    except Exception:
-        partial.unlink(missing_ok=True)
-        if attempt == 4:
-            raise
-        time.sleep(attempt)
-PY
+	PYTHONPATH=/work/repo python3 -m dkc.cli.download \
+		--user-agent dkc-source-stage/1 "$url" "$output"
 	printf '%s  %s\n' "$expected_sha" "$output" | sha256sum -c -
 	actual_size="$(stat -c %s "$output")"
 	[ "$actual_size" = "$expected_size" ] || {
@@ -113,7 +92,7 @@ dpkg-source -x "$inputs/$dsc_name" "$validated_source" >/dev/null
 	echo "extracted Debian source version differs from discovery" >&2
 	exit 1
 }
-python3 /work/repo/scripts/in-container/generate-overlay-patches.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.generate_overlay_patches \
 	--apply "$validated_source" "$llvm_major" "$overlay_dir"
 export DEB_BUILD_PROFILES="$DKC_BUILD_PROFILES"
 (
@@ -141,38 +120,14 @@ cp /usr/share/dkc/apt-indexes.sha256 "$inputs/staging-apt-indexes.sha256"
 # on top of the digest-pinned base remains available here. Hash those retained
 # archives; packages inherited unchanged from the base are already covered by
 # the base digest in the publication identity.
-python3 /work/repo/scripts/in-container/lock-build-environment.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.lock_build_environment \
 	--packages "$inputs/build-image-packages.tsv" \
 	--archives /var/cache/apt/archives \
 	--output "$inputs/build-image-debs.tsv" >&2
 
-python3 - "$inputs" "$source_version" "$llvm_major" \
+PYTHONPATH=/work/repo python3 -m dkc.cli.stage_one_build "$inputs" "$source_version" "$llvm_major" \
 	"$dsc_url" "$dsc_name" "$dsc_sha" "$dsc_size" \
 	"$orig_url" "$orig_name" "$orig_sha" "$orig_size" \
-	"$debian_url" "$debian_name" "$debian_sha" "$debian_size" <<'PY'
-import json
-import pathlib
-import sys
-
-(root, version, llvm_major, dsc_url, dsc_name, dsc_sha, dsc_size, orig_url,
- orig_name, orig_sha, orig_size, debian_url, debian_name, debian_sha,
- debian_size) = sys.argv[1:]
-epoch = int((pathlib.Path(root) / "source-date-epoch").read_text().strip())
-record = {
-    "schema_version": 2,
-    "source": "linux",
-    "version": version,
-    "source_date_epoch": epoch,
-    "llvm_major": int(llvm_major),
-    "files": [
-        {"name": dsc_name, "url": dsc_url, "sha256": dsc_sha, "size": int(dsc_size)},
-        {"name": orig_name, "url": orig_url, "sha256": orig_sha, "size": int(orig_size)},
-        {"name": debian_name, "url": debian_url, "sha256": debian_sha, "size": int(debian_size)},
-    ],
-}
-(pathlib.Path(root) / "source-inventory.json").write_text(
-    json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-)
-PY
+	"$debian_url" "$debian_name" "$debian_sha" "$debian_size"
 
 echo "source staging PASS: exact inventory verified; SOURCE_DATE_EPOCH=$(cat "$inputs/source-date-epoch")" >&2

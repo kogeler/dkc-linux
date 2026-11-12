@@ -110,8 +110,7 @@ def _verify_signature(
     valid = [
         fields[2]
         for line in result.stdout.decode("utf-8", errors="replace").splitlines()
-        if line.startswith("[GNUPG:] VALIDSIG ")
-        and len(fields := line.split()) > 2
+        if line.startswith("[GNUPG:] VALIDSIG ") and len(fields := line.split()) > 2
     ]
     if result.returncode or len(valid) != 1 or valid[0] not in fingerprints:
         raise ValueError("authoritative state signature verification failed")
@@ -129,14 +128,14 @@ def load_authoritative_state_handoff(
     status = _json_object(root / "state-status.json", "authoritative state status")
     validate("authoritative-state-read", status)
     state_status = status["status"]
-    expected_result = (
-        f"status=PASS\nauthoritative_state={state_status}\n"
-    )
+    expected_result = f"status=PASS\nauthoritative_state={state_status}\n"
     if (root / "result.env").read_text(encoding="utf-8") != expected_result:
         raise ValueError("authoritative state result differs from its typed status")
     if state_status == "EMPTY":
         if paths != ("result.env", "state-status.json"):
-            raise ValueError("empty authoritative state has an unexpected file boundary")
+            raise ValueError(
+                "empty authoritative state has an unexpected file boundary"
+            )
         return None
 
     expected_paths = (
