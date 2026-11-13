@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,7 +26,10 @@ __all__ = [
     "export_lifecycle_outputs",
     "export_image_bundle",
     "export_source_environment",
+    "kernel_build_required",
     "prepare_pull_request_qualification",
+    "pull_request_changed_paths",
+    "require_pull_request_result",
     "require_terminal_result",
     "write_workflow_assignments",
     "write_run_identity",
@@ -198,6 +203,74 @@ def export_lifecycle_outputs(
     write_workflow_assignments(output_file, values)
 
 
+# A pull request that changes only these paths cannot change a kernel package,
+# the APT repository, a container image, or the ci workflow, so its kernel
+# builds are skipped. Each is documentation or the documentation site, which
+# the site workflow's own required check builds and audits. Any other path,
+# including a new site file, keeps the full build: the list fails closed.
+_KERNEL_INDEPENDENT_PATHS = frozenset(
+    {
+        ".github/workflows/site.yml",
+        "dkc/cli/site_build.py",
+        "dkc/cli/site_indexnow.py",
+        "dkc/cli/site_publish.py",
+        "dkc/site.py",
+        "dkc/site_indexnow.py",
+        "dkc/site_publication.py",
+        "mk/site.mk",
+        "scripts/site-build.sh",
+        "scripts/site-publish.sh",
+        "tests/test_site.py",
+        "tests/test_site_indexnow.py",
+        "tests/test_site_publication.py",
+    }
+)
+_KERNEL_INDEPENDENT_PREFIXES = ("site/",)
+
+
+def kernel_build_required(changed_paths: Sequence[str] | None) -> bool:
+    """Return whether a pull request with these changed paths must build kernels.
+
+    An unknown (None) or empty change set requires the build.
+    """
+
+    if not changed_paths:
+        return True
+    return not all(
+        path.endswith(".md")
+        or path in _KERNEL_INDEPENDENT_PATHS
+        or path.startswith(_KERNEL_INDEPENDENT_PREFIXES)
+        for path in changed_paths
+    )
+
+
+def pull_request_changed_paths(repository_root: Path) -> tuple[str, ...] | None:
+    """Return the paths a pull request's merge commit changes, or None.
+
+    GitHub checks out a pull request as a merge commit whose first parent is
+    the base branch. Anything else, or any Git failure, yields None so the
+    caller falls back to the full build.
+    """
+
+    def git(*arguments: str) -> str | None:
+        completed = subprocess.run(
+            ["git", "-C", str(repository_root), *arguments],
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return None
+        return completed.stdout.decode("utf-8", errors="strict")
+
+    parents = git("rev-list", "--parents", "-n", "1", "HEAD")
+    if parents is None or len(parents.split()) != 3:
+        return None
+    changed = git("diff", "--name-only", "--no-renames", "-z", "HEAD^1", "HEAD")
+    if changed is None:
+        return None
+    return tuple(path for path in changed.split("\0") if path)
+
+
 def prepare_pull_request_qualification(
     source_root: Path,
     decision_root: Path,
@@ -208,6 +281,7 @@ def prepare_pull_request_qualification(
     lto_mode: LtoMode,
     retention_mode: RetentionMode,
     retention_max_bytes: int | None,
+    build_required: bool = True,
 ) -> None:
     """Create a build-only decision that can never authorize publication."""
 
@@ -231,8 +305,12 @@ def prepare_pull_request_qualification(
         retention_mode=retention_mode,
         retention_max_bytes=retention_max_bytes,
         utc=datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        build_required=True,
-        reason="validate an untrusted pull request without publication authority",
+        build_required=build_required,
+        reason=(
+            "validate an untrusted pull request without publication authority"
+            if build_required
+            else "the pull request changes only documentation and the site"
+        ),
     )
     write_discovery_decision(decision_root, decision)
 
@@ -276,6 +354,28 @@ def export_image_bundle(bundle_file: Path, output_file: Path) -> None:
                 "resolved image reference is not an immutable canonical digest"
             )
     write_workflow_assignments(output_file, values)
+
+
+def require_pull_request_result(
+    *, fast_result: str, decision_result: str, build_required: str, build_result: str
+) -> None:
+    """Accept a pull request only when every job its decision requires passed.
+
+    The package matrix is the last kernel job; it succeeds only after every
+    earlier build job did. It may be skipped only when the decision, which
+    itself succeeded, did not require kernel builds.
+    """
+
+    if fast_result != "success":
+        raise ValueError("the fast tier did not succeed")
+    if decision_result != "success":
+        raise ValueError("the pull-request decision did not succeed")
+    expected = "success" if _boolean(build_required, "build_required") else "skipped"
+    if build_result != expected:
+        raise ValueError(
+            f"the kernel jobs ended with {build_result!r}; the decision requires"
+            f" {expected!r}"
+        )
 
 
 def require_terminal_result(

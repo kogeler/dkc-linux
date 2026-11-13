@@ -272,6 +272,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A pull request's merge commit and both parents: the qualification
+          # compares them to skip kernel builds for documentation-only changes.
+          fetch-depth: 2
 
       - name: Download this pull request's toolbox image
         if: needs.container_images.outputs.image_mode == 'loaded'
@@ -1142,12 +1145,14 @@ jobs:
     name: pull request result
     # The single required check of this workflow. GitHub reports a job that is
     # skipped after a failed dependency as a passed check, so this job always
-    # runs and fails unless every direct dependency succeeded. The package
-    # matrix already requires every earlier pull-request job to succeed.
+    # runs and checks each result itself. The fast tier and the decision must
+    # succeed. The package matrix requires every earlier kernel job, so it must
+    # succeed too, unless the decision found a documentation-only change and
+    # skipped the kernel builds.
     if: >-
       !cancelled() &&
       github.event_name == 'pull_request'
-    needs: [package-matrix]
+    needs: [fast, lifecycle-decision, package-matrix]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -1159,7 +1164,10 @@ jobs:
       - name: Require every pull-request job to succeed
         run: >-
           make github-pull-request-result
-          GITHUB_NEEDS_RESULTS='${{ join(needs.*.result) }}'
+          GITHUB_FAST_RESULT='${{ needs.fast.result }}'
+          GITHUB_DECISION_RESULT='${{ needs.lifecycle-decision.result }}'
+          GITHUB_BUILD_REQUIRED='${{ needs.lifecycle-decision.outputs.build_required }}'
+          GITHUB_BUILD_RESULT='${{ needs.package-matrix.result }}'
 
   lifecycle-result:
     name: lifecycle result

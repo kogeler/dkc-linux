@@ -21,6 +21,10 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ### Changed
 
+- Pull requests that change only Markdown documentation or the documentation
+  site skip the kernel builds and package matrix; the fast tier and the site
+  check still run. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 - The documentation site is easier for search engines to index. The home page
   is addressed as `/` everywhere, each page has its own meta description from
   its lead paragraph, the sitemap dates each page by its source's last commit,

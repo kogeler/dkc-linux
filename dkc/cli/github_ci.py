@@ -12,7 +12,10 @@ from dkc.github import (
     export_image_bundle,
     export_lifecycle_outputs,
     export_source_environment,
+    kernel_build_required,
     prepare_pull_request_qualification,
+    pull_request_changed_paths,
+    require_pull_request_result,
     require_terminal_result,
     write_run_identity,
     write_workflow_assignments,
@@ -90,6 +93,11 @@ def main() -> int:
     source.add_argument("--source", type=Path, required=True)
     images = subparsers.add_parser("export-image-bundle")
     images.add_argument("--input", type=Path, required=True)
+    pull_request = subparsers.add_parser("pull-request-result")
+    pull_request.add_argument("--fast-result", required=True)
+    pull_request.add_argument("--decision-result", required=True)
+    pull_request.add_argument("--build-required", required=True)
+    pull_request.add_argument("--build-result", required=True)
     terminal = subparsers.add_parser("terminal-result")
     terminal.add_argument("--decision", required=True)
     terminal.add_argument("--decision-result", required=True)
@@ -156,6 +164,10 @@ def main() -> int:
             retention_max_bytes = int(args.retention_max_bytes)
         elif args.retention_max_bytes:
             raise ValueError("series retention does not accept a byte limit")
+        changed = pull_request_changed_paths(args.root)
+        build_required = kernel_build_required(changed)
+        if changed is None:
+            print("pull-request change set unavailable; building kernels")
         prepare_pull_request_qualification(
             args.source,
             args.decision,
@@ -165,14 +177,26 @@ def main() -> int:
             lto_mode=cast(LtoMode, args.lto_mode),
             retention_mode=cast(RetentionMode, args.retention_mode),
             retention_max_bytes=retention_max_bytes,
+            build_required=build_required,
         )
-        print("PASS pull-request build qualification prepared")
+        if build_required:
+            print("PASS pull-request build qualification prepared")
+        else:
+            print("PASS documentation-only pull request: kernel builds skipped")
     elif args.command == "export-source":
         export_source_environment(args.source, Path(required_environment("GITHUB_ENV")))
         print("PASS authenticated source environment exported")
     elif args.command == "export-image-bundle":
         export_image_bundle(args.input, Path(required_environment("GITHUB_OUTPUT")))
         print("PASS immutable image bundle outputs exported")
+    elif args.command == "pull-request-result":
+        require_pull_request_result(
+            fast_result=args.fast_result,
+            decision_result=args.decision_result,
+            build_required=args.build_required,
+            build_result=args.build_result,
+        )
+        print("PASS every job the pull-request decision requires succeeded")
     elif args.command == "terminal-result":
         require_terminal_result(
             decision=args.decision,
