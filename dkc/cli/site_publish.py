@@ -15,6 +15,7 @@ from dkc.remote_store import S3ObjectStore
 from dkc.s3 import S3Client
 from dkc.serialize import canonical_bytes
 from dkc.site_publication import (
+    SITE_PREFIX,
     acquire_lease,
     execute_site_plan,
     load_site_build,
@@ -78,7 +79,13 @@ def main(args: argparse.Namespace) -> int:
     assert lease is not None
     lease = manager.release(lease)
 
+    # Pages whose bytes this publication changed or removed, as site keys. The
+    # IndexNow notifier submits exactly these.
+    changed = {write.key for write in plan.writes} | set(plan.deletions)
     summary = {
+        "changed_pages": sorted(
+            key.removeprefix(SITE_PREFIX) for key in changed if key.endswith(".html")
+        ),
         "deleted_objects": len(plan.deletions),
         "object_count": len(build.manifest.objects),
         "schema": "dkc.site-publication-result.v1",

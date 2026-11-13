@@ -8,10 +8,10 @@ checked against the live data plane and Cloudflare documentation on 2026-08-18.
 The site rules in [section 7](#7-serve-the-documentation-site) must pass their
 own validation before the site is announced.
 
-The configuration consumes one WAF custom rule, two URL rewrite rules, three
-Cache Rules, and the one Rate Limiting Rule available on Free. Every
-project-owned rule starts with `dkc-linux` so it is distinguishable from
-unrelated zone policy.
+The configuration consumes one WAF custom rule, two URL rewrite rules, two
+Single Redirect rules, three Cache Rules, and the one Rate Limiting Rule
+available on Free. Every project-owned rule starts with `dkc-linux` so it is
+distinguishable from unrelated zone policy.
 
 Replace `APT_HOSTNAME` with the public repository hostname in every expression.
 If a rule with the exact documented name already exists, edit and verify it
@@ -35,8 +35,8 @@ enforced budget in front of the origin and qualify it separately.
 Before changing anything, select the zone that owns `APT_HOSTNAME` and record
 the existing Custom Rules, URL rewrite rules, Cache Rules, Rate Limiting Rules,
 and their order. This configuration needs one free Custom Rule slot, two URL
-rewrite rule slots, three Cache Rule slots, and the single Free-plan Rate
-Limiting Rule slot.
+rewrite rule slots, two Single Redirect slots, three Cache Rule slots, and the
+single Free-plan Rate Limiting Rule slot.
 
 1. Connect `APT_HOSTNAME` to the chosen HTTPS origin using that origin's
    documented DNS method. The resulting Cloudflare DNS record must remain
@@ -458,8 +458,78 @@ Accept the site only when:
 - `/` and `/index.html` return identical bytes;
 - the raw prefix and the root manifest return `404`, because both resolve
   below the site prefix where no such object exists;
-- the query and private-state probes return `403`;
+- the private-state probe returns `403`, and the query probe returns `403`
+  until the [section 8](#8-redirect-site-aliases) redirects exist and `301`
+  afterwards;
 - the complete [section 6](#6-validate) APT validation still passes.
+
+## 8. Redirect site aliases
+
+Two Single Redirect rules give every site page one public address for search
+engines and shared links. Single Redirects run before the URL rewrites and the
+WAF rule, and neither rule matches an APT path, so plaintext and query-bearing
+repository requests still receive the [section 2](#2-allow-only-the-public-apt-graph)
+`403`. Do not rely on the zone's Always Use HTTPS setting for the site: the
+section 2 rule blocks plaintext requests first.
+
+Open **Rules** > **Overview** > **Create rule** > **Redirect Rule** (older
+navigation: **Rules** > **Redirect Rules** > **Single Redirects**). Create or
+edit `dkc-linux site: home page alias` with **Custom filter expression**:
+
+```text
+(http.host eq "APT_HOSTNAME" and http.request.uri.path eq "/index.html")
+```
+
+Set **Type** to **Static**, **URL** to `https://APT_HOSTNAME/`, **Status code**
+to `301`, and clear **Preserve query string**. Then create or edit
+`dkc-linux site: canonical scheme and query` below it:
+
+```text
+(http.host eq "APT_HOSTNAME" and
+ (not ssl or http.request.uri.query ne "") and
+ not starts_with(http.request.uri.path, "/dists/") and
+ not starts_with(http.request.uri.path, "/pool/") and
+ not http.request.uri.path in {
+  "/keys/archive-primary.fingerprint"
+  "/keys/archive-signing-subkeys.fingerprints"
+  "/keys/dkc-archive-keyring.gpg"
+ })
+```
+
+Set **Type** to **Dynamic**, the expression to
+`concat("https://APT_HOSTNAME", http.request.uri.path)`, **Status code** to
+`301`, and clear **Preserve query string**. Only the first matching Single
+Redirect runs, so a plaintext or query-bearing `/index.html` request reaches
+`/` in one hop.
+
+The home page alias assumes a published site that addresses its home page as
+`/`; see [SITE.md](SITE.md#search-engines). Enable it only after such a build
+is published and the edge copies of older pages have expired.
+
+Keep Bot Fight Mode off: on Free it cannot be skipped by a rule, and it can
+challenge APT clients and search fetchers. Do not block the AI search or AI
+user-agent categories in the bot settings; the site's `robots.txt` allows those
+fetchers explicitly.
+
+Validate:
+
+```sh
+SITE_URL="https://${APT_HOSTNAME}"
+curl -sS -o /dev/null -w 'alias=%{http_code} %{redirect_url}\n' \
+  "${SITE_URL}/index.html"
+curl -sS -o /dev/null -w 'http=%{http_code} %{redirect_url}\n' \
+  "http://${APT_HOSTNAME}/docs/USER_INSTALL.html"
+curl -sS -o /dev/null -w 'query=%{http_code} %{redirect_url}\n' \
+  "${SITE_URL}/docs/USER_INSTALL.html?utm_source=x"
+curl -sS -o /dev/null -w 'apt-http=%{http_code}\n' \
+  "http://${APT_HOSTNAME}/dists/trixie/InRelease"
+curl -sS -o /dev/null -w 'apt-query=%{http_code}\n' \
+  "${SITE_URL}/dists/trixie/InRelease?probe=1"
+```
+
+Accept the redirects only when the first three return `301` to `${SITE_URL}/`
+and twice to `${SITE_URL}/docs/USER_INSTALL.html` without a query, and both
+APT probes still return `403`.
 
 ## Troubleshooting
 
@@ -492,6 +562,7 @@ endpoints, API tokens, or storage credentials.
 - [Create a Cache Rule in the dashboard](https://developers.cloudflare.com/cache/how-to/cache-rules/create-dashboard/)
 - [Create a Rate Limiting Rule in the dashboard](https://developers.cloudflare.com/waf/rate-limiting-rules/create-zone-dashboard/)
 - [URL rewrite rules](https://developers.cloudflare.com/rules/transform/url-rewrite/)
+- [Single Redirects](https://developers.cloudflare.com/rules/url-forwarding/single-redirects/)
 - [Cache Rule settings](https://developers.cloudflare.com/cache/how-to/cache-rules/settings/)
 - [Cache Rule order](https://developers.cloudflare.com/cache/how-to/cache-rules/order/)
 - [Cache by status code](https://developers.cloudflare.com/cache/how-to/configure-cache-status-code/)
