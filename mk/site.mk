@@ -6,6 +6,9 @@ SITE_RESULT ?= $(DKC_ROOT)/out/site/latest
 SITE_PUBLISH_CONNECTION_FILE ?=
 SITE_LEASE_WAIT_SECONDS ?= 1800
 SITE_MAX_DELETIONS ?= 400
+SITE_PUBLICATION_RESULT ?= $(DKC_ROOT)/out/site-publication/latest
+SITE_INDEXNOW_WAIT_SECONDS ?= 600
+SITE_INDEXNOW_ENDPOINT ?= https://api.indexnow.org/indexnow
 
 .PHONY: site
 site: image ## Build and audit the public documentation site (container, offline)
@@ -26,3 +29,12 @@ site-publish-prepared: ## Publish the site after the toolbox has been prepared
 		'$(WORKFLOW_RUN_ID)' '$(WORKFLOW_RUN_ATTEMPT)' \
 		'$(STORAGE_LEASE_TTL_SECONDS)' '$(STORAGE_TAKEOVER_GRACE_SECONDS)' \
 		'$(SITE_LEASE_WAIT_SECONDS)' '$(SITE_MAX_DELETIONS)'
+
+.PHONY: site-indexnow
+site-indexnow: ## Submit the pages one site publication changed to IndexNow (network)
+	@$(DKC_CLI) dkc.cli.site_indexnow \
+		--repository '$(DKC_ROOT)' \
+		--site-result '$(SITE_RESULT)' \
+		--publication-result '$(SITE_PUBLICATION_RESULT)' \
+		--wait-seconds '$(SITE_INDEXNOW_WAIT_SECONDS)' \
+		--endpoint '$(SITE_INDEXNOW_ENDPOINT)'

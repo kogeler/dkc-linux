@@ -9,11 +9,30 @@
   {% elif page and page.title %}
     <meta property="og:title" content="{{ page.title | striptags | e }} - {{ config.site_name | e }}">
   {% endif %}
-  <meta property="og:description" content="{{ config.site_description | e }}">
-  {% if page and page.canonical_url %}
+  {#- The build stores page descriptions as HTML text; see dkc/site.py. #}
+  {%- if page and page.meta and page.meta.description %}
+    <meta property="og:description" content="{{ page.meta.description }}">
+  {%- else %}
+    <meta property="og:description" content="{{ config.site_description | e }}">
+  {%- endif %}
+  {%- if page and page.is_homepage %}
+    <meta property="og:url" content="{{ config.site_url | e }}">
+  {%- elif page and page.canonical_url %}
     <meta property="og:url" content="{{ page.canonical_url | e }}">
-  {% endif %}
+  {%- endif %}
   <meta name="twitter:card" content="summary">
+  {%- if page and page.is_homepage %}
+    <script type="application/ld+json">
+      {{- {
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        "name": config.site_name,
+        "description": config.site_description,
+        "url": config.site_url,
+        "codeRepository": config.extra.repository_url
+      } | tojson -}}
+    </script>
+  {%- endif %}
 {% endblock %}
 
 {% block content %}

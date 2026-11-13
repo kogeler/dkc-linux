@@ -29,6 +29,29 @@ The home page is the project README. Its first heading, tagline paragraph, and
 the link line directly below the tagline form the landing hero, so keep that
 order when editing the README. A test enforces it.
 
+Each page's meta description is its lead paragraph: the first prose paragraph
+between the page heading and the first section, without inline markup and
+shortened to 160 characters at a sentence or word boundary. A page without
+such a paragraph uses the site description. Write the lead paragraph as a
+summary that stands on its own in a search result.
+
+## Search engines
+
+- The home page's public address is the site root. Its canonical URL, the
+  sitemap, `llms.txt`, and every internal link use `/`, never `/index.html`.
+  Every other page uses its `.html` URL.
+- `sitemap.xml` lists every page with the commit time of its source as
+  `lastmod`. The build therefore needs complete Git history and fails in a
+  shallow clone.
+- `robots.txt` allows every crawler. Search engines and the fetchers behind
+  AI search and user-requested reads are also named in an explicit allow
+  group.
+- The home page carries `SoftwareSourceCode` structured data that names the
+  source repository.
+- `site/indexnow-key.txt` holds the public IndexNow key. The build publishes it
+  as `<key>.txt` at the site root, where participating search engines verify
+  notifications. The key is public by design and is not a credential.
+
 ## Build
 
 ```sh
@@ -52,19 +75,23 @@ The result is written to `out/site/<run-id>/`:
 | `summary.json` | page, object, byte, and reference counts |
 | `evidence.sha256` | checksums of the two records above |
 
-Open `out/site/latest/site/index.html` in a browser to preview the pages.
-Search needs an HTTP origin and does not work from a local file.
+Preview the pages from an HTTP origin, for example
+`python3 -m http.server -d out/site/latest/site`. Opened as local files, search
+does not work and links to the home page show a directory listing.
 
 The generator output is pruned before the audit: non-English search language
 packs, source maps, the custom 404 page, and the compressed sitemap are never
-served.
+served. The build then points home-page references at the site root and
+replaces the generator's sitemap with one dated by commit time.
 
 ## Audit
 
 The build fails unless every check passes:
 
 - the generated pages are exactly the published Markdown pages;
-- every page has one canonical URL, one `h1`, and a non-empty title;
+- every page has one canonical URL at its public address, one non-empty meta
+  description, one `h1`, and a non-empty title;
+- no page refers to the home page as `index.html`;
 - every same-origin link, script, stylesheet, and image target exists, every
   anchor resolves, and no same-origin reference carries a query string;
 - no script, stylesheet, image, or frame loads from another origin, no
@@ -73,8 +100,9 @@ The build fails unless every check passes:
 - every object key is a safe relative path with an allowed suffix, never
   shadows an APT repository path, and stays within the object, size, and count
   bounds;
-- `sitemap.xml` lists exactly the pages, `robots.txt` matches the generated
-  policy, and `llms.txt` advertises only existing pages;
+- `sitemap.xml` lists exactly the pages, each once with a UTC `lastmod`;
+  `robots.txt` matches the generated policy; `llms.txt` advertises only
+  existing pages; and the IndexNow key file holds the tracked key;
 - the home page shows the tracked archive primary fingerprint.
 
 The site carries no analytics, web fonts, or other third-party requests. It is
@@ -118,6 +146,8 @@ lease as repository publication, waiting up to `SITE_LEASE_WAIT_SECONDS`
    manifest;
 5. releases the lease.
 
+Its summary lists the pages it wrote or deleted.
+
 Unchanged objects are not rewritten. The publisher can write and delete only
 keys below `site/`; APT repository keys and controller state are outside its
 reach in code. If a run stops midway, the site may briefly mix old and new
@@ -127,6 +157,25 @@ current-main check and leaves publication to the newer run.
 Site objects count toward the whole-namespace storage accounting described in
 [RETENTION.md](RETENTION.md). They are a few megabytes, well inside the
 metadata reserve.
+
+## Search engine notification
+
+After a successful publication, the workflow's `notify IndexNow` job runs:
+
+```sh
+make site-indexnow SITE_RESULT=<site-result> SITE_PUBLICATION_RESULT=<publication-result>
+```
+
+It verifies both results, waits up to `SITE_INDEXNOW_WAIT_SECONDS` (default
+600) until the public site serves the key file and the new bytes of every
+changed page, then sends one request to `SITE_INDEXNOW_ENDPOINT` (default
+`https://api.indexnow.org/indexnow`) with the changed and removed page URLs.
+IndexNow shares it with the participating search engines; Google does not
+participate. A page whose edge copy is still older when the wait ends is left
+to ordinary sitemap crawling. The log shows the HTTP status and response:
+`200` or `202` is accepted, `403` means the key file did not verify, and `422`
+means a URL did not match the host. The job needs no secret and never fails
+the workflow run.
 
 ## Delivery
 

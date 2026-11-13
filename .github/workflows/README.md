@@ -53,7 +53,11 @@ attempt-scoped artifact. Only then does the publication job enter the
 `production-storage` Environment and run `make github-site-publish`. That
 target repeats the current-main check before the credential is used, waits a
 bounded time for the production lease, and writes only below the `site/`
-storage prefix. See [SITE.md](../../docs/SITE.md).
+storage prefix. A final `notify IndexNow` job without secrets then runs
+`make site-indexnow` for the pages that publication changed. It is
+best-effort: its failure never fails the run. Both site build jobs check out
+complete history, because the sitemap dates each page by its last commit. See
+[SITE.md](../../docs/SITE.md).
 
 The `container_images` job prepares one image bundle for the whole run.
 

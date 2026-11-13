@@ -17,15 +17,20 @@ import yaml  # type: ignore[import-untyped]
 from dkc import schema
 from dkc.serialize import canonical_bytes
 from dkc.site import (
+    INDEXNOW_KEY_FILE,
     SiteError,
     SiteManifest,
     audit_site,
+    link_home_to_root,
     manifest_document,
     nav_entries,
+    parse_page_dates,
     prune_output,
     render_llms,
     render_robots,
+    render_sitemap,
     stage_pages,
+    validate_indexnow_key,
 )
 
 GENERATOR_OUTPUT_LIMIT = 8000
@@ -56,6 +61,10 @@ def build(args: argparse.Namespace) -> int:
     fingerprint = (repository / "keys/archive-primary.fingerprint").read_text(
         encoding="ascii"
     )
+    indexnow_key = validate_indexnow_key(
+        (repository / INDEXNOW_KEY_FILE).read_text(encoding="ascii").strip()
+    )
+    page_dates = parse_page_dates(args.page_dates.read_text(encoding="utf-8"))
     site_dir = output / "site"
     with tempfile.TemporaryDirectory(prefix="site-", dir=args.workspace) as directory:
         work = pathlib.Path(directory)
@@ -99,10 +108,20 @@ def build(args: argparse.Namespace) -> int:
             raise SiteError("the site generator failed")
 
     prune_output(site_dir)
+    link_home_to_root(site_dir, site_url)
     nav = nav_entries(config.get("nav"))
     if {entry.target for entry in nav} != {page.target for page in pages}:
         raise SiteError("site navigation must name every published page exactly once")
+    # A page without a commit, such as a new local file, takes the source
+    # revision's time.
+    modified = {
+        page.source: page_dates.get(page.source, args.source_epoch) for page in pages
+    }
+    (site_dir / "sitemap.xml").write_text(
+        render_sitemap(site_url, pages, modified), encoding="utf-8"
+    )
     (site_dir / "robots.txt").write_text(render_robots(site_url), encoding="utf-8")
+    (site_dir / f"{indexnow_key}.txt").write_text(indexnow_key, encoding="ascii")
     (site_dir / "llms.txt").write_text(
         render_llms(
             site_name=config["site_name"],
@@ -119,6 +138,7 @@ def build(args: argparse.Namespace) -> int:
         site_url=site_url,
         pages=pages,
         primary_fingerprint=fingerprint,
+        indexnow_key=indexnow_key,
     )
     document = manifest_document(SiteManifest(site_url, args.revision, audit.objects))
     schema.validate("site-build", document)
@@ -152,6 +172,7 @@ def main() -> int:
     parser.add_argument("--workspace", type=pathlib.Path, required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--source-epoch", type=int, required=True)
+    parser.add_argument("--page-dates", type=pathlib.Path, required=True)
     args = parser.parse_args()
     if args.source_epoch < 1:
         raise SystemExit("site source epoch must be positive")

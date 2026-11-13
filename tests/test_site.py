@@ -22,14 +22,19 @@ from dkc.site import (
     discover_pages,
     format_fingerprint,
     inventory,
+    link_home_to_root,
     manifest_document,
     nav_entries,
+    page_description,
     parse_manifest,
+    parse_page_dates,
     prune_output,
     render_llms,
     render_robots,
+    render_sitemap,
     rewrite_links,
     stage_pages,
+    validate_indexnow_key,
     validate_key,
 )
 
@@ -38,6 +43,7 @@ REVISION = "0123456789abcdef0123456789abcdef01234567"
 REPOSITORY = "https://github.com/example/dkc"
 SITE_URL = "https://site.example.net/"
 FINGERPRINT = "7B98D4BE13418D38BAC037D276349629CC453C26"
+INDEXNOW_KEY = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
 
 
 def _write(path: Path, text: str) -> None:
@@ -139,16 +145,31 @@ def test_staging_marks_only_the_home_page_and_rejects_front_matter(
 ) -> None:
     source = tmp_path / "source"
     _write(source / "README.md", "# Home\n\nSee [docs](docs/A.md).\n")
-    _write(source / "docs/A.md", "# A\n\nBack [home](../README.md).\n")
+    _write(
+        source / "docs/A.md",
+        '# A\n\nRead the [home](../README.md) page & "quotes" first.\n',
+    )
+    _write(source / "docs/B.md", "# B\n\nBack [home](../README.md).\n")
     _write(source / "AGENTS.md", "# Agents\n")
     _write(source / ".github/workflows/README.md", "# Workflows\n")
     destination = tmp_path / "pages"
     pages = stage_pages(
         source, destination, repository_url=REPOSITORY, revision=REVISION
     )
-    assert [page.target for page in pages] == ["ci/README.md", "README.md", "docs/A.md"]
-    assert (destination / "README.md").read_text().startswith("---\nhide:\n")
-    assert (destination / "docs/A.md").read_text().startswith("# A\n")
+    assert [page.target for page in pages] == [
+        "ci/README.md",
+        "README.md",
+        "docs/A.md",
+        "docs/B.md",
+    ]
+    home = (destination / "README.md").read_text()
+    assert home.startswith("---\nhide:\n  - navigation\n---\n")
+    staged = (destination / "docs/A.md").read_text()
+    assert staged.startswith(
+        '---\ndescription: "Read the home page &amp; &quot;quotes&quot; first."\n'
+        "---\n\n# A\n"
+    )
+    assert (destination / "docs/B.md").read_text().startswith("# B\n")
     assert not (destination / "AGENTS.md").exists()
     _write(source / "docs/A.md", "---\ntitle: x\n---\n# A\n")
     with pytest.raises(SiteError, match="front matter"):
@@ -164,6 +185,42 @@ def test_readme_keeps_the_structure_the_home_hero_styles() -> None:
     links = re.findall(r"\[[^\]]+\]\([^)]+\)", lines[2])
     assert len(links) >= 2
     assert re.sub(r"\[[^\]]+\]\([^)]+\)", "", lines[2]).replace("·", "").split() == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "# T\n\n**Bold** lead with `code`, [a link](x.md), and *emphasis* here.\n",
+            "Bold lead with code, a link, and emphasis here.",
+        ),
+        (
+            "# T\n\n| a | b |\n| - | - |\n\n- list item one two three\n"
+            "  continued item text here\n\nFirst real paragraph after the list.\n",
+            "First real paragraph after the list.",
+        ),
+        ("# T\n\n```sh\nnot a lead at all here\n```\n\nShort.\n\n## Next\n", None),
+        ("# T\n\n## Section\n\nText inside a later section only.\n", None),
+        (
+            "# T\n\nThis opening sentence is long enough to fill clearly more than "
+            "half of the available space. " + "word " * 40 + "\n",
+            "This opening sentence is long enough to fill clearly more than half of "
+            "the available space.",
+        ),
+    ],
+)
+def test_page_description_uses_the_lead_paragraph(
+    text: str, expected: str | None
+) -> None:
+    assert page_description(text) == expected
+
+
+def test_page_description_is_shortened_at_a_word_boundary() -> None:
+    lead = "Short opening. " + " ".join(f"word{index}" for index in range(60))
+    description = page_description(f"# T\n\n{lead}\n")
+    assert description is not None
+    assert len(description) <= 160 and description.endswith("\u2026")
+    assert description[:-1].split()[-1] in lead.split()
 
 
 def test_navigation_flattens_sections_and_rejects_duplicates() -> None:
@@ -268,6 +325,7 @@ def _page(title: str, url: str, body: str) -> str:
     return (
         "<!doctype html><html><head>"
         f"<title>{title}</title>"
+        f'<meta name="description" content="About {title}.">'
         f'<link rel="canonical" href="{url}">'
         '<link rel="stylesheet" href="ASSET/style.css">'
         "</head><body>"
@@ -281,13 +339,13 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
     pages = [SitePage("README.md", "README.md"), SitePage("docs/A.md", "docs/A.md")]
     home = _page(
         "Home",
-        f"{SITE_URL}index.html",
+        SITE_URL,
         f"<p><code>{format_fingerprint(FINGERPRINT)}</code></p>"
         '<a href="docs/A.html#top">A</a>'
         f'<a href="{SITE_URL}keys/dkc-archive-keyring.gpg">key</a>'
         '<a href="https://github.com/example/dkc">source</a>',
     ).replace("ASSET", "assets")
-    page = _page("A", f"{SITE_URL}docs/A.html", '<a href="../index.html">home</a>')
+    page = _page("A", f"{SITE_URL}docs/A.html", '<a href="../">home</a>')
     _write(site / "index.html", home)
     _write(site / "docs/A.html", page.replace("ASSET", "../assets"))
     _write(
@@ -296,12 +354,10 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
     )
     _write(
         site / "sitemap.xml",
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f"<url><loc>{SITE_URL}index.html</loc></url>"
-        f"<url><loc>{SITE_URL}docs/A.html</loc></url></urlset>",
+        render_sitemap(SITE_URL, pages, {"README.md": 1, "docs/A.md": 2}),
     )
     _write(site / "robots.txt", render_robots(SITE_URL))
+    _write(site / f"{INDEXNOW_KEY}.txt", INDEXNOW_KEY)
     nav = nav_entries([{"Home": "README.md"}, {"Docs": [{"A": "docs/A.md"}]}])
     _write(
         site / "llms.txt",
@@ -317,13 +373,22 @@ def _site(tmp_path: Path) -> tuple[Path, list[SitePage]]:
     return site, pages
 
 
+def _audit(site: Path, pages: list[SitePage]) -> object:
+    return audit_site(
+        site,
+        site_url=SITE_URL,
+        pages=pages,
+        primary_fingerprint=FINGERPRINT,
+        indexnow_key=INDEXNOW_KEY,
+    )
+
+
 def test_a_complete_site_passes_the_audit(tmp_path: Path) -> None:
     site, pages = _site(tmp_path)
-    audit = audit_site(
-        site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
-    )
+    audit = _audit(site, pages)
     assert audit.pages == 2
     assert [item.key for item in audit.objects] == [
+        f"{INDEXNOW_KEY}.txt",
         "assets/style.css",
         "docs/A.html",
         "index.html",
@@ -357,6 +422,21 @@ def test_a_complete_site_passes_the_audit(tmp_path: Path) -> None:
         ("docs/A.html", "docs/A.html", "docs/other.html", "canonical"),
         (
             "index.html",
+            f'href="{SITE_URL}"',
+            f'href="{SITE_URL}index.html"',
+            "canonical",
+        ),
+        ("docs/A.html", 'href="../"', 'href="../index.html"', "site root"),
+        (
+            "docs/A.html",
+            '<meta name="description" content="About A.">',
+            "",
+            "description",
+        ),
+        ("sitemap.xml", "+00:00</lastmod>", "</lastmod>", "lastmod"),
+        (f"{INDEXNOW_KEY}.txt", INDEXNOW_KEY, "other", "IndexNow"),
+        (
+            "index.html",
             "</body>",
             '<div data-md-component="source"></div></body>',
             "third party",
@@ -380,24 +460,18 @@ def test_the_audit_rejects_each_contract_violation(
     assert old in text
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
     with pytest.raises(SiteError, match=message):
-        audit_site(
-            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
-        )
+        _audit(site, pages)
 
 
 def test_the_audit_rejects_unexpected_and_forbidden_files(tmp_path: Path) -> None:
     site, pages = _site(tmp_path)
     _write(site / "extra.html", "<html></html>")
     with pytest.raises(SiteError, match="extra"):
-        audit_site(
-            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
-        )
+        _audit(site, pages)
     (site / "extra.html").unlink()
     _write(site / "font.woff2", "x")
     with pytest.raises(SiteError, match="not allowed"):
-        audit_site(
-            site, site_url=SITE_URL, pages=pages, primary_fingerprint=FINGERPRINT
-        )
+        _audit(site, pages)
 
 
 def test_pruning_removes_only_unserved_generator_output(tmp_path: Path) -> None:
@@ -435,7 +509,7 @@ def test_llms_index_lists_navigation_pages_by_section() -> None:
         pages=pages,
     )
     assert "> Kernel packages." in text
-    assert f"## Start here\n\n- Home: {SITE_URL}index.html" in text
+    assert f"## Start here\n\n- Home: {SITE_URL}\n" in text
     assert f"## Docs\n\n- A: {SITE_URL}docs/A.html" in text
     with pytest.raises(SiteError, match="unpublished"):
         render_llms(
@@ -454,3 +528,53 @@ def test_fingerprint_formatting_requires_a_v4_fingerprint() -> None:
     )
     with pytest.raises(SiteError):
         format_fingerprint("7B98")
+
+
+def test_home_references_point_at_the_site_root(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    _write(
+        site / "index.html",
+        f'<link rel="canonical" href="{SITE_URL}index.html">'
+        '<a href="index.html">home</a><a href="docs/index.html">docs</a>',
+    )
+    _write(
+        site / "docs/index.html",
+        '<a class="x" href="../index.html#install">install</a>'
+        '<a href="index.html">map</a><link rel="prev" href="../index.html">',
+    )
+    _write(site / "config/flavors/index.html", '<a href="../../index.html">home</a>')
+    link_home_to_root(site, SITE_URL)
+    assert (site / "index.html").read_text() == (
+        f'<link rel="canonical" href="{SITE_URL}">'
+        '<a href="./">home</a><a href="docs/index.html">docs</a>'
+    )
+    assert (site / "docs/index.html").read_text() == (
+        '<a class="x" href="../#install">install</a>'
+        '<a href="index.html">map</a><link rel="prev" href="../">'
+    )
+    assert (site / "config/flavors/index.html").read_text() == (
+        '<a href="../../">home</a>'
+    )
+
+
+def test_sitemap_lists_public_urls_with_commit_times() -> None:
+    pages = [SitePage("docs/A.md", "docs/A.md"), SitePage("README.md", "README.md")]
+    dates = parse_page_dates("1700000000\tREADME.md\n1600000000\tdocs/A.md\n")
+    text = render_sitemap(SITE_URL, pages, dates)
+    assert re.findall(r"<loc>([^<]+)</loc>\s*<lastmod>([^<]+)</lastmod>", text) == [
+        (SITE_URL, "2023-11-14T22:13:20+00:00"),
+        (f"{SITE_URL}docs/A.html", "2020-09-13T12:26:40+00:00"),
+    ]
+    with pytest.raises(SiteError, match="modification time"):
+        render_sitemap(SITE_URL, pages, {"README.md": 1})
+    for record in ("x\tREADME.md", "1 README.md", "1\t../x.md", "1\ta\n2\ta"):
+        with pytest.raises(SiteError):
+            parse_page_dates(record)
+
+
+def test_indexnow_keys_follow_the_protocol_alphabet() -> None:
+    assert validate_indexnow_key(INDEXNOW_KEY) == INDEXNOW_KEY
+    assert validate_indexnow_key((ROOT / "site/indexnow-key.txt").read_text().strip())
+    for key in ("short", "x" * 129, "has space here", "-leading-dash", "key.with.dots"):
+        with pytest.raises(SiteError):
+            validate_indexnow_key(key)
