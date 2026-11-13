@@ -15,6 +15,9 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
   and query-bearing site requests, and `/index.html`, redirect to the canonical
   HTTPS URL. Operators add them after the new site build is published. See
   [docs/CLOUDFLARE_CACHE.md](docs/CLOUDFLARE_CACHE.md#8-redirect-site-aliases).
+- The documentation site measures visits with Google Analytics, which loads
+  only after a visitor accepts the new cookie consent dialog. See
+  [docs/SITE.md](docs/SITE.md#analytics-and-consent).
 
 ### Changed
 

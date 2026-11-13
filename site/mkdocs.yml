@@ -15,7 +15,7 @@ site_url: https://dkc-linux.romancello.net/
 copyright: >-
   Project automation is MIT-licensed; Linux and Debian-derived packaging keep
   their own licenses. DKC is not sponsored, endorsed, or affiliated with the
-  Debian Project.
+  Debian Project. <a href="#__consent">Change cookie settings</a>
 
 docs_dir: pages
 use_directory_urls: false
@@ -85,6 +85,21 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/kogeler/dkc-linux
       name: Source on GitHub
+  # Google Analytics loads only after the visitor accepts the consent dialog;
+  # the site audit rejects analytics without it.
+  analytics:
+    provider: google
+    property: G-LZ1273E7W8
+  consent:
+    title: Cookie consent
+    description: >-
+      With your consent, this site uses Google Analytics cookies to count
+      visits and see which pages are read. Nothing is loaded from Google
+      unless you accept.
+    actions:
+      - accept
+      - reject
+      - manage
 
 nav:
   - Home: README.md

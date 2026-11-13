@@ -103,10 +103,24 @@ The build fails unless every check passes:
 - `sitemap.xml` lists exactly the pages, each once with a UTC `lastmod`;
   `robots.txt` matches the generated policy; `llms.txt` advertises only
   existing pages; and the IndexNow key file holds the tracked key;
-- the home page shows the tracked archive primary fingerprint.
+- the home page shows the tracked archive primary fingerprint;
+- every page that carries the analytics loader also carries the consent dialog
+  and calls the loader only behind the stored analytics consent.
 
-The site carries no analytics, web fonts, or other third-party requests. It is
-not a trust anchor: users verify the archive key against the fingerprint
+## Analytics and consent
+
+The site uses Google Analytics 4 through Material's built-in integration,
+configured under `extra.analytics` in `site/mkdocs.yml`. Every visitor first
+sees a cookie consent dialog with accept, reject, and manage actions; the
+footer link reopens it. Until the visitor accepts analytics, the page loads
+nothing from Google and sets no analytics cookie. The dialog appears for every
+visitor, because the static site cannot tell where a visitor is.
+
+Google Analytics is the only third-party request. The site loads no web fonts,
+repository widget, or other external resource, and the audit rejects any
+external script, stylesheet, image, or frame in the generated HTML.
+
+The site is not a trust anchor: users verify the archive key against the fingerprint
 procedure in [USER_INSTALL.md](USER_INSTALL.md).
 
 ## Pull requests

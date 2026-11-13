@@ -463,6 +463,36 @@ def test_the_audit_rejects_each_contract_violation(
         _audit(site, pages)
 
 
+_ANALYTICS = '<script id="__analytics">function __md_analytics(){}</script>'
+_CONSENT_DIALOG = '<div data-md-component="consent" id="__consent" hidden></div>'
+_CONSENT_GATE = (
+    '<script>var consent=__md_get("__consent");'
+    "consent&&consent.analytics&&__md_analytics()</script>"
+)
+
+
+@pytest.mark.parametrize(
+    ("addition", "accepted"),
+    [
+        (_ANALYTICS + _CONSENT_DIALOG + _CONSENT_GATE, True),
+        (_ANALYTICS + _CONSENT_GATE, False),
+        (_ANALYTICS + _CONSENT_DIALOG + "<script>__md_analytics()</script>", False),
+    ],
+)
+def test_analytics_must_wait_for_visitor_consent(
+    tmp_path: Path, addition: str, accepted: bool
+) -> None:
+    site, pages = _site(tmp_path)
+    target = site / "docs/A.html"
+    text = target.read_text(encoding="utf-8")
+    target.write_text(text.replace("</body>", addition + "</body>"), encoding="utf-8")
+    if accepted:
+        _audit(site, pages)
+    else:
+        with pytest.raises(SiteError, match="without visitor consent"):
+            _audit(site, pages)
+
+
 def test_the_audit_rejects_unexpected_and_forbidden_files(tmp_path: Path) -> None:
     site, pages = _site(tmp_path)
     _write(site / "extra.html", "<html></html>")

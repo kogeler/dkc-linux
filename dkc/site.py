@@ -791,6 +791,13 @@ class _Document:
     title: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
     source_component: bool = False
+    analytics: bool = False
+    consent_dialog: bool = False
+
+
+# Material calls the analytics loader only behind this test of the stored
+# consent. A theme change that drops it must fail the audit, not leak requests.
+_ANALYTICS_CONSENT_GATE = "consent.analytics&&__md_analytics()"
 
 
 class _PageParser(HTMLParser):
@@ -809,6 +816,10 @@ class _PageParser(HTMLParser):
             self._in_title = True
         if values.get("data-md-component") == "source":
             self.document.source_component = True
+        if values.get("data-md-component") == "consent":
+            self.document.consent_dialog = True
+        if tag == "script" and values.get("id") == "__analytics":
+            self.document.analytics = True
         if tag == "meta" and values.get("name", "").lower() == "description":
             self.document.descriptions.append(values.get("content", ""))
         if tag == "link" and "canonical" in values.get("rel", "").split():
@@ -887,6 +898,11 @@ def audit_site(
             raise SiteError(f"{key}: empty title")
         if document.source_component:
             raise SiteError(f"{key}: repository widget would contact a third party")
+        if document.analytics and not (
+            document.consent_dialog
+            and _ANALYTICS_CONSENT_GATE in "".join(document.text)
+        ):
+            raise SiteError(f"{key}: analytics would load without visitor consent")
         for tag, reference in document.references:
             checked += 1
             _check_reference(
