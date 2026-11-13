@@ -23,7 +23,11 @@ def _inputs(**overrides: object) -> BuildInputs:
         },
         dkc_revision=1,
         overlay_sha256="ab" + "0" * 62,
-        flavor_config_sha256={"v2": "02" + "0" * 62, "v3": "03" + "0" * 62, "v4": "04" + "0" * 62},
+        flavor_config_sha256={
+            "v2": "02" + "0" * 62,
+            "v3": "03" + "0" * 62,
+            "v4": "04" + "0" * 62,
+        },
         flavor_policy={"v2": "x86-64-v2", "v3": "x86-64-v3", "v4": "x86-64-v4"},
         base_image_digest="docker.io/library/debian@sha256:" + "38" * 32,
         toolchain_lock_sha256="7c" + "0" * 62,
@@ -135,7 +139,11 @@ def test_every_input_changes_the_identity(field: str, value: object) -> None:
 
 def test_flavor_configuration_is_part_of_the_identity() -> None:
     changed = _inputs(
-        flavor_config_sha256={"v2": "02" + "0" * 62, "v3": "ff" + "0" * 62, "v4": "04" + "0" * 62}
+        flavor_config_sha256={
+            "v2": "02" + "0" * 62,
+            "v3": "ff" + "0" * 62,
+            "v4": "04" + "0" * 62,
+        }
     )
     assert changed.digest() != _inputs().digest()
 
@@ -153,14 +161,20 @@ def test_source_members_are_part_of_the_identity() -> None:
 def test_flavor_order_is_fixed_not_dictionary_order() -> None:
     """The digest must not depend on how a caller happened to build the dict."""
     reordered = _inputs(
-        flavor_config_sha256={"v4": "04" + "0" * 62, "v2": "02" + "0" * 62, "v3": "03" + "0" * 62}
+        flavor_config_sha256={
+            "v4": "04" + "0" * 62,
+            "v2": "02" + "0" * 62,
+            "v3": "03" + "0" * 62,
+        }
     )
     assert reordered.digest() == _inputs().digest()
 
 
 def test_missing_flavor_is_refused() -> None:
     with pytest.raises(ValueError, match="v4"):
-        _inputs(flavor_config_sha256={"v2": "02" + "0" * 62, "v3": "03" + "0" * 62}).digest()
+        _inputs(
+            flavor_config_sha256={"v2": "02" + "0" * 62, "v3": "03" + "0" * 62}
+        ).digest()
 
 
 def test_missing_or_extra_flavor_policy_is_refused() -> None:

@@ -5,9 +5,15 @@ from typing import cast
 import pytest
 
 from dkc.remote_store import S3ObjectStore, validate_namespace
-from dkc.s3 import ListedObject, ObjectHead, PreconditionFailed, RemoteObject, RemoteStoreError, S3Client
+from dkc.s3 import (
+    ListedObject,
+    ObjectHead,
+    PreconditionFailed,
+    RemoteObject,
+    RemoteStoreError,
+    S3Client,
+)
 from dkc.storage import ObjectMetadata
-
 
 METADATA = ObjectMetadata("application/octet-stream", "public, max-age=1")
 
@@ -93,9 +99,7 @@ def test_lost_response_with_different_remote_bytes_stays_failed() -> None:
     client = CorruptingClient()
     client.raise_after_commit = RemoteStoreError("PutObject", 503, "unavailable")
     with pytest.raises(RemoteStoreError, match="503"):
-        _store(client).put(
-            "pool/package.deb", b"payload", METADATA, if_none_match=True
-        )
+        _store(client).put("pool/package.deb", b"payload", METADATA, if_none_match=True)
 
 
 def test_412_is_never_relabelled_as_success() -> None:
@@ -104,9 +108,7 @@ def test_412_is_never_relabelled_as_success() -> None:
         b"winner", METADATA, '"winner"'
     )
     with pytest.raises(PreconditionFailed):
-        _store(client).put(
-            "state/current.asc", b"winner", METADATA, if_match='"stale"'
-        )
+        _store(client).put("state/current.asc", b"winner", METADATA, if_match='"stale"')
 
 
 def test_immutable_reuse_requires_exact_bytes_and_metadata() -> None:

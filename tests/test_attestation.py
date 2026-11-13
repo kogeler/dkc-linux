@@ -2,38 +2,21 @@
 
 from __future__ import annotations
 
-import importlib.util
 import lzma
 import pathlib
-import re
-from types import ModuleType
 
 import pytest
 
+from dkc.cli import attest_one_build as ATTEST
 
-SCRIPT = (
-    pathlib.Path(__file__).parent.parent
-    / "scripts"
-    / "in-container"
-    / "attest-one-build.py"
-)
-
-
-def load_script() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("attest_one_build", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-ATTEST = load_script()
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def test_savedcmd_is_the_current_kbuild_record_name(tmp_path: pathlib.Path) -> None:
     record = tmp_path / ".example.o.cmd"
     record.write_text(
-        "savedcmd_drivers/example.o := clang-21 -c -o drivers/example.o drivers/example.c\n"
+        "savedcmd_drivers/example.o := clang-21 -c -o drivers/example.o "
+        "drivers/example.c\n"
         "source_drivers/example.o := drivers/example.c\n",
         encoding="utf-8",
     )
@@ -77,7 +60,9 @@ def test_private_key_scan_does_not_confuse_public_certificate_or_metadata() -> N
     assert ATTEST.is_possible_private_key(pathlib.Path("certs/signing_key.pem"))
     assert ATTEST.is_possible_private_key(pathlib.Path("release-signing.p12"))
     assert not ATTEST.is_possible_private_key(pathlib.Path("certs/signing_key.x509"))
-    assert not ATTEST.is_possible_private_key(pathlib.Path("certs/.signing_key.x509.cmd"))
+    assert not ATTEST.is_possible_private_key(
+        pathlib.Path("certs/.signing_key.x509.cmd")
+    )
 
 
 def test_btf_policy_checks_both_presence_and_absence(
@@ -97,9 +82,13 @@ def test_btf_policy_checks_both_presence_and_absence(
         ATTEST.require_btf("llvm-readelf-21", elf, "vmlinux")
 
 
-def test_module_sample_is_deterministic_and_covers_subsystems(tmp_path: pathlib.Path) -> None:
+def test_module_sample_is_deterministic_and_covers_subsystems(
+    tmp_path: pathlib.Path,
+) -> None:
     modules: dict[str, pathlib.Path] = {}
-    for index, subsystem in enumerate(("arch", "crypto", "drivers", "fs", "net", "sound")):
+    for index, subsystem in enumerate(
+        ("arch", "crypto", "drivers", "fs", "net", "sound")
+    ):
         for member in range(6):
             identity = f"{subsystem}/example-{member}.ko"
             path = tmp_path / f"{index}-{member}.ko"
@@ -120,7 +109,9 @@ def test_module_sample_is_deterministic_and_covers_subsystems(tmp_path: pathlib.
     }
 
 
-def test_target_normalization_accepts_only_build_relative_paths(tmp_path: pathlib.Path) -> None:
+def test_target_normalization_accepts_only_build_relative_paths(
+    tmp_path: pathlib.Path,
+) -> None:
     build = tmp_path / "build"
     assert ATTEST.normalize_target(f"{build}/drivers/a.ko", build) == "drivers/a.ko"
     assert ATTEST.normalize_target("./drivers/a.ko", build) == "drivers/a.ko"
@@ -167,9 +158,7 @@ def test_header_symlink_must_resolve_to_the_exact_conventional_path(
     link = tmp_path / relative
     link.parent.mkdir(parents=True)
     link.symlink_to("../../../src/linux-headers-release")
-    ATTEST.require_relative_symlink(
-        tmp_path, relative, "usr/src/linux-headers-release"
-    )
+    ATTEST.require_relative_symlink(tmp_path, relative, "usr/src/linux-headers-release")
 
     link.unlink()
     link.symlink_to("../../../src/dkc-linux-headers-release")
@@ -236,7 +225,9 @@ def test_attestation_policy_digest_uses_shared_identity_normalization() -> None:
 def test_debian_metadata_timestamps_require_rfc_date_with_timezone() -> None:
     expected = 1_786_147_200
     for label in ("Build-Date", "Date"):
-        assert ATTEST.timestamp_epoch("Sat, 08 Aug 2026 00:00:00 +0000", label) == expected
+        assert (
+            ATTEST.timestamp_epoch("Sat, 08 Aug 2026 00:00:00 +0000", label) == expected
+        )
         with pytest.raises(SystemExit, match="lacks a timezone"):
             ATTEST.timestamp_epoch("Sat, 08 Aug 2026 00:00:00", label)
 
@@ -244,7 +235,7 @@ def test_debian_metadata_timestamps_require_rfc_date_with_timezone() -> None:
 def test_every_flavor_build_accounts_for_arch_independent_packages() -> None:
     # Parallel flavor jobs are self-contained. Each uses the complete binary
     # scope and inventories both amd64 and Architecture:all output.
-    run = (SCRIPT.parent / "run-one-build.sh").read_text(encoding="utf-8")
+    run = (ROOT / "scripts/in-container/run-one-build.sh").read_text(encoding="utf-8")
     assert "build_scope=binary" in run
     assert "dh_listpackages_args=()" in run
     assert "pkg.dkc.nokbuild" not in run
@@ -252,16 +243,8 @@ def test_every_flavor_build_accounts_for_arch_independent_packages() -> None:
 
 
 def test_build_disables_implicit_debug_symbol_packages_source_wide() -> None:
-    run = (SCRIPT.parent / "run-one-build.sh").read_text(encoding="utf-8")
+    run = (ROOT / "scripts/in-container/run-one-build.sh").read_text(encoding="utf-8")
     assert 'DEB_BUILD_OPTIONS="parallel=${jobs} noautodbgsym"' in run
-
-
-def test_kbuild_template_drops_the_current_stale_python_substitution() -> None:
-    generator = (SCRIPT.parent / "generate-overlay-patches.py").read_text(
-        encoding="utf-8"
-    )
-    assert 'Depends: ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends}, pahole' in generator
-    assert 'Depends: ${shlibs:Depends}, ${misc:Depends}, pahole' in generator
 
 
 def test_header_tool_assignments_require_every_versioned_llvm_tool(

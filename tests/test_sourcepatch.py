@@ -68,7 +68,9 @@ PATCH = f"""--- a/{PATH}
  }}
 """
 
-FIXED = SOURCE.replace("\tASSERT_EQ(*futex, 0);\n", "\tASSERT_EQ(atomic_load(futex), 0);\n")
+FIXED = SOURCE.replace(
+    "\tASSERT_EQ(*futex, 0);\n", "\tASSERT_EQ(atomic_load(futex), 0);\n"
+)
 
 
 def _tree(tmp_path: pathlib.Path, text: str) -> pathlib.Path:
@@ -95,7 +97,10 @@ def test_moved_context_is_tolerated_when_one_side_still_matches(
     # one, and shifts everything by a few lines. patch --fuzz=0 rejects both.
     drifted = (
         SOURCE.replace("/* filler 2 */\n", "")
-        .replace("\tret = call(futex);\n\n\tASSERT_EQ(ret, 0);", "\tret = call2(futex);\n\n\tASSERT_EQ(ret, 0);")
+        .replace(
+            "\tret = call(futex);\n\n\tASSERT_EQ(ret, 0);",
+            "\tret = call2(futex);\n\n\tASSERT_EQ(ret, 0);",
+        )
         .replace("\t/* Check the upper bits */\n", "\t/* Check the upper 32 bits */\n")
     )
     root = _tree(tmp_path, drifted)
@@ -134,9 +139,9 @@ def test_a_changed_removed_line_fails(tmp_path: pathlib.Path) -> None:
 
 
 def test_context_changed_on_both_sides_fails(tmp_path: pathlib.Path) -> None:
-    changed = SOURCE.replace("\tASSERT_EQ(ret, 0);\n", "\tASSERT_EQ(ret, 2);\n").replace(
-        "\t/* Check the lower bits */\n", "\t/* Check the low bits */\n"
-    )
+    changed = SOURCE.replace(
+        "\tASSERT_EQ(ret, 0);\n", "\tASSERT_EQ(ret, 2);\n"
+    ).replace("\t/* Check the lower bits */\n", "\t/* Check the low bits */\n")
     root = _tree(tmp_path, changed)
     with pytest.raises(SourcePatchError, match="hunk 1 .* is not present"):
         apply_patch(root, PATCH)
@@ -177,14 +182,22 @@ def test_form_feeds_and_non_utf8_bytes_survive(tmp_path: pathlib.Path) -> None:
         ("--- /dev/null\n+++ b/f\n@@ -0,0 +1 @@\n+x\n", "creating or deleting"),
         ("--- a/../f\n+++ b/../f\n@@ -1 +1 @@\n-x\n+y\n", "unsafe patch path"),
         ("--- a/f\n+++ b/g\n@@ -1 +1 @@\n-x\n+y\n", "renaming"),
-        ("diff --git a/f b/f\nold mode 100644\nnew mode 100755\n", "unsupported patch feature"),
-        ("--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y\n\\ No newline at end of file\n", "final newline"),
+        (
+            "diff --git a/f b/f\nold mode 100644\nnew mode 100755\n",
+            "unsupported patch feature",
+        ),
+        (
+            "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y\n\\ No newline at end of file\n",
+            "final newline",
+        ),
         ("--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n-x\n+y\n", "truncated hunk"),
         ("--- a/f\n+++ b/f\n@@ -1 +1 @@\n x\n", "changes nothing"),
         ("just a description\n", "no file changes"),
     ],
 )
-def test_unsupported_or_malformed_patches_are_rejected(patch: str, message: str) -> None:
+def test_unsupported_or_malformed_patches_are_rejected(
+    patch: str, message: str
+) -> None:
     with pytest.raises(SourcePatchError, match=message):
         parse_patch(patch)
 
@@ -221,7 +234,9 @@ def test_command_line_prints_the_result(
     patch.write_text(PATCH, encoding="utf-8")
     assert main([str(root), str(patch)]) == 0
     assert capsys.readouterr().out == f"{ALREADY_PRESENT}\n"
-    (root / PATH).write_text(SOURCE.replace("*futex, 0)", "*futex, 1)"), encoding="utf-8")
+    (root / PATH).write_text(
+        SOURCE.replace("*futex, 0)", "*futex, 1)"), encoding="utf-8"
+    )
     assert main([str(root), str(patch)]) == 1
     assert "0001-demo.patch: " in capsys.readouterr().err
 

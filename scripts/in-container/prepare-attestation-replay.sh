@@ -44,62 +44,17 @@ cp "$config" "$replay/config"
 # while preserving the exact machine code consumed by the SIMD scanner.
 "$objcopy" --strip-debug "$vmlinux" "$replay/vmlinux"
 zstd -q -T1 -3 -f "$replay/vmlinux" -o "$replay/vmlinux.zst"
-python3 /work/repo/scripts/in-container/verify-replay-elf.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.verify_replay_elf \
 	"$vmlinux" "$replay/vmlinux" \
 	"$replay/executable-sections.json" "$llvm_major"
-python3 /work/repo/scripts/in-container/attest-one-build.py \
+PYTHONPATH=/work/repo python3 -m dkc.cli.attest_one_build \
 	--capture-replay "$build_root" "$evidence" "$llvm_major"
 
-python3 - "$vmlinux" "$replay/vmlinux" "$replay/vmlinux.zst" \
+PYTHONPATH=/work/repo python3 -m dkc.cli.prepare_attestation_replay "$vmlinux" "$replay/vmlinux" "$replay/vmlinux.zst" \
 	"$replay/System.map" "$replay/config" "$replay/executable-sections.json" \
 	"$evidence/kbuild-commands.tsv.xz" \
 	"$replay/build-tree-inventory.json" "$llvm_major" \
-	"$replay/manifest.json" <<'PY'
-import hashlib
-import json
-import pathlib
-import sys
-
-
-def record(path: pathlib.Path) -> dict[str, object]:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return {"size": path.stat().st_size, "sha256": digest.hexdigest()}
-
-
-(
-    original,
-    replay,
-    compressed,
-    system_map,
-    config,
-    executable_sections,
-    kbuild_commands,
-    build_tree_inventory,
-    llvm_major,
-    output,
-) = sys.argv[1:]
-document = {
-    "schema_version": 2,
-    "status": "COMPLETE",
-    "llvm_major": int(llvm_major),
-    "transform": f"llvm-objcopy-{llvm_major} --strip-debug",
-    "executable_sections_comparison": "PASS",
-    "original_vmlinux": record(pathlib.Path(original)),
-    "replay_vmlinux": record(pathlib.Path(replay)),
-    "vmlinux_zst": record(pathlib.Path(compressed)),
-    "system_map": record(pathlib.Path(system_map)),
-    "config": record(pathlib.Path(config)),
-    "executable_sections": record(pathlib.Path(executable_sections)),
-    "kbuild_commands": record(pathlib.Path(kbuild_commands)),
-    "build_tree_inventory": record(pathlib.Path(build_tree_inventory)),
-}
-pathlib.Path(output).write_text(
-    json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-)
-PY
+	"$replay/manifest.json"
 rm -f -- "$replay/vmlinux"
 
 echo "attestation replay inputs COMPLETE" >&2

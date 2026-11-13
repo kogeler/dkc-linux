@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 
+import jsonschema
 import pytest
 
-from dkc.schema import validate
+from dkc.cli import build_signed_repository as repository
 from dkc.naming import FLAVORS, Identity, package_names
-
+from dkc.schema import validate
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "build-signed-repository.py"
-SPEC = importlib.util.spec_from_file_location("build_signed_repository", SCRIPT)
-assert SPEC and SPEC.loader
-repository = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(repository)
+SCRIPT = ROOT / "dkc" / "cli" / "build_signed_repository.py"
 
 PRIMARY = "A" * 40
 SUBKEY = "B" * 40
@@ -43,8 +39,10 @@ def _write(root: pathlib.Path, relative: str, payload: bytes) -> pathlib.Path:
     return path
 
 
-def _handoff(tmp_path: pathlib.Path) -> tuple[pathlib.Path, dict[str, object], dict[str, pathlib.Path]]:
-    issued = datetime.fromtimestamp(EPOCH, timezone.utc)
+def _handoff(
+    tmp_path: pathlib.Path,
+) -> tuple[pathlib.Path, dict[str, object], dict[str, pathlib.Path]]:
+    issued = datetime.fromtimestamp(EPOCH, UTC)
     release_date = format_datetime(issued, usegmt=True)
     valid_until = format_datetime(
         issued + timedelta(seconds=repository.VALIDITY_SECONDS), usegmt=True
@@ -154,7 +152,9 @@ def test_series_retention_keeps_every_revision_in_the_newest_three_parsed_series
     ]
 
 
-def test_binary_index_accepts_only_exact_packages_from_the_signed_previous_pool() -> None:
+def test_binary_index_accepts_only_exact_packages_from_the_signed_previous_pool() -> (
+    None
+):
     def release(source_version: str, build_id: str) -> tuple[list[str], str]:
         identity = Identity.create(source_version, 1, build_id)
         publication = {
@@ -243,7 +243,9 @@ def test_source_index_accepts_retained_versions_and_one_exact_current_release() 
         )
 
 
-def test_strict_unsigned_handoff_accepts_only_its_exact_inventory(tmp_path: pathlib.Path) -> None:
+def test_strict_unsigned_handoff_accepts_only_its_exact_inventory(
+    tmp_path: pathlib.Path,
+) -> None:
     root, request, tracked = _handoff(tmp_path)
     assert _validate(root, request, tracked) == request["artifacts"]
 
@@ -316,18 +318,20 @@ def test_request_schema_rejects_unsafe_repository_paths(tmp_path: pathlib.Path) 
     records = request["artifacts"]
     assert isinstance(records, list) and isinstance(records[0], dict)
     records[0]["key"] = "pool/../outside"
-    with pytest.raises(Exception):
+    with pytest.raises(jsonschema.ValidationError):
         validate("repository-signing-request", request)
 
 
-def test_request_schema_requires_the_exact_release_meta_set(tmp_path: pathlib.Path) -> None:
+def test_request_schema_requires_the_exact_release_meta_set(
+    tmp_path: pathlib.Path,
+) -> None:
     _root, request, _tracked = _handoff(tmp_path)
     validate("repository-signing-request", request)
     meta = request["meta_packages"]
     assert isinstance(meta, dict)
     meta.pop("dkc-linux-headers-v3-amd64")
     meta["dkc-linux-image-v4-amd64"] = "7.1.7-1+dkc13.1"
-    with pytest.raises(Exception):
+    with pytest.raises(jsonschema.ValidationError):
         validate("repository-signing-request", request)
 
 
@@ -415,7 +419,7 @@ def test_per_invocation_source_metadata_stays_outside_the_apt_pool() -> None:
         ROOT / "scripts" / "in-container" / "assemble-apt-repository.sh"
     ).read_text()
     repository_builder = SCRIPT.read_text()
-    assert 'evidence/source-upload-metadata' in assembler
+    assert "evidence/source-upload-metadata" in assembler
     assert 'and source.name.endswith((".dsc", ".orig.tar.xz", ".debian.tar.xz"))' in (
         repository_builder
     )

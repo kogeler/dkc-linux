@@ -27,15 +27,22 @@ def test_all_flavor_policies_are_valid_and_nested() -> None:
         assert policy.compiler_march == f"x86-64-{flavor}"
         assert policy.rust_target_cpu == policy.compiler_march
         assert policy.c_no_simd_flags == C_NO_SIMD_FLAGS
-        assert policy.intentional_fpu_artifact == "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
+        assert (
+            policy.intentional_fpu_artifact
+            == "kernel/drivers/gpu/drm/amd/amdgpu/amdgpu.ko"
+        )
         assert policy.rust_target_feature_flag.startswith("-Ctarget-feature=-sse,")
         assert len(policy.intentional_fpu_objects) == 66
-    for flavor, policy in load_all_flavor_policies(POLICY_DIR, FPU_7_2).items():
+    for policy in load_all_flavor_policies(POLICY_DIR, FPU_7_2).values():
         assert len(policy.intentional_fpu_objects) == 69
 
 
-def test_policy_file_name_and_declared_flavor_cannot_disagree(tmp_path: pathlib.Path) -> None:
-    text = (POLICY_DIR / "v2.toml").read_text().replace('flavor = "v2"', 'flavor = "v3"')
+def test_policy_file_name_and_declared_flavor_cannot_disagree(
+    tmp_path: pathlib.Path,
+) -> None:
+    text = (
+        (POLICY_DIR / "v2.toml").read_text().replace('flavor = "v2"', 'flavor = "v3"')
+    )
     path = tmp_path / "v2.toml"
     path.write_text(text)
     with pytest.raises(FlavorPolicyError, match="matching flavor"):

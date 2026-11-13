@@ -16,6 +16,8 @@ from typing import Any
 __all__ = ["SCHEMA_DIR", "load", "validate"]
 
 SCHEMA_DIR = pathlib.Path(__file__).resolve().parent.parent / "schemas"
+
+
 def load(name: str) -> dict[str, Any]:
     path = SCHEMA_DIR / f"{name}.schema.json"
     if not path.exists():
@@ -28,8 +30,10 @@ def load(name: str) -> dict[str, Any]:
 def validate(name: str, document: Any) -> None:
     """Validate a document, raising on the first problem.
 
-    jsonschema is a build and test dependency, not a runtime one for the
-    publication path; importing it here keeps that boundary visible.
+    jsonschema is imported here, not at module level, because host-side entry
+    points import this module and use only the standard library. Every image
+    that validates records, including the signing toolbox and the APT client,
+    installs jsonschema from Debian.
     """
     import jsonschema  # type: ignore[import-untyped]
 

@@ -61,73 +61,7 @@ gpgv --keyring "$keyring" "${immutable_manifests[0]}.asc" \
 gpgv --keyring "$keyring" "${immutable_transactions[0]}.asc" \
 	"${immutable_transactions[0]}" >"$evidence/transaction-gpgv.log" 2>&1
 
-PYTHONPATH="$repo_root" python3 - "$repository" "$evidence/state-current.json" <<'PY'
-import hashlib
-import json
-import pathlib
-import sys
-
-from dkc.schema import validate
-
-
-def sha256(path: pathlib.Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while block := stream.read(1024 * 1024):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-root = pathlib.Path(sys.argv[1]).resolve()
-pointer = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
-validate("state-pointer", pointer)
-manifest_path = root / pointer["manifest_key"]
-if not manifest_path.is_file() or sha256(manifest_path) != pointer["manifest_sha256"]:
-    raise SystemExit("state pointer does not identify the immutable manifest bytes")
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-validate("publication-manifest", manifest)
-if (
-    manifest["publication_id"] != pointer["publication_id"]
-    or manifest["generation"] != pointer["generation"]
-    or (root / "manifest.json").read_bytes() != manifest_path.read_bytes()
-):
-    raise SystemExit("state pointer, immutable manifest, and root manifest disagree")
-
-inrelease = root / "dists/trixie/InRelease"
-if manifest["apt_metadata"]["inrelease_sha256"] != sha256(inrelease):
-    raise SystemExit("manifest does not bind the committed InRelease")
-for relative, expected in manifest["apt_metadata"]["index_hashes"].items():
-    if sha256(root / relative) != expected:
-        raise SystemExit(f"manifest index hash differs: {relative}")
-
-artifact_keys = {item["key"] for item in manifest["artifacts"]}
-if artifact_keys != set(manifest["live_objects"]):
-    raise SystemExit("local current publication does not mark every artifact live")
-expected_artifacts = {
-    path.relative_to(root).as_posix()
-    for prefix in ("pool", "dists", "keys")
-    for path in (root / prefix).rglob("*")
-    if path.is_file()
-}
-if artifact_keys != expected_artifacts:
-    raise SystemExit("manifest artifact graph differs from the repository graph")
-for item in manifest["artifacts"]:
-    path = root / item["key"]
-    if not path.is_file() or path.stat().st_size != item["size"] or sha256(path) != item["sha256"]:
-        raise SystemExit(f"manifest artifact differs: {item['key']}")
-
-transaction_path = root / (
-    f"state/transactions/{manifest['transaction_id']}/record.json"
-)
-transaction = json.loads(transaction_path.read_text(encoding="utf-8"))
-validate("transaction", transaction)
-if (
-    transaction["publication_id"] != manifest["publication_id"]
-    or transaction["expected_generation"] != manifest["generation"]
-    or transaction["intended_inrelease_sha256"] != sha256(inrelease)
-):
-    raise SystemExit("transaction, manifest, and InRelease disagree")
-PY
+PYTHONPATH="$repo_root" python3 -m dkc.cli.signed_repository_client state "$repository" "$evidence/state-current.json"
 
 mapfile -t primary_fingerprints <"$repository/keys/archive-primary.fingerprint"
 mapfile -t signing_subkeys <"$repository/keys/archive-signing-subkeys.fingerprints"
@@ -164,17 +98,7 @@ release_image_metas=(
 	dkc-linux-image-v3-amd64
 )
 current_dkc_version="$(
-	python3 - "$repository/manifest.json" <<'PY'
-import json
-import pathlib
-import sys
-
-manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-versions = set(manifest["meta_packages"].values())
-if len(versions) != 1:
-    raise SystemExit("signed manifest does not identify one current DKC version")
-print(versions.pop())
-PY
+	PYTHONPATH="$repo_root" python3 -m dkc.cli.signed_repository_client current-version "$repository/manifest.json"
 )"
 test -n "$current_dkc_version"
 apt-cache policy dkc-archive-keyring "${release_meta_packages[@]}" \
@@ -299,31 +223,8 @@ rebuilt_dsc="$(find "$rebuild" -maxdepth 1 -type f -name 'dkc-linux_*.dsc')"
 test -n "$rebuilt_dsc"
 dpkg-source -x "$rebuilt_dsc" "$rebuild/reconstructed" \
 	>>"$evidence/source-rebuild.log" 2>&1
-PYTHONPATH="$repo_root" python3 - "${linux_trees[0]}" "$rebuild/reconstructed" \
-	"$evidence/source-rebuild.json" <<'PY'
-import hashlib
-import pathlib
-import sys
-
-from dkc.serialize import dumps
-from dkc.sourcepackage import build_tree_manifest
-
-original = build_tree_manifest(pathlib.Path(sys.argv[1]))
-rebuilt = build_tree_manifest(pathlib.Path(sys.argv[2]))
-if original != rebuilt:
-    raise SystemExit("source-only rebuild changed the reconstructed source tree")
-payload = original.encode()
-pathlib.Path(sys.argv[3]).write_text(
-    dumps(
-        {
-            "source_tree_entries": len(original.splitlines()),
-            "source_tree_manifest_sha256": hashlib.sha256(payload).hexdigest(),
-            "status": "PASS",
-        }
-    ),
-    encoding="utf-8",
-)
-PY
+PYTHONPATH="$repo_root" python3 -m dkc.cli.signed_repository_client source-rebuild "${linux_trees[0]}" "$rebuild/reconstructed" \
+	"$evidence/source-rebuild.json"
 
 mkdir "$evidence/download"
 chmod 0777 "$evidence/download"

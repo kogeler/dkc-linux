@@ -51,7 +51,7 @@ if ! dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/storage-export-pool.py \
+		exec python3 -m dkc.cli.storage_export_pool \
 			--state-result /input/state --connection /run/secrets/storage.json \
 			--keyring /work/repo/keys/dkc-archive-keyring.gpg \
 			--signing-subkeys /work/repo/keys/archive-signing-subkeys.fingerprints \

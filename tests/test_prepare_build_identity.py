@@ -3,20 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import pathlib
 
 import pytest
 
+from dkc.cli import prepare_build_identity as PREPARE
 from dkc.tarmetadata import publication_epoch_after_source, require_epoch_not_future
 
-
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "prepare-build-identity.py"
-SPEC = importlib.util.spec_from_file_location("prepare_build_identity", SCRIPT)
-assert SPEC is not None and SPEC.loader is not None
-PREPARE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(PREPARE)
+SCRIPT = ROOT / "dkc" / "cli" / "prepare_build_identity.py"
 
 
 def _source_inventory(inputs: pathlib.Path) -> dict[str, object]:
@@ -53,9 +48,7 @@ def test_dpkg_multiarch_package_name_is_not_double_qualified(
 ) -> None:
     lock = tmp_path / "lock.tsv"
     _write_lock(lock, "libc6:amd64", "amd64")
-    assert PREPARE.dependency_lock(lock) == {
-        "libc6:amd64": f"1:2.3-4@{'a' * 64}"
-    }
+    assert PREPARE.dependency_lock(lock) == {"libc6:amd64": f"1:2.3-4@{'a' * 64}"}
 
 
 def test_mismatched_multiarch_qualifier_is_rejected(tmp_path: pathlib.Path) -> None:
@@ -135,17 +128,13 @@ def test_lto_policy_is_written_to_every_flavor_fragment(
     expected = set(PREPARE.LTO_CONFIG_LINES[mode])
     for flavor in PREPARE.FLAVORS:
         lines = set(
-            (config / f"config.{flavor}-amd64")
-            .read_text(encoding="utf-8")
-            .splitlines()
+            (config / f"config.{flavor}-amd64").read_text(encoding="utf-8").splitlines()
         )
         assert expected <= lines
         assert PREPARE.LTO_FRAGMENT_MARKER in lines
 
 
-@pytest.mark.parametrize(
-    "existing", ("CONFIG_LTO_NONE=y", "CONFIG_DEBUG_INFO_BTF=y")
-)
+@pytest.mark.parametrize("existing", ("CONFIG_LTO_NONE=y", "CONFIG_DEBUG_INFO_BTF=y"))
 def test_lto_policy_refuses_an_existing_choice(
     tmp_path: pathlib.Path, existing: str
 ) -> None:

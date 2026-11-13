@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -10,8 +10,7 @@ from dkc.serialize import canonical_bytes
 from dkc.storage import ObjectMetadata
 from tests.fake_storage import ConditionalObjectStore, PreconditionFailed
 
-
-UTC = timezone.utc
+UTC = UTC
 MUTABLE = ObjectMetadata("application/json", "private, no-store")
 
 
@@ -123,9 +122,7 @@ def test_batch_window_fails_closed_near_expiry() -> None:
     handle = lease.acquire(owner())
     clock.advance(121)
     with pytest.raises(LeaseLost, match="insufficient"):
-        lease.assert_batch_window(
-            handle, batch_timeout_seconds=120, safety_seconds=60
-        )
+        lease.assert_batch_window(handle, batch_timeout_seconds=120, safety_seconds=60)
 
 
 def test_conditional_renewal_loss_is_not_retried_unconditionally() -> None:

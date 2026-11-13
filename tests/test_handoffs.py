@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -33,7 +33,7 @@ def _source(root: Path) -> dict[str, object]:
     inventory = build_inventory(
         fixture.read_text(encoding="utf-8"),
         mirror="http://deb.debian.org/debian",
-        discovered=datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc),
+        discovered=datetime(2026, 8, 17, 12, 0, tzinfo=UTC),
     )
     root.mkdir()
     (root / "source-inventory.json").write_text(dumps(inventory))
@@ -124,9 +124,7 @@ def _present_state(
             }
         )
     )
-    (root / "result.env").write_text(
-        "status=PASS\nauthoritative_state=PRESENT\n"
-    )
+    (root / "result.env").write_text("status=PASS\nauthoritative_state=PRESENT\n")
     _evidence(root)
     keyring = root.parent / "keyring.gpg"
     fingerprints = root.parent / "fingerprints"
@@ -184,11 +182,14 @@ def test_empty_state_handoff_has_one_exact_typed_shape(tmp_path: Path) -> None:
     )
     (root / "result.env").write_text("status=PASS\nauthoritative_state=EMPTY\n")
     _evidence(root)
-    assert load_authoritative_state_handoff(
-        root,
-        keyring=tmp_path / "unused-keyring",
-        signing_subkeys=tmp_path / "unused-fingerprints",
-    ) is None
+    assert (
+        load_authoritative_state_handoff(
+            root,
+            keyring=tmp_path / "unused-keyring",
+            signing_subkeys=tmp_path / "unused-fingerprints",
+        )
+        is None
+    )
     (root / "unexpected").write_text("data\n")
     _evidence(root)
     with pytest.raises(ValueError, match="file boundary"):

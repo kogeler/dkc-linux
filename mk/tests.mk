@@ -19,7 +19,7 @@ test-verbose: image ## Unit and fixture tests with per-test output
 .PHONY: typecheck
 typecheck: image ## Static type check of the typed implementation (container, offline)
 	@$(CONTAINER_RUN) --name typecheck -- \
-		mypy --strict --no-error-summary dkc
+		mypy --strict --no-error-summary dkc container/build-patched-packages.py debian-overlay/edits.py
 	@echo 'typecheck PASS'
 
 .PHONY: fixtures

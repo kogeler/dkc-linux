@@ -172,7 +172,7 @@ make help             # show the complete target list
 make doctor           # check the host and write machine-readable evidence
 make image            # build the cached local toolbox image
 make container-images # build and verify the complete local image bundle
-make fast             # run unit, type, shell, language, and Make checks
+make fast             # run unit, type, lint, language, and Make checks
 make site             # build and audit the documentation site
 make shell            # open an ephemeral toolbox shell with the repo mounted
 make clean-all        # remove only this repository's labelled scratch resources

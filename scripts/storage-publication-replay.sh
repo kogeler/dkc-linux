@@ -37,7 +37,7 @@ dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/storage-publication-replay.py \
+		exec python3 -m tests.storage_publication_replay \
 			--repository-result /input/repository-result --output "/output/$1"
 	' sh "$DKC_RUN_ID"
 (

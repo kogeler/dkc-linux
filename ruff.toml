@@ -1,0 +1,23 @@
+# Ruff lint and format policy for every tracked Python source.
+#
+# The rule set is the one Ruff's documentation recommends as popular without
+# being pedantic. It is selected explicitly, never through ALL, so that a Ruff
+# upgrade cannot enable new rules silently; the Ruff version itself is pinned
+# in container/Containerfile.toolbox.
+
+# Debian 13 ships Python 3.13, the oldest interpreter that runs this code.
+target-version = "py313"
+
+[lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
+
+[lint.per-file-ignores]
+# Anchors quote Debian and Linux lines verbatim; wrapping would change them.
+"debian-overlay/edits.py" = ["E501"]

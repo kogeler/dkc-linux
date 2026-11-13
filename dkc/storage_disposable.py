@@ -124,7 +124,9 @@ class DisposableIntegration:
             remote = self.store.get(key)
             self._verify_remote(key, body, item.metadata, remote)
             if hashlib.sha256(remote.body).hexdigest() != item.sha256:
-                raise RuntimeError(f"authoritative digest verification failed for {key}")
+                raise RuntimeError(
+                    f"authoritative digest verification failed for {key}"
+                )
             self._record("authoritative-read", key, "PASS", item.sha256)
             head = self.store.head(key, if_match=remote.etag)
             if (
@@ -142,7 +144,9 @@ class DisposableIntegration:
         )
         listed = self.store.list_keys(self.config.prefix, page_size=10)
         if listed != expected:
-            raise RuntimeError("paginated repository listing differs from upload inventory")
+            raise RuntimeError(
+                "paginated repository listing differs from upload inventory"
+            )
         self._record(
             "paginated-list",
             self.config.prefix,
@@ -204,7 +208,9 @@ class DisposableIntegration:
     def _cleanup(self) -> None:
         self.events.extend(cleanup_disposable_prefix(self.store, self.config.prefix))
 
-    def run(self, inventory: Sequence[RepositoryObject]) -> tuple[IntegrationEvent, ...]:
+    def run(
+        self, inventory: Sequence[RepositoryObject]
+    ) -> tuple[IntegrationEvent, ...]:
         preexisting = self.store.list_keys(self.config.prefix)
         if preexisting:
             raise RuntimeError("disposable prefix was not empty before mutation")
@@ -221,7 +227,8 @@ class DisposableIntegration:
             if primary_error is None:
                 raise
             raise RuntimeError(
-                f"integration failed ({primary_error}); cleanup also failed ({cleanup_error})"
+                f"integration failed ({primary_error}); cleanup also failed "
+                f"({cleanup_error})"
             ) from cleanup_error
         if primary_error is not None:
             raise primary_error

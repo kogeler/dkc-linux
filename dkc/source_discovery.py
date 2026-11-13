@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
@@ -81,9 +81,7 @@ def build_inventory(
         "members": members,
         "release": _release(captured),
         "maintainer_signature": "unavailable",
-        "discovered_utc": discovered.astimezone(timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
+        "discovered_utc": discovered.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     validate("source-inventory", result)
     return result
@@ -105,7 +103,10 @@ def make_variables(inventory: dict[str, object]) -> dict[str, str]:
                 if suffix in by_suffix:
                     raise ValueError(f"source inventory repeats {suffix}")
                 by_suffix[suffix] = member
-    if set(by_suffix) != {".dsc", ".orig.tar.xz", ".debian.tar.xz"} or len(members) != 3:
+    if (
+        set(by_suffix) != {".dsc", ".orig.tar.xz", ".debian.tar.xz"}
+        or len(members) != 3
+    ):
         raise ValueError("kernel source inventory is not the exact three-member graph")
     if inventory.get("dsc") != by_suffix[".dsc"]:
         raise ValueError("source inventory descriptor differs from its member graph")

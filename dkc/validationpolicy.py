@@ -22,6 +22,17 @@ def validation_policy_paths(
     relative = [
         "config/qemu-cpus.env",
         "config/qemu-image.env",
+        "dkc/cli/attest_one_build.py",
+        "dkc/cli/audit_kbuild_commands.py",
+        "dkc/cli/audit_kernel_simd.py",
+        "dkc/cli/audit_package_matrix.py",
+        "dkc/cli/build_kselftest.py",
+        "dkc/cli/build_kselftest_flavor.py",
+        "dkc/cli/download.py",
+        "dkc/cli/finalize_one_build.py",
+        "dkc/cli/lock_build_environment.py",
+        "dkc/cli/stage_one_build.py",
+        "dkc/cli/verify_replay_elf.py",
         "dkc/evidence.py",
         "dkc/maintscript.py",
         "dkc/release_cache.py",
@@ -33,18 +44,12 @@ def validation_policy_paths(
         "scripts/dkc-cpu-select",
         "scripts/fetch-qemu-image.sh",
         "scripts/github-prepare-kvm.sh",
-        "scripts/in-container/attest-one-build.py",
-        "scripts/in-container/audit-kbuild-commands.py",
-        "scripts/in-container/audit-kernel-simd.py",
-        "scripts/in-container/audit-package-matrix.py",
         "scripts/in-container/build-kselftest-flavor.sh",
         "scripts/in-container/build-kselftest.sh",
         "scripts/in-container/finalize-one-build.sh",
-        "scripts/in-container/lock-build-environment.py",
         "scripts/in-container/prepare-attestation-replay.sh",
         "scripts/in-container/prepare-qemu-inputs.sh",
         "scripts/in-container/stage-one-build.sh",
-        "scripts/in-container/verify-replay-elf.py",
         "scripts/lib/common.sh",
         "scripts/lib/podman-image.sh",
         "scripts/qemu-boot.sh",
@@ -65,7 +70,9 @@ def validation_policy_paths(
             if path.is_file()
         )
     paths = tuple(root / name for name in sorted(set(relative)))
-    missing = [path.relative_to(root).as_posix() for path in paths if not path.is_file()]
+    missing = [
+        path.relative_to(root).as_posix() for path in paths if not path.is_file()
+    ]
     if missing:
         raise ValueError(f"validation-policy inputs are absent: {missing}")
     return paths

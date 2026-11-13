@@ -11,8 +11,16 @@
 #
 # The base is pinned by digest, resolved from config/base-image.lock and passed
 # in as a build argument so the digest lives in exactly one place.
+#
+# Ruff is the one tool that does not come from Debian: Debian 13 does not ship
+# it. The static binary is copied from Astral's own image, pinned below by
+# index digest and nowhere else. Only the Python lint and format targets run
+# it; no secret-bearing job does, and no published artifact contains it.
 
 ARG BASE_IMAGE
+
+FROM ghcr.io/astral-sh/ruff:0.17.4@sha256:c4b7e7a87e4b07d66b569dd2e6b2ce5a25e38be91dd664dc49b9882be27acd9b AS ruff
+
 FROM ${BASE_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -55,6 +63,9 @@ RUN set -eux; \
 # policy, and APT_CONFIG cannot clear them because it is read before
 # apt.conf.d, so they are removed here.
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+COPY --from=ruff /ruff /usr/local/bin/ruff
+RUN ruff --version
 
 # dpkg is present in the base image and is used as the reference implementation
 # the version comparator is tested against, so record that it must stay.

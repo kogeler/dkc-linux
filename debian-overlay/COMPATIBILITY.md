@@ -135,9 +135,9 @@ the same kernel release. This preserves the old documentation transition and
 accepts 7.3's bug-directory transition without hard-coding either release's
 version threshold in the auditor.
 
-The overlay is generated from anchored text by
-`scripts/in-container/generate-overlay-patches.py`, and builds apply the same
-anchored edits rather than the patches' fixed context. Anchors hold only the
+The overlay is generated from the anchored edits in `debian-overlay/edits.py`
+by the engine in `dkc/overlay.py`, and builds apply the same anchored edits
+rather than the patches' fixed context. Anchors hold only the
 lines an edit changes, so a new `src:linux` that edits neighbouring lines still
 builds. When any anchor no longer matches, the build fails and names the anchor
 rather than applying with fuzz into a subtly different tree. An edit that

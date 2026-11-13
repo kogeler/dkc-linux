@@ -152,9 +152,8 @@ def parse_sources(text: str, package: str) -> list[SourceStanza]:
         members = _parse_checksums(paragraph["Checksums-Sha256"])
         directory = paragraph["Directory"]
         segments = directory.split("/")
-        if (
-            not _DIRECTORY_RE.fullmatch(directory)
-            or any(segment in ("", ".", "..") for segment in segments)
+        if not _DIRECTORY_RE.fullmatch(directory) or any(
+            segment in ("", ".", "..") for segment in segments
         ):
             raise MalformedIndex(f"unsafe Directory: {directory!r}")
         stanzas.append(

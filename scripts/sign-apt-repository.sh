@@ -165,7 +165,8 @@ if dkc::archive_worktree |
 		if [ "$decision_state" = present ]; then
 			set -- --lifecycle-decision /input/lifecycle-decision "$@"
 		fi
-		exec python3 scripts/in-container/build-signed-repository.py sign \
+		export PYTHONPATH=/work/repo
+		exec python3 -m dkc.cli.build_signed_repository sign \
 			--unsigned /input/unsigned/repository \
 			--request /input/unsigned/handoff/signing-request.json \
 			--public-keyring /input/keys/dkc-archive-keyring.gpg \

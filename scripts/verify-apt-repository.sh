@@ -121,7 +121,8 @@ if dkc::archive_worktree |
 		mkdir -p /work/repo "$HOME"
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
-		exec python3 scripts/in-container/build-signed-repository.py merge \
+		export PYTHONPATH=/work/repo
+		exec python3 -m dkc.cli.build_signed_repository merge \
 			--unsigned /input/unsigned/repository \
 			--request /input/unsigned/handoff/signing-request.json \
 			--overlay /input/signature/overlay \

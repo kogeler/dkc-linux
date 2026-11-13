@@ -52,11 +52,15 @@ _LTO_MODES = frozenset({"none", "thin", "full"})
 def normalized_policy_config(config: dict[str, str]) -> dict[str, str]:
     """Return a resolved Kconfig without its derived identity fields."""
 
-    malformed = sorted(key for key in config if not re.fullmatch(r"CONFIG_[A-Z0-9_]+", key))
+    malformed = sorted(
+        key for key in config if not re.fullmatch(r"CONFIG_[A-Z0-9_]+", key)
+    )
     if malformed:
         raise ValueError(f"malformed resolved configuration key(s): {malformed}")
     normalized = {
-        key: value for key, value in sorted(config.items()) if key not in IDENTITY_FIELDS
+        key: value
+        for key, value in sorted(config.items())
+        if key not in IDENTITY_FIELDS
     }
     if not normalized:
         raise ValueError("resolved policy configuration must not be empty")
@@ -113,18 +117,32 @@ class BuildInputs:
             "dsc_sha256": self.dsc_sha256,
             "overlay_sha256": self.overlay_sha256,
             "toolchain_lock_sha256": self.toolchain_lock_sha256,
-            **{f"source member {name}": digest for name, digest in self.source_member_sha256.items()},
-            **{f"{flavor} config": digest for flavor, digest in self.flavor_config_sha256.items()},
+            **{
+                f"source member {name}": digest
+                for name, digest in self.source_member_sha256.items()
+            },
+            **{
+                f"{flavor} config": digest
+                for flavor, digest in self.flavor_config_sha256.items()
+            },
         }
-        malformed = sorted(name for name, digest in hashes.items() if not _SHA256_RE.fullmatch(digest))
+        malformed = sorted(
+            name for name, digest in hashes.items() if not _SHA256_RE.fullmatch(digest)
+        )
         if malformed:
             raise ValueError(f"malformed SHA-256 input(s): {malformed}")
-        if self.schema_version < 1 or self.build_policy_revision < 1 or self.dkc_revision < 1:
+        if (
+            self.schema_version < 1
+            or self.build_policy_revision < 1
+            or self.dkc_revision < 1
+        ):
             raise ValueError("schema, build-policy and DKC revisions must be positive")
         if self.lto_mode not in _LTO_MODES:
             raise ValueError("LTO mode must be none, thin, or full")
         if not self.debian_source_version or len(self.source_member_sha256) != 2:
-            raise ValueError("source identity must name a version and exactly two source members")
+            raise ValueError(
+                "source identity must name a version and exactly two source members"
+            )
         if not _IMAGE_DIGEST_RE.fullmatch(self.base_image_digest):
             raise ValueError("base image must be an immutable registry SHA-256 digest")
         if not self.dependency_lock:

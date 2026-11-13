@@ -125,6 +125,13 @@ This is also a user-facing property: Debian's generators put the build compiler
 into the runtime dependencies of the headers package, so a compromised or simply
 unavailable third-party toolchain would become every DKMS user's problem.
 
+The toolbox, which also runs the signing and publication jobs, installs its
+Python libraries and tools from Debian as well; nothing comes from PyPI. Its one
+exception is Ruff, which Debian 13 does not ship: a static binary copied from
+Astral's image, pinned by index digest in `container/Containerfile.toolbox`.
+Only the Python lint and format targets execute it. No secret-bearing job runs
+it and no published artifact contains it.
+
 ### Reaching a signing key or a storage credential
 
 Secrets live only in protected GitHub Environments, and each secret-bearing job

@@ -41,7 +41,7 @@ if ! dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/discover-source.py \
+		exec python3 -m dkc.cli.discover_source \
 			--output "/output/$1" --epoch "$2"
 	' sh "$DKC_RUN_ID" "$epoch"; then
 	dkc::die "authenticated source discovery failed"

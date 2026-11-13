@@ -42,7 +42,9 @@ class RepositoryObject:
     def read(self) -> bytes:
         body = self.path.read_bytes()
         if len(body) != self.size or hashlib.sha256(body).hexdigest() != self.sha256:
-            raise RuntimeError(f"repository object changed after inventory: {self.relative_key}")
+            raise RuntimeError(
+                f"repository object changed after inventory: {self.relative_key}"
+            )
         return body
 
 
@@ -64,7 +66,9 @@ def _relative_key(raw: str) -> str:
 
 def _checksum_lines(path: Path, *, leading_dot: bool) -> dict[str, str]:
     result: dict[str, str] = {}
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
         match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
         if match is None:
             raise ValueError(f"malformed checksum line {line_number} in {path.name}")
@@ -107,7 +111,9 @@ def _verify_checksums(
     if set(checksums) != expected:
         missing = sorted(expected - set(checksums))
         extra = sorted(set(checksums) - expected)
-        raise ValueError(f"checksum inventory mismatch: missing={missing} extra={extra}")
+        raise ValueError(
+            f"checksum inventory mismatch: missing={missing} extra={extra}"
+        )
     for key, digest in checksums.items():
         actual = hashlib.sha256(files[key].read_bytes()).hexdigest()
         if actual != digest:
@@ -171,9 +177,7 @@ def load_verified_repository(result: Path) -> tuple[RepositoryObject, ...]:
     if not evidence.is_dir() or not repository.is_dir():
         raise ValueError("verified repository result lacks evidence or repository")
     _result_status(evidence / "result.env")
-    evidence_sums = _checksum_lines(
-        evidence / "evidence.sha256", leading_dot=True
-    )
+    evidence_sums = _checksum_lines(evidence / "evidence.sha256", leading_dot=True)
     _verify_checksums(
         root,
         evidence_sums,
@@ -193,7 +197,10 @@ def load_verified_repository(result: Path) -> tuple[RepositoryObject, ...]:
     except json.JSONDecodeError as exc:
         raise ValueError("repository manifest is invalid JSON") from exc
     validate_schema("publication-manifest", manifest)
-    if not isinstance(manifest, dict) or manifest.get("schema") != "dkc.publication-manifest.v1":
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema") != "dkc.publication-manifest.v1"
+    ):
         raise ValueError("repository manifest has the wrong schema")
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
@@ -262,7 +269,8 @@ def load_verified_repository(result: Path) -> tuple[RepositoryObject, ...]:
         missing = sorted(repository_files - manifest_keys - allowed_derived)
         absent = sorted((manifest_keys | allowed_derived) - repository_files)
         raise ValueError(
-            f"repository manifest boundary mismatch: unclassified={missing} absent={absent}"
+            f"repository manifest boundary mismatch: unclassified={missing} "
+            f"absent={absent}"
         )
 
     objects: list[RepositoryObject] = []

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from dkc.github import (
     authorize_lifecycle,
-    export_lifecycle_outputs,
     export_image_bundle,
+    export_lifecycle_outputs,
     export_source_environment,
     prepare_pull_request_qualification,
     require_terminal_result,
@@ -18,8 +18,8 @@ from dkc.github import (
     write_workflow_assignments,
 )
 from dkc.release_gate import load_discovery_decision
-from dkc.source_discovery import build_inventory, make_variables
 from dkc.serialize import boolean_text, parse_boolean_text
+from dkc.source_discovery import build_inventory, make_variables
 
 
 def _authorize(**overrides: str) -> bool:
@@ -39,11 +39,14 @@ def test_lifecycle_authorization_is_exact_and_bootstrap_is_manual() -> None:
     assert _authorize() is False
     with pytest.raises(ValueError, match="cannot authorize"):
         _authorize(event="push")
-    assert _authorize(
-        event="workflow_dispatch",
-        confirm_lifecycle="true",
-        allow_empty_bootstrap="true",
-    ) is True
+    assert (
+        _authorize(
+            event="workflow_dispatch",
+            confirm_lifecycle="true",
+            allow_empty_bootstrap="true",
+        )
+        is True
+    )
     with pytest.raises(ValueError, match="canonical main"):
         _authorize(selected_ref="refs/heads/topic")
 
@@ -76,7 +79,7 @@ def test_run_identity_is_stable_for_one_job_and_rejects_another_role(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "environment"
-    now = datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 17, 12, 0, tzinfo=UTC)
     first = write_run_identity(
         environment_file=path,
         repository="owner/repository",
@@ -91,7 +94,7 @@ def test_run_identity_is_stable_for_one_job_and_rejects_another_role(
         workflow_run_id="123",
         run_attempt="2",
         role="package-matrix",
-        now=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        now=datetime(2027, 1, 1, tzinfo=UTC),
     )
     assert first == second
     assert path.read_text(encoding="utf-8") == f"DKC_RUN_ID={first}\n"
@@ -125,7 +128,9 @@ def test_image_bundle_export_is_typed_immutable_and_idempotent(tmp_path: Path) -
     initial = output.read_bytes()
     export_image_bundle(bundle, output)
     assert output.read_bytes() == initial
-    bundle.write_text(bundle.read_text().replace("@sha256:", ":latest="), encoding="utf-8")
+    bundle.write_text(
+        bundle.read_text().replace("@sha256:", ":latest="), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="immutable canonical digest"):
         export_image_bundle(bundle, tmp_path / "bad-output")
 
@@ -137,7 +142,7 @@ def test_source_environment_is_reconstructed_from_the_typed_handoff(
     inventory = build_inventory(
         fixture.read_text(encoding="utf-8"),
         mirror="http://deb.debian.org/debian",
-        discovered=datetime(2026, 8, 17, 12, 0, tzinfo=timezone.utc),
+        discovered=datetime(2026, 8, 17, 12, 0, tzinfo=UTC),
     )
     variables = make_variables(inventory)
     root = tmp_path / "source"
@@ -199,9 +204,7 @@ def test_source_environment_is_reconstructed_from_the_typed_handoff(
         for line in pull_request_output.read_text(encoding="utf-8").splitlines()
     )
     assert pull_request_values["v2_cache_key"].startswith("dkc-release-v2-v2-")
-    assert pull_request_values["v2_cache_transport_key"].startswith(
-        "dkc-pr-123-2-v2-"
-    )
+    assert pull_request_values["v2_cache_transport_key"].startswith("dkc-pr-123-2-v2-")
     assert (
         pull_request_values["v2_cache_transport_key"]
         != pull_request_values["v2_cache_key"]
@@ -220,9 +223,9 @@ def test_source_environment_is_reconstructed_from_the_typed_handoff(
         line.split("=", 1)
         for line in production_output.read_text(encoding="utf-8").splitlines()
     )
-    assert production_values["v2_cache_transport_key"] == production_values[
-        "v2_cache_key"
-    ]
+    assert (
+        production_values["v2_cache_transport_key"] == production_values["v2_cache_key"]
+    )
 
     (root / "source.env").write_text("DKC_SOURCE_VERSION=wrong\n", encoding="utf-8")
     with pytest.raises(ValueError):

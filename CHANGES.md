@@ -5,6 +5,10 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
 
 ## Unreleased
 
+No changes yet.
+
+## 0.4.0 - 2026-11-12
+
 ### Added
 
 - Linux 7.3 has an independent source profile, packaging overlay, and kernel
@@ -23,9 +27,23 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
   fails unless every pull-request job succeeded. Together with the site's
   `documentation site` check, it is the intended required check for `main`. See
   [docs/MAINTAINER_SETUP.md](docs/MAINTAINER_SETUP.md#required-pull-request-checks).
+- `make fast` and `make lint` run Ruff lint and format checks over all project
+  Python, and `make fmt` also formats Python. The rule set is in `ruff.toml`.
+  See [docs/BUILD.md](docs/BUILD.md#python-layout-and-tooling).
 
 ### Changed
 
+- All project Python is now the `dkc` package. The former `scripts/*.py`,
+  `scripts/in-container/*.py`, and the Python embedded in shell scripts are
+  entry points in `dkc/cli/`, run as `python3 -m dkc.cli.<name>`, and strict
+  type checking covers them. See
+  [docs/BUILD.md](docs/BUILD.md#python-layout-and-tooling).
+- The packaging overlay is split into the reviewed edits in
+  `debian-overlay/edits.py`, which keep their GPL-2.0-only license, and the MIT
+  engine in `dkc/overlay.py`. See [debian-overlay/README.md](debian-overlay/README.md).
+- The downstream revision is now 4. Moving the build inputs changes the
+  build-policy digest, so the next publication carries a new package version
+  built with an unchanged kernel configuration.
 - Repository publication reuses existing immutable objects without sending
   their bodies again or downloading them twice. CI now shows sanitized phase,
   object, byte, and elapsed-time progress and retains phase timings in its
@@ -45,6 +63,12 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
   cleanup, including failures that exit directly and signals.
 - Clean package clients can read the temporary repository with APT's sandbox
   user even when the operator uses a private file-creation mask.
+
+### Security
+
+- The toolbox image contains one tool that does not come from Debian: Ruff,
+  pinned by index digest. Only the lint and format targets run it, never a
+  secret-bearing job. See [docs/SECURITY.md](docs/SECURITY.md).
 
 ## 0.3.0 - 2026-10-29
 

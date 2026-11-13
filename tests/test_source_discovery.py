@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from dkc.source_discovery import build_inventory, make_variables
-
 
 FIXTURE = Path(__file__).parent / "fixtures/sources-linux-sid.txt"
 
@@ -15,7 +14,7 @@ def inventory():
     return build_inventory(
         FIXTURE.read_text(),
         mirror="http://deb.debian.org/debian",
-        discovered=datetime(2026, 8, 10, 18, 9, 12, tzinfo=timezone.utc),
+        discovered=datetime(2026, 8, 10, 18, 9, 12, tzinfo=UTC),
     )
 
 
@@ -32,7 +31,9 @@ def test_source_discovery_selects_and_exports_one_exact_build_graph() -> None:
     assert variables["DKC_DEBIAN_TAR_URL"].endswith("linux_7.1.7-1.debian.tar.xz")
 
 
-def test_source_discovery_exports_updated_member_names_without_a_version_template() -> None:
+def test_source_discovery_exports_updated_member_names_without_a_version_template() -> (
+    None
+):
     captured = (
         FIXTURE.read_text()
         .replace("Version: 7.1.7-1", "Version: 7.1.8-2")
@@ -42,7 +43,7 @@ def test_source_discovery_exports_updated_member_names_without_a_version_templat
     value = build_inventory(
         captured,
         mirror="http://deb.debian.org/debian",
-        discovered=datetime(2026, 8, 17, 19, 0, tzinfo=timezone.utc),
+        discovered=datetime(2026, 8, 17, 19, 0, tzinfo=UTC),
     )
     variables = make_variables(value)
     assert variables["DKC_SOURCE_VERSION"] == "7.1.8-2"
@@ -92,5 +93,5 @@ def test_source_discovery_rejects_an_unexpected_archive_identity() -> None:
         build_inventory(
             captured,
             mirror="http://deb.debian.org/debian",
-            discovered=datetime.now(timezone.utc),
+            discovered=datetime.now(UTC),
         )

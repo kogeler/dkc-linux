@@ -4,7 +4,7 @@ import hashlib
 import http.client
 import threading
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -20,7 +20,6 @@ from dkc.s3 import (
 )
 from dkc.storage import ObjectMetadata
 
-
 ENDPOINT = S3Endpoint.validated(
     "https://objects.example.net",
     "dkc-test",
@@ -29,7 +28,7 @@ ENDPOINT = S3Endpoint.validated(
 )
 CREDENTIALS = S3Credentials("access-key", "secret-key")
 MUTABLE = ObjectMetadata("application/json", "public, max-age=0, must-revalidate")
-NOW = datetime(2026, 8, 16, 12, 34, 56, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 16, 12, 34, 56, tzinfo=UTC)
 
 
 def test_endpoint_rejects_noncanonical_and_insecure_urls() -> None:
@@ -63,7 +62,9 @@ def test_exact_http_requests_reject_redirects_without_forwarding_auth() -> None:
             nonlocal reached
             if self.path == "/start":
                 self.send_response(302)
-                self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/target")
+                self.send_header(
+                    "Location", f"http://127.0.0.1:{self.server.server_port}/target"
+                )
                 self.end_headers()
                 return
             reached += 1
@@ -98,10 +99,10 @@ def test_signature_matches_the_published_single_chunk_s3_vector() -> None:
         "AKIAIOSFODNN7EXAMPLE",
         "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     )
-    client = S3Client(endpoint, credentials, clock=lambda: datetime(2013, 5, 24, tzinfo=timezone.utc))
-    request = client.signed_request(
-        "GET", "test.txt", headers={"range": "bytes=0-9"}
+    client = S3Client(
+        endpoint, credentials, clock=lambda: datetime(2013, 5, 24, tzinfo=UTC)
     )
+    request = client.signed_request("GET", "test.txt", headers={"range": "bytes=0-9"})
     assert request.url == "https://examplebucket.s3.amazonaws.com/test.txt"
     assert hashlib.sha256(request.canonical_request.encode()).hexdigest() == (
         "7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972"
@@ -146,9 +147,7 @@ def test_put_has_no_unconditional_or_mixed_precondition_mode() -> None:
     with pytest.raises(ValueError, match="exactly one"):
         client.put("safe/key", b"x", MUTABLE)
     with pytest.raises(ValueError, match="exactly one"):
-        client.put(
-            "safe/key", b"x", MUTABLE, if_none_match=True, if_match='"old"'
-        )
+        client.put("safe/key", b"x", MUTABLE, if_none_match=True, if_match='"old"')
     with pytest.raises(ValueError, match="opaque quoted"):
         client.put("safe/key", b"x", MUTABLE, if_match="unquoted")
 
@@ -272,12 +271,16 @@ def test_reads_retry_transport_failures_and_transient_server_errors() -> None:
 def test_conditional_head_signs_the_validator_and_retries_only_read_failures() -> None:
     requests = []
     client = S3Client(
-        ENDPOINT, CREDENTIALS,
-        transport=_scripted_transport([
-            _transport_failure("HEAD"),
-            HttpResponse(503, {}, b""),
-            HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""),
-        ], requests),
+        ENDPOINT,
+        CREDENTIALS,
+        transport=_scripted_transport(
+            [
+                _transport_failure("HEAD"),
+                HttpResponse(503, {}, b""),
+                HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""),
+            ],
+            requests,
+        ),
         sleeper=lambda _: None,
     )
     result = client.head("safe/key", if_match='"v1"')
@@ -328,7 +331,8 @@ def test_head_transport_does_not_read_the_advertised_object_body() -> None:
 def test_head_errors_never_become_absence_or_reuse(status: int) -> None:
     requests = []
     client = S3Client(
-        ENDPOINT, CREDENTIALS,
+        ENDPOINT,
+        CREDENTIALS,
         transport=_scripted_transport([HttpResponse(status, {}, b"")], requests),
     )
     with pytest.raises(RemoteStoreError) as failure:
@@ -337,7 +341,9 @@ def test_head_errors_never_become_absence_or_reuse(status: int) -> None:
     assert len(requests) == 1
 
 
-@pytest.mark.parametrize("header", ["Content-Length", "Content-Type", "Cache-Control", "ETag"])
+@pytest.mark.parametrize(
+    "header", ["Content-Length", "Content-Type", "Cache-Control", "ETag"]
+)
 def test_head_rejects_incomplete_headers(header: str) -> None:
     headers = {**GOOD_OBJECT.headers, "Content-Length": "2"}
     del headers[header]
@@ -351,8 +357,11 @@ def test_head_rejects_incomplete_headers(header: str) -> None:
 @pytest.mark.parametrize("size", ["-1", "1.5", "", " 2", "٢"])
 def test_head_rejects_invalid_size(size: str) -> None:
     client = S3Client(
-        ENDPOINT, CREDENTIALS,
-        transport=lambda _: HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": size}, b""),
+        ENDPOINT,
+        CREDENTIALS,
+        transport=lambda _: HttpResponse(
+            200, {**GOOD_OBJECT.headers, "Content-Length": size}, b""
+        ),
     )
     with pytest.raises(RemoteStoreError, match="headers"):
         client.head("safe/key", if_match='"v1"')
@@ -360,8 +369,11 @@ def test_head_rejects_invalid_size(size: str) -> None:
 
 def test_head_rejects_a_server_ignoring_the_condition() -> None:
     client = S3Client(
-        ENDPOINT, CREDENTIALS,
-        transport=lambda _: HttpResponse(200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""),
+        ENDPOINT,
+        CREDENTIALS,
+        transport=lambda _: HttpResponse(
+            200, {**GOOD_OBJECT.headers, "Content-Length": "2"}, b""
+        ),
     )
     with pytest.raises(PreconditionFailed):
         client.head("safe/key", if_match='"other"')

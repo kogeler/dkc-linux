@@ -5,8 +5,9 @@ A local `PASS` does not claim that a future hosted or production run passed.
 
 ## Repeatable repository checks
 
-`make fast` runs the complete Python unit/integration-fixture suite, type checks,
-ShellCheck, shfmt, language policy, and Make policy in the pinned toolbox image.
+`make fast` runs the complete Python unit/integration-fixture suite, strict type
+checks, Ruff lint and format checks, ShellCheck, shfmt, language policy, and
+Make policy in the pinned toolbox image.
 `make site` separately builds and audits the documentation site; the `site`
 workflow runs it for every pull request. The suite covers:
 

@@ -42,7 +42,7 @@ if ! dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/site-build.py \
+		exec python3 -m dkc.cli.site_build \
 			--repository /work/repo --workspace /work/build \
 			--output "/output/$1" --revision "$2" --source-epoch "$3"
 	' sh "$DKC_RUN_ID" "$revision" "$source_epoch"; then

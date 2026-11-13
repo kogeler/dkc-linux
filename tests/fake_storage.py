@@ -6,9 +6,8 @@ import re
 import threading
 from dataclasses import dataclass
 
-from dkc.storage import ObjectMetadata
 from dkc.s3 import ObjectHead
-
+from dkc.storage import ObjectMetadata
 
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -99,7 +98,9 @@ class ConditionalObjectStore:
         except PreconditionFailed:
             current = self.get(key)
             if current is None or current.body != body or current.metadata != metadata:
-                raise PreconditionFailed(f"immutable object collision for {key}") from None
+                raise PreconditionFailed(
+                    f"immutable object collision for {key}"
+                ) from None
             return current
 
     def delete(self, key: str) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from .records import GcPlan, GcTarget, PublicationManifest
@@ -30,9 +30,7 @@ class GcStore(Protocol):
 def _utc_now(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("GC clock must return an aware datetime")
-    return value.astimezone(timezone.utc).replace(microsecond=0).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    return value.astimezone(UTC).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _matches(value: ObjectValue, target: GcTarget) -> bool:

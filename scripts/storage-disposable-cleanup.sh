@@ -63,7 +63,7 @@ if dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/storage-disposable-cleanup.py \
+		exec python3 -m dkc.cli.storage_disposable_cleanup \
 			--result /input/result \
 			--connection /run/secrets/storage.json \
 			--output "/output/$1"

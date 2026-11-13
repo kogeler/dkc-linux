@@ -91,29 +91,7 @@ if dkc::archive_worktree |
 			sha256sum --check /input/result/evidence/artifacts.sha256 >/dev/null
 			sha256sum --check /input/result/evidence/failure-artifacts.sha256 >/dev/null
 		)
-		python3 - /input/result/evidence/post-build-gates.env <<"PY"
-import pathlib
-import sys
-
-values = {}
-for line in pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
-    key, separator, value = line.partition("=")
-    if not separator or key in values:
-        raise SystemExit("post-build gate result is malformed")
-    values[key] = value
-if set(values) != {
-    "package_attestation_rc",
-    "kbuild_audit_rc",
-    "simd_audit_rc",
-    "lintian_rc",
-}:
-    raise SystemExit("post-build gate set is incomplete")
-if values["lintian_rc"] != "0":
-    raise SystemExit("lintian did not pass and cannot be replayed")
-for key in ("package_attestation_rc", "kbuild_audit_rc", "simd_audit_rc"):
-    if not values[key].isdigit():
-        raise SystemExit(f"invalid gate return code: {key}")
-PY
+		PYTHONPATH=/work/repo python3 -m dkc.cli.recover_flavor_attestation /input/result/evidence/post-build-gates.env
 		mkdir -p /work/reattested/evidence
 		/work/repo/scripts/in-container/reattest-flavor.sh \
 			/input/result /work/reattested "$1" "$2" observations 1>&2

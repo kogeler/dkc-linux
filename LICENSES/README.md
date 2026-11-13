@@ -8,7 +8,7 @@ The root `LICENSE` applies under the MIT License to the independently written
 project material, including:
 
 - `.github/`, `config/`, `container/`, `dkc/`, `docs/`, `mk/`, `schemas/`, and
-  `scripts/`, except for the path listed below;
+  `scripts/`;
 - the top-level makefile and documentation;
 - independently written tests and test fixtures.
 
@@ -16,10 +16,11 @@ The following material is distributed under GPL-2.0-only because it contains
 or produces modifications derived from GPL-2.0-only Linux or GPL-2.0 Debian
 kernel packaging:
 
+- `debian-overlay/edits.py`, whose anchored edits quote and modify that
+  packaging;
 - `debian-overlay/patches/`;
 - `debian-overlay/source/`;
-- `tests/integration/kselftest-patches/`;
-- `scripts/in-container/generate-overlay-patches.py`.
+- `tests/integration/kselftest-patches/`.
 
 The full GPL version 2 text is in `LICENSES/GPL-2.0-only.txt`.
 

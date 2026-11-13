@@ -55,7 +55,10 @@ def dumps(value: Any) -> str:
     project needs one. Sizes and timestamps are integers or strings.
     """
     _reject_floats(value)
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        + "\n"
+    )
 
 
 def canonical_bytes(value: Any) -> bytes:

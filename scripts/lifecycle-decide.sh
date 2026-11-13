@@ -58,7 +58,7 @@ if ! dkc::archive_worktree |
 		tar --extract --file=- --directory=/work/repo
 		cd /work/repo
 		export PYTHONPATH=/work/repo
-		exec python3 scripts/in-container/lifecycle-decide.py \
+		exec python3 -m dkc.cli.lifecycle_decide \
 			--source /input/source --state /input/state --output "/output/$1" \
 			--keyring /work/repo/keys/dkc-archive-keyring.gpg \
 			--signing-subkeys /work/repo/keys/archive-signing-subkeys.fingerprints \

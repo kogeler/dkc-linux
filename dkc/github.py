@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .buildpolicy import build_policy_digest
 from .handoffs import load_source_handoff
 from .records import DiscoveryDecision, LtoMode
+from .release_cache import release_cache_identity
 from .release_gate import (
     discovery_decision_outputs,
     load_discovery_decision,
     write_discovery_decision,
 )
-from .release_cache import release_cache_identity
 from .retention import RetentionMode
 from .source_discovery import make_variables
 
@@ -71,7 +71,9 @@ def write_workflow_assignments(path: Path, values: dict[str, str]) -> None:
 
     if not values or any(not _OUTPUT_KEY_RE.fullmatch(key) for key in values):
         raise ValueError("workflow output contains an unsafe key")
-    if any("\n" in value or "\r" in value or "\x00" in value for value in values.values()):
+    if any(
+        "\n" in value or "\r" in value or "\x00" in value for value in values.values()
+    ):
         raise ValueError("workflow output contains an unsafe value")
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = _existing_assignments(path)
@@ -143,10 +145,10 @@ def write_run_identity(
         ):
             raise ValueError("DKC_RUN_ID conflicts with this workflow job")
         return existing
-    clock = now or datetime.now(timezone.utc)
+    clock = now or datetime.now(UTC)
     if clock.tzinfo is None:
         raise ValueError("workflow identity clock must be timezone-aware")
-    value = f"{clock.astimezone(timezone.utc):%Y%m%dT%H%M%SZ}-{suffix}"
+    value = f"{clock.astimezone(UTC):%Y%m%dT%H%M%SZ}-{suffix}"
     write_workflow_assignments(environment_file, {"DKC_RUN_ID": value})
     return value
 
@@ -175,8 +177,7 @@ def export_lifecycle_outputs(
             raise ValueError("workflow run attempt is invalid")
         transport_keys = {
             flavor: (
-                f"dkc-pr-{workflow_run_id}-{run_attempt}-{flavor}-"
-                f"{identity.digest()}"
+                f"dkc-pr-{workflow_run_id}-{run_attempt}-{flavor}-{identity.digest()}"
             )
             for flavor, identity in identities.items()
         }
@@ -229,9 +230,7 @@ def prepare_pull_request_qualification(
         lto_mode=lto_mode,
         retention_mode=retention_mode,
         retention_max_bytes=retention_max_bytes,
-        utc=datetime.fromtimestamp(epoch, timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
+        utc=datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         build_required=True,
         reason="validate an untrusted pull request without publication authority",
     )
@@ -273,7 +272,9 @@ def export_image_bundle(bundle_file: Path, output_file: Path) -> None:
         if not re.fullmatch(
             re.escape(repository) + r"@sha256:[0-9a-f]{64}", values[key]
         ):
-            raise ValueError("resolved image reference is not an immutable canonical digest")
+            raise ValueError(
+                "resolved image reference is not an immutable canonical digest"
+            )
     write_workflow_assignments(output_file, values)
 
 
@@ -290,4 +291,6 @@ def require_terminal_result(
     if decision not in expected:
         raise ValueError("lifecycle decision has no successful terminal state")
     if final_result != expected[decision]:
-        raise ValueError("workflow did not reach the terminal state required by its decision")
+        raise ValueError(
+            "workflow did not reach the terminal state required by its decision"
+        )

@@ -44,9 +44,13 @@ DKC_DEBIAN_TAR_NAME ?= $(notdir $(DKC_DEBIAN_TAR_URL))
 DKC_DEBIAN_TAR_SHA256 ?= 80b058f66c49e8075dc8ab14f4a16ba8068e4d9296189b828884e98232fc233f
 DKC_DEBIAN_TAR_SIZE ?= 1472148
 DKC_SOURCE_VERSION ?= 7.3.3-1
-DKC_REVISION ?= 3
+DKC_REVISION ?= 4
 
 CONTAINER_RUN := $(DKC_ROOT)/scripts/container-run.sh
+
+# Host-side Python entry points live in dkc/cli and use only the standard
+# library, so the host interpreter runs them without any installed package.
+DKC_CLI := PYTHONPATH='$(DKC_ROOT)' python3 -m
 
 include $(DKC_ROOT)/mk/help.mk
 include $(DKC_ROOT)/mk/preflight.mk

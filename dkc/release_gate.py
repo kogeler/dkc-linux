@@ -57,9 +57,7 @@ def write_discovery_decision(root: Path, decision: DiscoveryDecision) -> None:
             f"{key}={value}\n"
             for key, value in sorted(discovery_decision_outputs(decision).items())
         ),
-        "result.env": (
-            f"status=PASS\nlifecycle_decision={decision.decision}\n"
-        ),
+        "result.env": (f"status=PASS\nlifecycle_decision={decision.decision}\n"),
     }
     for name, body in files.items():
         (root / name).write_text(body, encoding="utf-8")
@@ -200,11 +198,11 @@ def require_signing_request_matches_decision(
     if decision.state_generation is None:
         if previous is not None:
             mismatched.append("previous_publication")
-    elif not isinstance(previous, dict) or previous.get(
-        "generation"
-    ) != decision.state_generation or previous.get(
-        "publication_id"
-    ) != decision.state_publication_id:
+    elif (
+        not isinstance(previous, dict)
+        or previous.get("generation") != decision.state_generation
+        or previous.get("publication_id") != decision.state_publication_id
+    ):
         mismatched.append("previous_publication")
     if mismatched:
         raise ValueError(

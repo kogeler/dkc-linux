@@ -56,8 +56,12 @@ def _compare_fragment(left: str, right: str) -> int:
         while (i < len(left) and not left[i].isdigit()) or (
             j < len(right) and not right[j].isdigit()
         ):
-            left_weight = _order(left[i]) if i < len(left) and not left[i].isdigit() else 0
-            right_weight = _order(right[j]) if j < len(right) and not right[j].isdigit() else 0
+            left_weight = (
+                _order(left[i]) if i < len(left) and not left[i].isdigit() else 0
+            )
+            right_weight = (
+                _order(right[j]) if j < len(right) and not right[j].isdigit() else 0
+            )
             if left_weight != right_weight:
                 return -1 if left_weight < right_weight else 1
             i += 1
@@ -141,7 +145,9 @@ class DebianVersion:
         if not _REVISION_RE.match(revision):
             raise InvalidVersion(f"invalid Debian revision in {text!r}")
         if ":" in upstream and epoch == 0:
-            raise InvalidVersion(f"colon in upstream version without an epoch: {text!r}")
+            raise InvalidVersion(
+                f"colon in upstream version without an epoch: {text!r}"
+            )
 
         return cls(epoch=epoch, upstream=upstream, revision=revision, raw=text)
 

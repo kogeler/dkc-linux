@@ -27,12 +27,12 @@ DKC_COMMA := ,
 .PHONY: github-lifecycle-gate
 github-lifecycle-gate: ## Authorize one exact-main production lifecycle trigger
 	@GITHUB_CANONICAL_REPOSITORY='$(GITHUB_CANONICAL_REPOSITORY)' \
-		$(DKC_ROOT)/scripts/github-ci.py lifecycle-gate
+		$(DKC_CLI) dkc.cli.github_ci lifecycle-gate
 
 .PHONY: github-run-id
 github-run-id: ## Idempotently assign a role-bound run identity to one GitHub job
 	@test -n '$(GITHUB_RUN_ROLE)' || { echo 'usage: make github-run-id GITHUB_RUN_ROLE=<role>'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py run-identity --role '$(GITHUB_RUN_ROLE)'
+	@$(DKC_CLI) dkc.cli.github_ci run-identity --role '$(GITHUB_RUN_ROLE)'
 
 .PHONY: github-container-images-resolve
 github-container-images-resolve: ## Snapshot the current published image bundle for one CI run
@@ -58,12 +58,12 @@ github-container-images-import: ## Load the downloaded image archives this job n
 .PHONY: github-container-images-delete
 github-container-images-delete: ## Delete the pull-request image archives of one finished CI run
 	@test -n '$(GITHUB_IMAGE_RUN_ID)' || { echo 'GITHUB_IMAGE_RUN_ID is required'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py run-image-artifacts-delete \
+	@$(DKC_CLI) dkc.cli.github_ci run-image-artifacts-delete \
 		--run-id '$(GITHUB_IMAGE_RUN_ID)'
 
 .PHONY: github-source-build-env
 github-source-build-env: ## Export one authenticated source handoff to the job environment
-	@$(DKC_ROOT)/scripts/github-ci.py export-source \
+	@$(DKC_CLI) dkc.cli.github_ci export-source \
 		--source '$(GITHUB_SOURCE_RESULT)'
 
 .PHONY: github-kvm-prepare
@@ -106,7 +106,7 @@ github-apt-repository-qualify: image apt-client-image ## Exercise the complete r
 
 .PHONY: github-pull-request-qualification
 github-pull-request-qualification: ## Create a non-publishing build decision from authenticated source
-	@$(DKC_ROOT)/scripts/github-ci.py qualification-decision \
+	@$(DKC_CLI) dkc.cli.github_ci qualification-decision \
 		--source '$(SOURCE_DISCOVERY_RESULT)' \
 		--decision '$(GITHUB_LIFECYCLE_RESULT)' --root '$(DKC_ROOT)' \
 		--epoch '$(LIFECYCLE_DECISION_EPOCH)' --dkc-revision '$(DKC_REVISION)' \
@@ -115,13 +115,13 @@ github-pull-request-qualification: ## Create a non-publishing build decision fro
 
 .PHONY: github-lifecycle-outputs
 github-lifecycle-outputs: ## Export typed decision and isolated transport-cache outputs
-	@$(DKC_ROOT)/scripts/github-ci.py export-lifecycle \
+	@$(DKC_CLI) dkc.cli.github_ci export-lifecycle \
 		--decision '$(GITHUB_LIFECYCLE_RESULT)' --root '$(DKC_ROOT)'
 
 .PHONY: github-release-cache-prepare
 github-release-cache-prepare: ## Seal one fully qualified flavor as a content-addressed handoff
 	@test -n '$(GITHUB_RELEASE_CACHE_KEY)' || { echo 'GITHUB_RELEASE_CACHE_KEY is required'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py release-cache-prepare \
+	@$(DKC_CLI) dkc.cli.github_ci release-cache-prepare \
 		--cache '$(GITHUB_RELEASE_CACHE_ROOT)' \
 		--flavor-result '$(GITHUB_RELEASE_CACHE_FLAVOR_RESULT)' \
 		--selftest-result '$(GITHUB_RELEASE_CACHE_SELFTEST_RESULT)' \
@@ -134,7 +134,7 @@ github-release-cache-prepare: ## Seal one fully qualified flavor as a content-ad
 .PHONY: github-release-cache-verify
 github-release-cache-verify: ## Verify one restored accepted flavor before any consumer uses it
 	@test -n '$(GITHUB_RELEASE_CACHE_KEY)' || { echo 'GITHUB_RELEASE_CACHE_KEY is required'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py release-cache-verify \
+	@$(DKC_CLI) dkc.cli.github_ci release-cache-verify \
 		--cache '$(GITHUB_RELEASE_CACHE_ROOT)' \
 		--decision '$(GITHUB_LIFECYCLE_RESULT)' --flavor '$(FLAVOR)' \
 		--key '$(GITHUB_RELEASE_CACHE_KEY)' \
@@ -142,14 +142,14 @@ github-release-cache-verify: ## Verify one restored accepted flavor before any c
 
 .PHONY: github-flavor-evidence
 github-flavor-evidence: ## Prepare compact self-verifying reports from one accepted flavor
-	@$(DKC_ROOT)/scripts/github-ci.py flavor-evidence \
+	@$(DKC_CLI) dkc.cli.github_ci flavor-evidence \
 		--cache '$(GITHUB_RELEASE_CACHE_ROOT)' \
 		--output '$(GITHUB_FLAVOR_EVIDENCE_RESULT)' \
 		--flavor '$(FLAVOR)'
 
 .PHONY: github-flavor-failure-evidence
 github-flavor-failure-evidence: ## Prepare a bounded report from an unfinished flavor qualification
-	@$(DKC_ROOT)/scripts/github-ci.py flavor-failure-evidence \
+	@$(DKC_CLI) dkc.cli.github_ci flavor-failure-evidence \
 		--output '$(GITHUB_FLAVOR_FAILURE_EVIDENCE_RESULT)' \
 		--flavor '$(FLAVOR)' \
 		--flavor-result '$(GITHUB_RELEASE_CACHE_FLAVOR_RESULT)' \
@@ -160,7 +160,7 @@ github-flavor-failure-evidence: ## Prepare a bounded report from an unfinished f
 github-pull-request-apt-evidence: ## Prepare one bounded artifact from disposable APT qualification
 	@test -n '$(GITHUB_PR_APT_QUALIFICATION_OUTCOME)' || \
 		{ echo 'GITHUB_PR_APT_QUALIFICATION_OUTCOME is required'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py pull-request-repository-evidence \
+	@$(DKC_CLI) dkc.cli.github_ci pull-request-repository-evidence \
 		--unsigned '$(GITHUB_PR_APT_UNSIGNED_RESULT)' \
 		--signature '$(GITHUB_PR_APT_SIGNATURE_RESULT)' \
 		--repository '$(GITHUB_PR_APT_REPOSITORY_RESULT)' \
@@ -171,7 +171,7 @@ github-pull-request-apt-evidence: ## Prepare one bounded artifact from disposabl
 github-release-cache-delete: ## Delete exact main-branch release caches after remote verification
 	@test -n '$(GITHUB_RELEASE_CACHE_KEY_V2)' -a -n '$(GITHUB_RELEASE_CACHE_KEY_V3)' || \
 		{ echo 'both release-cache keys are required'; exit 1; }
-	@$(DKC_ROOT)/scripts/github-ci.py release-cache-delete \
+	@$(DKC_CLI) dkc.cli.github_ci release-cache-delete \
 		--v2-key '$(GITHUB_RELEASE_CACHE_KEY_V2)' \
 		--v3-key '$(GITHUB_RELEASE_CACHE_KEY_V3)'
 
@@ -185,7 +185,7 @@ github-pull-request-result: ## Require every direct dependency of an aggregate c
 
 .PHONY: github-lifecycle-result
 github-lifecycle-result: ## Require the workflow terminal state selected by discovery
-	@$(DKC_ROOT)/scripts/github-ci.py terminal-result \
+	@$(DKC_CLI) dkc.cli.github_ci terminal-result \
 		--decision '$(GITHUB_LIFECYCLE_DECISION)' \
 		--decision-result '$(GITHUB_LIFECYCLE_DECISION_RESULT)' \
 		--final-result '$(GITHUB_FINAL_STATE_RESULT)'

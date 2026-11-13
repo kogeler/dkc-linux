@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github/workflows"
 REVIEWED_ACTIONS = {
@@ -89,12 +88,8 @@ def test_ci_dag_references_only_declared_dependencies_and_is_acyclic() -> None:
             assert output in jobs[dependency].get("outputs", {}), (
                 f"{name} reads unknown output {dependency}.{output}"
             )
-        step_ids = {
-            step["id"] for step in job.get("steps", []) if "id" in step
-        }
-        referenced_steps = set(
-            re.findall(r"steps\.([A-Za-z0-9_-]+)", serialized)
-        )
+        step_ids = {step["id"] for step in job.get("steps", []) if "id" in step}
+        referenced_steps = set(re.findall(r"steps\.([A-Za-z0-9_-]+)", serialized))
         assert referenced_steps <= step_ids, f"{name} reads an unknown step output"
 
     visiting: set[str] = set()
@@ -138,11 +133,11 @@ def test_ci_artifacts_are_attempt_scoped_and_follow_the_dag() -> None:
     formatted_name = re.compile(
         r"^\$\{\{ format\('([^']+)', github\.run_id, github\.run_attempt\) \}\}$"
     )
-    need_output = re.compile(
-        r"needs\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)"
-    )
+    need_output = re.compile(r"needs\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)")
 
-    def resolve_names(value: str, seen: frozenset[tuple[str, str]] = frozenset()) -> set[str]:
+    def resolve_names(
+        value: str, seen: frozenset[tuple[str, str]] = frozenset()
+    ) -> set[str]:
         formatted = formatted_name.fullmatch(value)
         if formatted is not None:
             return {
@@ -192,7 +187,9 @@ def test_ci_artifacts_are_attempt_scoped_and_follow_the_dag() -> None:
     assert producers[
         "dkc-apt-unsigned-${{ github.run_id }}-${{ github.run_attempt }}"
     ] == {"package-matrix", "refresh-metadata"}
-    assert all(len(value) == 1 for key, value in producers.items() if "apt-unsigned" not in key)
+    assert all(
+        len(value) == 1 for key, value in producers.items() if "apt-unsigned" not in key
+    )
 
 
 def test_ci_shell_is_only_thin_make_adapters() -> None:
@@ -202,7 +199,8 @@ def test_ci_shell_is_only_thin_make_adapters() -> None:
             command = step.get("run")
             if command is not None:
                 assert command.strip().startswith("make "), (
-                    f"{job_name}/{step['name']} embeds workflow logic instead of a make target"
+                    f"{job_name}/{step['name']} embeds workflow logic instead of a "
+                    f"make target"
                 )
 
 
@@ -306,7 +304,9 @@ def test_job_conditions_let_cancellation_stop_running_jobs() -> None:
             assert "always()" not in str(job.get("if", "")), f"{path.name}:{name}"
 
 
-def test_pull_request_image_archives_are_deleted_by_trusted_code_after_every_run() -> None:
+def test_pull_request_image_archives_are_deleted_by_trusted_code_after_every_run() -> (
+    None
+):
     workflow = _workflow(WORKFLOWS / "ci-image-cleanup.yml")
     events = workflow.get("on", workflow.get(True))
     assert events == {"workflow_run": {"workflows": ["ci"], "types": ["completed"]}}

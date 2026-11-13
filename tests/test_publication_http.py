@@ -31,7 +31,9 @@ def storage(tls_certificate: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch)
         fixture.close()
 
 
-def test_https_publication_reuses_payload_once_without_upload(storage: HttpStorage) -> None:
+def test_https_publication_reuses_payload_once_without_upload(
+    storage: HttpStorage,
+) -> None:
     initial = _plan()
     payloads = {
         f"pool/main/d/dkc-linux/large-{number}.deb": PublicationObject(
@@ -41,7 +43,9 @@ def test_https_publication_reuses_payload_once_without_upload(storage: HttpStora
     }
     plan = replace(initial, immutable={**initial.immutable, **payloads})
     store = S3ObjectStore(storage.client)
-    manager = LeaseManager(store, ttl_seconds=900, takeover_grace_seconds=0, terminal_proof=lambda _: False)
+    manager = LeaseManager(
+        store, ttl_seconds=900, takeover_grace_seconds=0, terminal_proof=lambda _: False
+    )
     lease = manager.acquire(LeaseOwner("owner/repo", "1", "1", "publish", "a" * 32))
 
     def checkpoint() -> None:
@@ -65,7 +69,9 @@ def test_https_publication_reuses_payload_once_without_upload(storage: HttpStora
 
 
 @pytest.mark.parametrize("phase", range(1, 13))
-def test_https_retry_recovers_every_publication_boundary(storage: HttpStorage, phase: int) -> None:
+def test_https_retry_recovers_every_publication_boundary(
+    storage: HttpStorage, phase: int
+) -> None:
     store = S3ObjectStore(storage.client)
     executor = PublicationExecutor(store)
     plan = _plan()
@@ -75,16 +81,22 @@ def test_https_retry_recovers_every_publication_boundary(storage: HttpStorage, p
     assert store.get(plan.state_key).body == plan.state_pointer.body  # type: ignore[union-attr]
 
 
-def test_https_lost_put_reply_is_reconciled_without_a_second_upload(storage: HttpStorage) -> None:
+def test_https_lost_put_reply_is_reconciled_without_a_second_upload(
+    storage: HttpStorage,
+) -> None:
     plan = _plan()
     pool_key = "pool/main/d/dkc-linux/package.deb"
     storage.drop_reply_for = pool_key
     PublicationExecutor(S3ObjectStore(storage.client)).execute(plan)
     assert storage.requests["PUT", pool_key] == 1
-    assert storage.requests["GET", pool_key] == 3  # absent probe, reconciliation, read-back
+    assert (
+        storage.requests["GET", pool_key] == 3
+    )  # absent probe, reconciliation, read-back
 
 
-def test_https_transient_head_failure_retries_without_downloading_again(storage: HttpStorage) -> None:
+def test_https_transient_head_failure_retries_without_downloading_again(
+    storage: HttpStorage,
+) -> None:
     plan = _plan()
     pool_key = "pool/main/d/dkc-linux/package.deb"
     executor = PublicationExecutor(S3ObjectStore(storage.client))
@@ -98,7 +110,9 @@ def test_https_transient_head_failure_retries_without_downloading_again(storage:
 
 
 @pytest.mark.parametrize("change", ["bytes", "metadata", "missing"])
-def test_https_changed_reused_object_cannot_commit_controller_state(storage: HttpStorage, change: str) -> None:
+def test_https_changed_reused_object_cannot_commit_controller_state(
+    storage: HttpStorage, change: str
+) -> None:
     plan = _plan()
     pool_key = "pool/main/d/dkc-linux/package.deb"
     value = plan.immutable[pool_key]
@@ -119,11 +133,15 @@ def test_https_changed_reused_object_cannot_commit_controller_state(storage: Htt
                 )
 
     with pytest.raises(RuntimeError):  # includes 404 and 412 RemoteStoreError
-        PublicationExecutor(S3ObjectStore(storage.client)).execute(plan, progress=progress)
+        PublicationExecutor(S3ObjectStore(storage.client)).execute(
+            plan, progress=progress
+        )
     assert storage.store.get(plan.state_key) is None
 
 
-def test_https_lost_mutable_precondition_is_not_reconciled_to_success(storage: HttpStorage) -> None:
+def test_https_lost_mutable_precondition_is_not_reconciled_to_success(
+    storage: HttpStorage,
+) -> None:
     store = S3ObjectStore(storage.client)
     winner = store.put("state/current.asc", b"winner", MUTABLE, if_none_match=True)
     with pytest.raises(PreconditionFailed):

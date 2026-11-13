@@ -151,8 +151,9 @@ def run_with_sanitized_output(
     stdout_capture = _BoundedCapture(maximum_stream_chars)
     stderr_capture = _BoundedCapture(maximum_stream_chars)
     status = 1
-    with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(
-        stderr_capture
+    with (
+        contextlib.redirect_stdout(stdout_capture),
+        contextlib.redirect_stderr(stderr_capture),
     ):
         try:
             status = callback()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -9,7 +9,13 @@ import pytest
 from dkc.lease import LeaseBusy, LeaseManager
 from dkc.records import LeaseOwner
 from dkc.serialize import canonical_bytes
-from dkc.site import CONTENT_TYPES, SiteError, SiteManifest, SiteObject, manifest_document
+from dkc.site import (
+    CONTENT_TYPES,
+    SiteError,
+    SiteManifest,
+    SiteObject,
+    manifest_document,
+)
 from dkc.site_publication import (
     acquire_lease,
     execute_site_plan,
@@ -19,7 +25,6 @@ from dkc.site_publication import (
 )
 from dkc.storage import ObjectMetadata
 from tests.fake_storage import ConditionalObjectStore
-
 
 REVISION = "0123456789abcdef0123456789abcdef01234567"
 SITE_URL = "https://site.example.net/"
@@ -100,7 +105,9 @@ def test_an_unchanged_build_writes_nothing(tmp_path: Path) -> None:
     assert len(plan.unchanged) == 3
 
 
-def test_changes_use_preconditions_and_deletions_stay_in_the_prefix(tmp_path: Path) -> None:
+def test_changes_use_preconditions_and_deletions_stay_in_the_prefix(
+    tmp_path: Path,
+) -> None:
     store = ConditionalObjectStore()
     _publish(_result(tmp_path / "one", FILES), store)
     store.put("state/current.asc", b"state", FOREIGN, if_none_match=True)
@@ -199,9 +206,11 @@ def test_lease_acquisition_waits_for_a_busy_holder() -> None:
         ttl_seconds=900,
         takeover_grace_seconds=300,
         terminal_proof=lambda _owner: False,
-        clock=lambda: datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 11, 3, 12, 0, tzinfo=UTC),
     )
-    holder = manager.acquire(LeaseOwner("kogeler/dkc-linux", "6", "1", "publish", "b" * 32))
+    holder = manager.acquire(
+        LeaseOwner("kogeler/dkc-linux", "6", "1", "publish", "b" * 32)
+    )
     now = [0.0]
     waits: list[int] = []
 
@@ -229,7 +238,7 @@ def test_lease_acquisition_gives_up_after_its_bound() -> None:
         ttl_seconds=900,
         takeover_grace_seconds=300,
         terminal_proof=lambda _owner: False,
-        clock=lambda: datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 11, 3, 12, 0, tzinfo=UTC),
     )
     manager.acquire(LeaseOwner("kogeler/dkc-linux", "6", "1", "publish", "b" * 32))
     now = [0.0]

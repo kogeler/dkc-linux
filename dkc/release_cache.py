@@ -41,9 +41,7 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_IMAGE_RE = re.compile(
     r"^ghcr\.io/kogeler/dkc-kernel-build@(sha256:[0-9a-f]{64})$"
 )
-_TOOLBOX_IMAGE_RE = re.compile(
-    r"^ghcr\.io/kogeler/dkc-toolbox@sha256:[0-9a-f]{64}$"
-)
+_TOOLBOX_IMAGE_RE = re.compile(r"^ghcr\.io/kogeler/dkc-toolbox@sha256:[0-9a-f]{64}$")
 # A pull request builds its own image bundle and loads it in every job, so its
 # qualification cache records those local candidate references instead.
 _CANDIDATE_BUILD_IMAGE_RE = re.compile(r"^localhost/dkc-build:llvm[1-9][0-9]*$")
@@ -130,8 +128,12 @@ def _read_environment(path: pathlib.Path, label: str) -> dict[str, str]:
     return values
 
 
-def _require_fields(value: dict[str, Any], expected: dict[str, Any], label: str) -> None:
-    mismatched = sorted(key for key, field in expected.items() if value.get(key) != field)
+def _require_fields(
+    value: dict[str, Any], expected: dict[str, Any], label: str
+) -> None:
+    mismatched = sorted(
+        key for key, field in expected.items() if value.get(key) != field
+    )
     if mismatched:
         raise ValueError(f"{label} differs in: {', '.join(mismatched)}")
 
@@ -276,7 +278,9 @@ def _verify_semantics(
         ("kbuild-command-audit.json", "Kbuild audit"),
     ):
         report = _read_json(flavor_root / "evidence" / name, label)
-        _require_fields(report, {"status": "PASS", "lto_mode": identity.lto_mode}, label)
+        _require_fields(
+            report, {"status": "PASS", "lto_mode": identity.lto_mode}, label
+        )
 
     attestation = _read_json(
         flavor_root / "evidence/attestation.json", "kernel attestation"
@@ -305,12 +309,16 @@ def _verify_semantics(
         raise ValueError(
             "kernel attestation lacks package archive metadata evidence"
         ) from exc
-    observed_debs = {path.name: path for path in (flavor_root / "artifacts").glob("*.deb")}
+    observed_debs = {
+        path.name: path for path in (flavor_root / "artifacts").glob("*.deb")
+    }
     if set(observed_debs) != set(packages):
         raise ValueError("cached binary package set differs from its attestation")
     for name, digest in packages.items():
         if not isinstance(digest, str) or _sha256(observed_debs[name]) != digest:
-            raise ValueError("cached binary package digest differs from its attestation")
+            raise ValueError(
+                "cached binary package digest differs from its attestation"
+            )
 
     selftest_status = _read_environment(
         selftest_root / "evidence/result.env", "selftest result"
@@ -472,9 +480,7 @@ def verify_release_cache(
     _require_cache_location(cache_root, cache_workspace or repository_root, flavor)
     if not cache_root.is_dir() or cache_root.is_symlink():
         raise ValueError("release-cache root is not a plain directory")
-    identity = _expected_identity(
-        decision_root, flavor, expected_key, repository_root
-    )
+    identity = _expected_identity(decision_root, flavor, expected_key, repository_root)
     qualification = load_discovery_decision(decision_root).decision == "qualification"
     _verify_candidate(cache_root, identity, expected_key, qualification=qualification)
     return identity

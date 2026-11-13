@@ -40,9 +40,16 @@ class StorageProgressEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.phase, StoragePhase) or any(
             type(value) is not int or value < 0
-            for value in (self.objects, self.total_objects, self.bytes, self.total_bytes)
+            for value in (
+                self.objects,
+                self.total_objects,
+                self.bytes,
+                self.total_bytes,
+            )
         ):
-            raise ValueError("progress accepts only fixed phases and nonnegative counters")
+            raise ValueError(
+                "progress accepts only fixed phases and nonnegative counters"
+            )
         if self.objects > self.total_objects or self.bytes > self.total_bytes:
             raise ValueError("progress exceeds its total")
 

@@ -3,8 +3,11 @@
 SHELL_SOURCES = $(shell git -C $(DKC_ROOT) ls-files --cached --others --exclude-standard -- '*.sh' 2>/dev/null | \
 	while IFS= read -r path; do test -f '$(DKC_ROOT)/'"$$path" && printf '%s ' "$$path"; done)
 
+PYTHON_SOURCES = $(shell git -C $(DKC_ROOT) ls-files --cached --others --exclude-standard -- '*.py' 2>/dev/null | \
+	while IFS= read -r path; do test -f '$(DKC_ROOT)/'"$$path" && printf '%s ' "$$path"; done)
+
 .PHONY: lint
-lint: lint-shell lint-language ## Run every static check (container tier, offline)
+lint: lint-shell lint-python lint-language ## Run every static check (container tier, offline)
 
 .PHONY: lint-language
 lint-language: ## Everything committed must be written in English
@@ -30,16 +33,26 @@ lint-shell: image ## ShellCheck and shfmt over all project shell sources
 		 echo "shfmt:"; shfmt --diff --language-dialect bash $(SHELL_SOURCES)'
 	@echo 'lint PASS'
 
+.PHONY: lint-python
+lint-python: image ## Ruff lint and format check over all project Python sources
+	@$(CONTAINER_RUN) --name lint-python -- bash -c \
+		'set -Eeuo pipefail; \
+		 echo "ruff check:"; ruff check --no-cache .; \
+		 echo "ruff format:"; ruff format --check --no-cache .'
+	@echo 'lint-python PASS'
+
 .PHONY: fmt
-fmt: image ## Format shell sources in place (container tier, offline)
-	@test -n '$(SHELL_SOURCES)' || { echo 'no project shell sources yet'; exit 0; }
+fmt: image ## Format shell and Python sources in place (container tier, offline)
+	@test -n '$(SHELL_SOURCES)$(PYTHON_SOURCES)' || { echo 'no project sources yet'; exit 0; }
 	@# The container cannot write to the repository, so the formatted files come
 	@# back as a tar on stdout and are unpacked over exactly the same paths.
 	@$(CONTAINER_RUN) --name fmt -- bash -c \
 		'set -Eeuo pipefail; \
 		 shfmt --write --language-dialect bash $(SHELL_SOURCES) >&2; \
-		 tar --create --file=- $(SHELL_SOURCES)' \
-		| tar --extract --file=- --directory=$(DKC_ROOT) --no-same-owner $(SHELL_SOURCES)
+		 ruff check --no-cache --fix --select I --quiet $(PYTHON_SOURCES) >&2; \
+		 ruff format --no-cache --quiet $(PYTHON_SOURCES) >&2; \
+		 tar --create --file=- $(SHELL_SOURCES) $(PYTHON_SOURCES)' \
+		| tar --extract --file=- --directory=$(DKC_ROOT) --no-same-owner $(SHELL_SOURCES) $(PYTHON_SOURCES)
 	@echo 'formatted'
 
 .PHONY: lint-make

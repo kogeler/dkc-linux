@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import pathlib
 import re
 import tomllib
@@ -71,7 +72,11 @@ class FlavorPolicy:
 
 
 def _strings(data: object, field: str) -> tuple[str, ...]:
-    if not isinstance(data, list) or not data or not all(isinstance(v, str) for v in data):
+    if (
+        not isinstance(data, list)
+        or not data
+        or not all(isinstance(v, str) for v in data)
+    ):
         raise FlavorPolicyError(f"{field} must be a non-empty string array")
     values = tuple(data)
     if len(values) != len(set(values)):
@@ -123,7 +128,9 @@ def load_flavor_policy(path: pathlib.Path, fpu: FpuObjectPolicy) -> FlavorPolicy
         raise FlavorPolicyError("C no-SIMD flags differ from the reviewed kernel set")
     rust_no_simd = _strings(raw["rust_no_simd_features"], "rust_no_simd_features")
     if rust_no_simd != RUST_NO_SIMD_FEATURES:
-        raise FlavorPolicyError("Rust no-SIMD features differ from the reviewed kernel set")
+        raise FlavorPolicyError(
+            "Rust no-SIMD features differ from the reviewed kernel set"
+        )
 
     schema = raw["schema_version"]
     if schema != 2:
@@ -146,12 +153,14 @@ def load_all_flavor_policies(
     directory: pathlib.Path, fpu: FpuObjectPolicy
 ) -> dict[str, FlavorPolicy]:
     policies = {
-        flavor: load_flavor_policy(directory / f"{flavor}.toml", fpu) for flavor in FLAVORS
+        flavor: load_flavor_policy(directory / f"{flavor}.toml", fpu)
+        for flavor in FLAVORS
     }
-    for lower, higher in zip(FLAVORS, FLAVORS[1:]):
+    for lower, higher in itertools.pairwise(FLAVORS):
         missing = set(policies[lower].cpu_flags) - set(policies[higher].cpu_flags)
         if missing:
             raise FlavorPolicyError(
-                f"{higher} is not a strict superset of {lower}: missing {sorted(missing)}"
+                f"{higher} is not a strict superset of {lower}: missing "
+                f"{sorted(missing)}"
             )
     return policies

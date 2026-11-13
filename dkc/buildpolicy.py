@@ -23,32 +23,39 @@ def build_policy_paths(
     """
 
     relative = [
-        "dkc/buildid.py",
-        "dkc/buildpolicy.py",
-        "dkc/debver.py",
-        "dkc/flavors.py",
-        "dkc/naming.py",
-        "dkc/serialize.py",
-        "dkc/sourcepackage.py",
-        "dkc/sourceprofile.py",
-        "dkc/tarmetadata.py",
         "config/base-image.lock",
         "config/toolchain.env",
         "container/Containerfile.build",
         "container/build-patched-packages.py",
         "container/patched-packages.toml",
+        "debian-overlay/edits.py",
+        "dkc/__init__.py",
+        "dkc/buildid.py",
+        "dkc/buildpolicy.py",
+        "dkc/cli/__init__.py",
+        "dkc/cli/audit_source_package.py",
+        "dkc/cli/build_source_package.py",
+        "dkc/cli/generate_overlay_patches.py",
+        "dkc/cli/normalize_quilt_patch.py",
+        "dkc/cli/prepare_attestation_replay.py",
+        "dkc/cli/prepare_build_identity.py",
+        "dkc/cli/prepare_flavor.py",
+        "dkc/cli/prepare_source_tree.py",
+        "dkc/cli/run_one_build.py",
+        "dkc/cli/verify_replay_elf.py",
+        "dkc/debver.py",
+        "dkc/flavors.py",
+        "dkc/naming.py",
+        "dkc/overlay.py",
+        "dkc/serialize.py",
+        "dkc/sourcepackage.py",
+        "dkc/sourceprofile.py",
+        "dkc/tarmetadata.py",
         "scripts/build-one.sh",
-        "scripts/lib/podman-image.sh",
-        "scripts/in-container/audit-source-package.py",
         "scripts/in-container/build-source-package.sh",
-        "scripts/in-container/generate-overlay-patches.py",
-        "scripts/in-container/normalize-quilt-patch.py",
-        "scripts/in-container/prepare-build-identity.py",
         "scripts/in-container/prepare-attestation-replay.sh",
-        "scripts/in-container/verify-replay-elf.py",
-        "scripts/in-container/prepare-flavor.py",
-        "scripts/in-container/prepare-source-tree.py",
         "scripts/in-container/run-one-build.sh",
+        "scripts/lib/podman-image.sh",
     ]
     relative.extend(
         path.relative_to(root).as_posix()
@@ -64,7 +71,9 @@ def build_policy_paths(
         for path in sorted((root / "config/flavors").glob("*.toml"))
     )
     paths = tuple(root / name for name in sorted(set(relative)))
-    missing = [path.relative_to(root).as_posix() for path in paths if not path.is_file()]
+    missing = [
+        path.relative_to(root).as_posix() for path in paths if not path.is_file()
+    ]
     if missing:
         raise ValueError(f"build-policy inputs are absent: {missing}")
     return paths

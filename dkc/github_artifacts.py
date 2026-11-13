@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -141,9 +141,7 @@ def _write_inventory(root: Path) -> None:
             records.append(f"{_sha256(path)}  {relative}")
     if not records:
         raise ValueError("artifact evidence is empty")
-    (root / "evidence.sha256").write_text(
-        "\n".join(records) + "\n", encoding="utf-8"
-    )
+    (root / "evidence.sha256").write_text("\n".join(records) + "\n", encoding="utf-8")
 
 
 def _copy_bounded(
@@ -260,9 +258,7 @@ def prepare_flavor_evidence(
         raise ValueError("release-cache manifest has the wrong flavor identity")
     payload = _cache_payload_roots(cache, manifest)
 
-    files = _selected_files(
-        cache, {"cache.json": "cache.json"}, label="release cache"
-    )
+    files = _selected_files(cache, {"cache.json": "cache.json"}, label="release cache")
     files.update(
         _selected_files(
             payload["flavor"],
@@ -310,9 +306,7 @@ def prepare_flavor_evidence(
         )
     )
     files.update(
-        _tree_files(
-            payload["qemu"] / flavor / "guest", f"qemu/{flavor}/guest"
-        )
+        _tree_files(payload["qemu"] / flavor / "guest", f"qemu/{flavor}/guest")
     )
     return _prepare_bundle(
         output,

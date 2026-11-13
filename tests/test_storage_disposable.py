@@ -49,7 +49,9 @@ def _write_repository_sums(repository: Path) -> None:
 
 def _write_evidence(result: Path) -> None:
     checksum = result / "evidence" / "evidence.sha256"
-    files = sorted(path for path in result.rglob("*") if path.is_file() and path != checksum)
+    files = sorted(
+        path for path in result.rglob("*") if path.is_file() and path != checksum
+    )
     checksum.write_text(
         "".join(
             f"{_digest(path)}  ./{path.relative_to(result).as_posix()}\n"
@@ -267,14 +269,18 @@ def test_complete_disposable_flow_proves_cas_reads_and_zero_leftovers(
     integration = DisposableIntegration(store, _disposable_config())
     events = integration.run(_inventory(tmp_path))
     assert store.objects == {}
-    assert any(event.operation == "cas-race" and event.status == "PASS" for event in events)
+    assert any(
+        event.operation == "cas-race" and event.status == "PASS" for event in events
+    )
     assert any(
         event.operation == "authoritative-read" and event.status == "PASS"
         for event in events
     )
     assert any(event.operation == "paginated-list" for event in events)
     assert any(event.operation == "conditional-head" for event in events)
-    assert any(event.operation == "stale-head" and event.status == "412" for event in events)
+    assert any(
+        event.operation == "stale-head" and event.status == "412" for event in events
+    )
     assert events[-1].detail == "zero objects"
     assert all(event.key.startswith(_disposable_config().prefix) for event in events)
 
@@ -341,7 +347,8 @@ def test_missing_storage_secret_blocks_before_repository_or_network_access(
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/in-container/storage-disposable.py",
+            "-m",
+            "dkc.cli.storage_disposable",
             "--repository-result",
             str(repository_that_must_not_be_read),
             "--connection",
@@ -366,9 +373,7 @@ def test_missing_storage_secret_blocks_before_repository_or_network_access(
     summary = json.loads((output / "summary.json").read_text())
     assert summary["status"] == "BLOCKED"
     assert "required connection fields are empty" in summary["error"]
-    assert not any(
-        value and value in summary["error"] for value in connection.values()
-    )
+    assert not any(value and value in summary["error"] for value in connection.values())
 
 
 def test_valid_connection_values_never_enter_failure_output_or_evidence(
@@ -392,7 +397,8 @@ def test_valid_connection_values_never_enter_failure_output_or_evidence(
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/in-container/storage-disposable.py",
+            "-m",
+            "dkc.cli.storage_disposable",
             "--repository-result",
             str(tmp_path / "repository-does-not-exist"),
             "--connection",
@@ -411,10 +417,14 @@ def test_valid_connection_values_never_enter_failure_output_or_evidence(
         text=True,
     )
     assert result.returncode == 1
-    emitted = result.stdout + result.stderr + "".join(
-        path.read_text(encoding="utf-8")
-        for path in output.iterdir()
-        if path.is_file()
+    emitted = (
+        result.stdout
+        + result.stderr
+        + "".join(
+            path.read_text(encoding="utf-8")
+            for path in output.iterdir()
+            if path.is_file()
+        )
     )
     assert "FAIL disposable storage integration" in emitted
     assert not any(value in emitted for value in connection.values())

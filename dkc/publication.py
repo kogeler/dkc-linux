@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 
 from .storage import ObjectMetadata
 from .storage_progress import StoragePhase, StorageProgressEvent
@@ -43,7 +43,9 @@ class PublicationPlan:
             | set(self.conveniences)
         )
         if set(self.mutable_preconditions) != mutable:
-            raise ValueError("every mutable key needs exactly one captured precondition")
+            raise ValueError(
+                "every mutable key needs exactly one captured precondition"
+            )
         all_keys = set(self.immutable) | mutable
         if len(all_keys) != len(self.immutable) + len(mutable):
             raise ValueError("immutable and mutable publication keys overlap")
@@ -122,7 +124,11 @@ class PublicationExecutor:
         self, key: str, value: PublicationObject, precondition: str | None
     ) -> None:
         current = self.store.get(key)
-        if current is not None and current.body == value.body and current.metadata == value.metadata:
+        if (
+            current is not None
+            and current.body == value.body
+            and current.metadata == value.metadata
+        ):
             return
         if precondition is None:
             self.store.put(key, value.body, value.metadata, if_none_match=True)
@@ -131,7 +137,11 @@ class PublicationExecutor:
 
     def _verify(self, key: str, value: PublicationObject) -> None:
         current = self.store.get(key)
-        if current is None or current.body != value.body or current.metadata != value.metadata:
+        if (
+            current is None
+            or current.body != value.body
+            or current.metadata != value.metadata
+        ):
             raise RuntimeError(f"origin verification failed for {key}")
 
     def _prepare_immutable(self, key: str, value: PublicationObject) -> str | None:
@@ -183,7 +193,11 @@ class PublicationExecutor:
             total_size: int = 0,
         ) -> None:
             if progress is not None:
-                progress(StorageProgressEvent(phase, objects, total_objects, size, total_size))
+                progress(
+                    StorageProgressEvent(
+                        phase, objects, total_objects, size, total_size
+                    )
+                )
 
         reused: dict[str, str] = {}
         immutable_size = sum(len(value.body) for value in plan.immutable.values())
@@ -202,11 +216,18 @@ class PublicationExecutor:
             prepared_objects += 1
             prepared_bytes += len(value.body)
             report(
-                StoragePhase.IMMUTABLE, prepared_objects, len(plan.immutable),
-                prepared_bytes, immutable_size,
+                StoragePhase.IMMUTABLE,
+                prepared_objects,
+                len(plan.immutable),
+                prepared_bytes,
+                immutable_size,
             )
 
-        report(StoragePhase.IMMUTABLE, total_objects=len(plan.immutable), total_size=immutable_size)
+        report(
+            StoragePhase.IMMUTABLE,
+            total_objects=len(plan.immutable),
+            total_size=immutable_size,
+        )
         transaction = plan.immutable[plan.transaction_key]
         prepare(plan.transaction_key, transaction)
         self._inject(5, fail_after)
@@ -239,26 +260,34 @@ class PublicationExecutor:
         self._inject(8, fail_after)
 
         verify_total = len(plan.immutable) + len(plan.mutable_before_commit) + 1
-        verify_bytes = immutable_size + sum(
-            len(value.body) for value in plan.mutable_before_commit.values()
-        ) + len(plan.inrelease.body)
-        verified_objects = 0
+        verify_bytes = (
+            immutable_size
+            + sum(len(value.body) for value in plan.mutable_before_commit.values())
+            + len(plan.inrelease.body)
+        )
         verified_bytes = 0
-        report(StoragePhase.VERIFY_REPOSITORY, total_objects=verify_total, total_size=verify_bytes)
-        for key, value in (
+        report(
+            StoragePhase.VERIFY_REPOSITORY,
+            total_objects=verify_total,
+            total_size=verify_bytes,
+        )
+        for verified_objects, (key, value) in enumerate(
             list(plan.immutable.items())
             + list(plan.mutable_before_commit.items())
-            + [(plan.inrelease_key, plan.inrelease)]
+            + [(plan.inrelease_key, plan.inrelease)],
+            start=1,
         ):
             if key in reused:
                 self._revalidate_immutable(key, value, reused[key])
             else:
                 self._verify(key, value)
-            verified_objects += 1
             verified_bytes += len(value.body)
             report(
-                StoragePhase.VERIFY_REPOSITORY, verified_objects, verify_total,
-                verified_bytes, verify_bytes,
+                StoragePhase.VERIFY_REPOSITORY,
+                verified_objects,
+                verify_total,
+                verified_bytes,
+                verify_bytes,
             )
         self._inject(9, fail_after)
 
@@ -298,6 +327,8 @@ class PublicationExecutor:
         self._inject(12, fail_after)
         reused_bytes = sum(len(plan.immutable[key].body) for key in reused)
         return PublicationTransfers(
-            len(plan.immutable) - len(reused), immutable_size - reused_bytes,
-            len(reused), reused_bytes,
+            len(plan.immutable) - len(reused),
+            immutable_size - reused_bytes,
+            len(reused),
+            reused_bytes,
         )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 
@@ -10,10 +10,11 @@ from dkc.records import Artifact, GcQueueEntry, PublicationManifest
 from dkc.storage import ObjectMetadata
 from tests.fake_storage import ConditionalObjectStore
 
-
 SHA = "a" * 64
-NOW = datetime(2026, 8, 17, tzinfo=timezone.utc)
-IMMUTABLE = ObjectMetadata("application/octet-stream", "public, max-age=31536000, immutable")
+NOW = datetime(2026, 8, 17, tzinfo=UTC)
+IMMUTABLE = ObjectMetadata(
+    "application/octet-stream", "public, max-age=31536000, immutable"
+)
 
 
 def manifest(*, digest: str, size: int) -> PublicationManifest:
@@ -32,7 +33,12 @@ def manifest(*, digest: str, size: int) -> PublicationManifest:
         retained_series=[[7, 1]],
         artifacts=[live],
         live_objects=[live.key],
-        apt_metadata={"inrelease_sha256": SHA, "date": "x", "valid_until": "y", "index_hashes": {}},
+        apt_metadata={
+            "inrelease_sha256": SHA,
+            "date": "x",
+            "valid_until": "y",
+            "index_hashes": {},
+        },
         meta_packages={},
         created_utc="2026-08-17T00:00:00Z",
         previous_publication={"publication_id": "20260816-abcdef12", "generation": 2},
@@ -45,11 +51,17 @@ def test_gc_deletes_only_exact_tombstones() -> None:
     payload = b"retired"
     digest = hashlib.sha256(payload).hexdigest()
     store.put("pool/retired.deb", payload, IMMUTABLE, if_none_match=True)
-    plan = plan_gc(manifest(digest=digest, size=len(payload)), store, now=NOW,
-                   max_objects=10, max_bytes=1000)
+    plan = plan_gc(
+        manifest(digest=digest, size=len(payload)),
+        store,
+        now=NOW,
+        max_objects=10,
+        max_bytes=1000,
+    )
     assert [target.key for target in plan.targets] == ["pool/retired.deb"]
-    deleted = execute_gc(plan, store, observed_generation=lambda: 3,
-                         mutation_checkpoint=lambda: None)
+    deleted = execute_gc(
+        plan, store, observed_generation=lambda: 3, mutation_checkpoint=lambda: None
+    )
     assert deleted == ("pool/retired.deb",)
     assert store.get("pool/retired.deb") is None
 
@@ -58,8 +70,9 @@ def test_gc_rejects_changed_bytes() -> None:
     store = ConditionalObjectStore()
     store.put("pool/retired.deb", b"changed", IMMUTABLE, if_none_match=True)
     with pytest.raises(ValueError, match="signed tombstone"):
-        plan_gc(manifest(digest=SHA, size=1), store, now=NOW,
-                max_objects=10, max_bytes=1000)
+        plan_gc(
+            manifest(digest=SHA, size=1), store, now=NOW, max_objects=10, max_bytes=1000
+        )
 
 
 def test_gc_refuses_a_partial_plan() -> None:
@@ -74,8 +87,18 @@ def test_gc_refuses_a_partial_plan() -> None:
             **value.to_dict(),
             "artifacts": value.artifacts,
             "gc_queue": [
-                GcQueueEntry("pool/first.deb", hashlib.sha256(first).hexdigest(), len(first), "retired"),
-                GcQueueEntry("pool/second.deb", hashlib.sha256(second).hexdigest(), len(second), "retired"),
+                GcQueueEntry(
+                    "pool/first.deb",
+                    hashlib.sha256(first).hexdigest(),
+                    len(first),
+                    "retired",
+                ),
+                GcQueueEntry(
+                    "pool/second.deb",
+                    hashlib.sha256(second).hexdigest(),
+                    len(second),
+                    "retired",
+                ),
             ],
         }
     )
@@ -88,9 +111,15 @@ def test_gc_stops_if_generation_changes() -> None:
     payload = b"retired"
     digest = hashlib.sha256(payload).hexdigest()
     store.put("pool/retired.deb", payload, IMMUTABLE, if_none_match=True)
-    plan = plan_gc(manifest(digest=digest, size=len(payload)), store, now=NOW,
-                   max_objects=10, max_bytes=1000)
+    plan = plan_gc(
+        manifest(digest=digest, size=len(payload)),
+        store,
+        now=NOW,
+        max_objects=10,
+        max_bytes=1000,
+    )
     with pytest.raises(RuntimeError, match="generation changed"):
-        execute_gc(plan, store, observed_generation=lambda: 4,
-                   mutation_checkpoint=lambda: None)
+        execute_gc(
+            plan, store, observed_generation=lambda: 4, mutation_checkpoint=lambda: None
+        )
     assert store.get("pool/retired.deb") is not None

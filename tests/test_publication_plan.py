@@ -9,17 +9,24 @@ from dkc.storage import ObjectMetadata
 from dkc.storage_repository import RepositoryObject
 from tests.fake_storage import ConditionalObjectStore
 
+IMMUTABLE = ObjectMetadata(
+    "application/octet-stream", "public, max-age=31536000, immutable"
+)
+MUTABLE = ObjectMetadata(
+    "application/octet-stream", "public, max-age=0, must-revalidate"
+)
 
-IMMUTABLE = ObjectMetadata("application/octet-stream", "public, max-age=31536000, immutable")
-MUTABLE = ObjectMetadata("application/octet-stream", "public, max-age=0, must-revalidate")
 
-
-def item(tmp_path: Path, key: str, body: bytes, metadata: ObjectMetadata) -> RepositoryObject:
+def item(
+    tmp_path: Path, key: str, body: bytes, metadata: ObjectMetadata
+) -> RepositoryObject:
     path = tmp_path / key.replace("/", "-")
     path.write_bytes(body)
     import hashlib
 
-    return RepositoryObject(key, path, hashlib.sha256(body).hexdigest(), len(body), metadata)
+    return RepositoryObject(
+        key, path, hashlib.sha256(body).hexdigest(), len(body), metadata
+    )
 
 
 def inventory(tmp_path: Path) -> list[RepositoryObject]:
@@ -39,7 +46,9 @@ def inventory(tmp_path: Path) -> list[RepositoryObject]:
     return [item(tmp_path, key, key.encode(), metadata) for key, metadata in values]
 
 
-def test_plan_classifies_commit_points_and_captures_each_precondition(tmp_path: Path) -> None:
+def test_plan_classifies_commit_points_and_captures_each_precondition(
+    tmp_path: Path,
+) -> None:
     store = ConditionalObjectStore()
     old = store.put("dists/trixie/InRelease", b"old", MUTABLE, if_none_match=True)
     plan = plan_repository(inventory(tmp_path), store, max_object_bytes=1_000_000)

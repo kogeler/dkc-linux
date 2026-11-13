@@ -153,6 +153,7 @@ class SourceBundle:
             "version": self.version,
         }
 
+
 def validate_source_bundle(
     root: pathlib.Path,
     *,
@@ -172,9 +173,7 @@ def validate_source_bundle(
         "buildinfo": f"{package}_{version_filename}_source.buildinfo",
     }
     found = {
-        path.name
-        for path in root.iterdir()
-        if path.is_file() or path.is_symlink()
+        path.name for path in root.iterdir() if path.is_file() or path.is_symlink()
     }
     if found != set(expected_names.values()):
         raise ValueError(
@@ -184,15 +183,24 @@ def validate_source_bundle(
         )
     actual = _actual(root, expected_names.values())
 
-    dsc_fields = parse_deb822((root / expected_names["dsc"]).read_text(encoding="utf-8"))
-    for key, expected in (("Format", "3.0 (quilt)"), ("Source", package), ("Version", version)):
-        if dsc_fields.get(key) != expected:
-            raise ValueError(f".dsc {key}={dsc_fields.get(key)!r}, expected {expected!r}")
-    dsc_members = parse_checksums_sha256(
-        dsc_fields.get("Checksums-Sha256", ""), ".dsc"
+    dsc_fields = parse_deb822(
+        (root / expected_names["dsc"]).read_text(encoding="utf-8")
     )
+    for key, expected in (
+        ("Format", "3.0 (quilt)"),
+        ("Source", package),
+        ("Version", version),
+    ):
+        if dsc_fields.get(key) != expected:
+            raise ValueError(
+                f".dsc {key}={dsc_fields.get(key)!r}, expected {expected!r}"
+            )
+    dsc_members = parse_checksums_sha256(dsc_fields.get("Checksums-Sha256", ""), ".dsc")
     _require_records(
-        {name: actual[name] for name in (expected_names["orig"], expected_names["debian"])},
+        {
+            name: actual[name]
+            for name in (expected_names["orig"], expected_names["debian"])
+        },
         dsc_members,
         ".dsc",
     )
@@ -203,15 +211,22 @@ def validate_source_bundle(
     }
     expected_binaries = set(expected_binary_packages)
     if not expected_binaries or binaries != expected_binaries:
-        raise ValueError(".dsc Binary does not describe the exact publication package graph")
+        raise ValueError(
+            ".dsc Binary does not describe the exact publication package graph"
+        )
 
     buildinfo_fields = parse_deb822(
         (root / expected_names["buildinfo"]).read_text(encoding="utf-8")
     )
-    for key, expected in (("Source", package), ("Version", version), ("Architecture", "source")):
+    for key, expected in (
+        ("Source", package),
+        ("Version", version),
+        ("Architecture", "source"),
+    ):
         if buildinfo_fields.get(key) != expected:
             raise ValueError(
-                f"source .buildinfo {key}={buildinfo_fields.get(key)!r}, expected {expected!r}"
+                f"source .buildinfo {key}={buildinfo_fields.get(key)!r}, expected "
+                f"{expected!r}"
             )
     buildinfo_members = parse_checksums_sha256(
         buildinfo_fields.get("Checksums-Sha256", ""), "source .buildinfo"
@@ -233,7 +248,8 @@ def validate_source_bundle(
     ):
         if changes_fields.get(key) != expected:
             raise ValueError(
-                f"source .changes {key}={changes_fields.get(key)!r}, expected {expected!r}"
+                f"source .changes {key}={changes_fields.get(key)!r}, expected "
+                f"{expected!r}"
             )
     changes_members = parse_checksums_sha256(
         changes_fields.get("Checksums-Sha256", ""), "source .changes"
@@ -271,7 +287,9 @@ def build_tree_manifest(root: pathlib.Path) -> str:
     if not root.is_dir() or root.is_symlink():
         raise ValueError("source-tree root must be a plain directory")
     records: list[str] = []
-    for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+    for directory, dirnames, filenames in os.walk(
+        root, topdown=True, followlinks=False
+    ):
         directory_path = pathlib.Path(directory)
         relative_directory = directory_path.relative_to(root)
         dirnames[:] = sorted(

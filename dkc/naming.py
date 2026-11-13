@@ -60,7 +60,8 @@ class Identity:
             )
         if not _BUILD_ID_RE.match(self.build_id):
             raise InvalidIdentity(
-                f"build id must be at least 12 lowercase hex characters, got {self.build_id!r}"
+                f"build id must be at least 12 lowercase hex characters, got "
+                f"{self.build_id!r}"
             )
 
     @classmethod
@@ -110,7 +111,9 @@ class Identity:
     def kernel_release(self, flavor: str) -> str:
         """The `KREL`: `uname -r`, `/lib/modules/<KREL>`, `/boot/vmlinuz-<KREL>`."""
         if flavor not in FLAVORS:
-            raise InvalidIdentity(f"unknown flavor {flavor!r}, expected one of {FLAVORS}")
+            raise InvalidIdentity(
+                f"unknown flavor {flavor!r}, expected one of {FLAVORS}"
+            )
         krel = f"{self.abi}-{flavor}-amd64"
         _validate_kernel_release(krel)
         return krel

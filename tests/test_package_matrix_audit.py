@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import hashlib
 import io
 import json
@@ -14,13 +13,9 @@ import tarfile
 
 import pytest
 
+from dkc.cli import audit_package_matrix as audit
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "scripts" / "in-container" / "audit-package-matrix.py"
-spec = importlib.util.spec_from_file_location("audit_package_matrix", SCRIPT)
-assert spec and spec.loader
-audit = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(audit)
 
 
 def _identity() -> dict[str, object]:
@@ -36,9 +31,7 @@ def _identity() -> dict[str, object]:
         meta.extend(
             f"dkc-linux-{role}-{suffix}" for role in ("base", "image", "headers")
         )
-    versioned.extend(
-        (f"dkc-linux-headers-{abi}-common", f"dkc-linux-kbuild-{abi}")
-    )
+    versioned.extend((f"dkc-linux-headers-{abi}-common", f"dkc-linux-kbuild-{abi}"))
     return {
         "schema_version": 1,
         "source_package": "dkc-linux",
@@ -87,7 +80,9 @@ def _add_kernel_payload(
         root = f"usr/src/linux-headers-{abi}-common"
         _write(package_root, f"{root}/Makefile")
         for leaf in ("scripts", "tools"):
-            _symlink(package_root, f"{root}/{leaf}", f"../../lib/linux-kbuild-{abi}/{leaf}")
+            _symlink(
+                package_root, f"{root}/{leaf}", f"../../lib/linux-kbuild-{abi}/{leaf}"
+            )
     elif package == kbuild:
         _write(package_root, f"usr/lib/linux-kbuild-{abi}/scripts/basic/fixdep")
         _write(package_root, f"usr/lib/linux-kbuild-{abi}/tools/objtool/objtool")
@@ -105,7 +100,9 @@ def _add_kernel_payload(
         elif package == f"dkc-linux-binary-{krel}":
             _write(package_root, f"boot/vmlinuz-{krel}")
         elif package == f"dkc-linux-modules-{krel}":
-            _write(package_root, f"usr/lib/modules/{krel}/kernel/drivers/dkc_fixture.ko")
+            _write(
+                package_root, f"usr/lib/modules/{krel}/kernel/drivers/dkc_fixture.ko"
+            )
         elif package == f"dkc-linux-headers-{krel}":
             root = f"usr/src/linux-headers-{krel}"
             for leaf in (".kernelvariables", "Makefile", "Module.symvers"):
@@ -180,8 +177,14 @@ def _add_control_contract(
         elif package == f"dkc-linux-image-{krel}":
             scripts = {
                 "preinst": f"version={krel}\nlinux-run-hooks image preinst\n",
-                "postinst": f"version={krel}\nlinux-update-symlinks\nlinux-run-hooks image postinst\n",
-                "prerm": f"version={krel}\nlinux-check-removal\nlinux-run-hooks image prerm\n",
+                "postinst": (
+                    f"version={krel}\nlinux-update-symlinks\n"
+                    "linux-run-hooks image postinst\n"
+                ),
+                "prerm": (
+                    f"version={krel}\nlinux-check-removal\n"
+                    "linux-run-hooks image prerm\n"
+                ),
                 "postrm": (
                     f'version={krel}\nlinux-update-symlinks remove\ncase "$1" in\n'
                     "remove|purge)\n  ;;\n*)\n"
@@ -191,7 +194,7 @@ def _add_control_contract(
         elif package == f"dkc-linux-modules-{krel}":
             scripts = {
                 "postinst": f'version={krel}\ndepmod "$version"\n',
-                "prerm": f'version={krel}\n# preserve modules.builtin\n',
+                "prerm": f"version={krel}\n# preserve modules.builtin\n",
             }
         elif package == f"dkc-linux-headers-{krel}":
             scripts = {
@@ -216,14 +219,17 @@ def _add_control_contract(
                 "#!/bin/sh\nset -e\n"
                 "dpkg-maintscript-helper dir_to_symlink "
                 f"/usr/share/doc/{package} {target} "
-                f"5.7~rc5-1~exp1 {package} -- \"$@\"\n",
+                f'5.7~rc5-1~exp1 {package} -- "$@"\n',
                 encoding="utf-8",
             )
             path.chmod(0o755)
 
 
 def _source_checksum(path: pathlib.Path) -> str:
-    return f" {hashlib.sha256(path.read_bytes()).hexdigest()} {path.stat().st_size} {path.name}"
+    return (
+        f" {hashlib.sha256(path.read_bytes()).hexdigest()} {path.stat().st_size} "
+        f"{path.name}"
+    )
 
 
 def _source_md5(path: pathlib.Path) -> str:
@@ -373,14 +379,20 @@ def _build_synthetic_matrix(
         evidence.mkdir()
         source_report = _build_synthetic_source_bundle(root / "source", identity)
         digests: dict[str, str] = {}
-        for index, package in enumerate(sorted(audit.expected_for_flavor(identity, flavor))):
+        for index, package in enumerate(
+            sorted(audit.expected_for_flavor(identity, flavor))
+        ):
             package_root = tmp_path / f"package-{flavor}-{index}"
             control = package_root / "DEBIAN" / "control"
             payload = package_root / "usr" / "share" / "dkc-matrix-test" / package
             control.parent.mkdir(parents=True)
             control.parent.chmod(0o755)
             payload.parent.mkdir(parents=True)
-            conflict_field = "Conflicts: linux-image-amd64\n" if conflicts and package_number == 0 else ""
+            conflict_field = (
+                "Conflicts: linux-image-amd64\n"
+                if conflicts and package_number == 0
+                else ""
+            )
             dependencies = []
             for related, exact in sorted(dependency_graph[package].items()):
                 relation = f"{related} (= {version})" if exact else related
@@ -388,7 +400,9 @@ def _build_synthetic_matrix(
                     relation = related
                     loosened = True
                 dependencies.append(relation)
-            depends_field = f"Depends: {', '.join(dependencies)}\n" if dependencies else ""
+            depends_field = (
+                f"Depends: {', '.join(dependencies)}\n" if dependencies else ""
+            )
             provides = sorted(internal_provides.get(package, set()))
             provides_field = f"Provides: {', '.join(provides)}\n" if provides else ""
             control.write_text(
@@ -513,7 +527,9 @@ def _write_evidence_manifest(evidence: pathlib.Path) -> None:
         if path.name == "evidence.sha256":
             continue
         relative = path.relative_to(evidence).as_posix()
-        records.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}\n")
+        records.append(
+            f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{relative}\n"
+        )
     (evidence / "evidence.sha256").write_text("".join(records), encoding="utf-8")
 
 
@@ -523,11 +539,13 @@ def _run_audit(
     return subprocess.run(
         [
             sys.executable,
-            SCRIPT,
+            "-m",
+            "dkc.cli.audit_package_matrix",
             *roots[: len(audit.RELEASE_FLAVORS)],
             tmp_path / "repository",
             tmp_path / "evidence" / "matrix.json",
         ],
+        cwd=ROOT,
         text=True,
         capture_output=True,
         check=False,
@@ -540,13 +558,15 @@ def _run_flavor_audit(
     return subprocess.run(
         [
             sys.executable,
-            SCRIPT,
+            "-m",
+            "dkc.cli.audit_package_matrix",
             "--flavor",
             flavor,
             root,
             tmp_path / "flavor-repository",
             tmp_path / "flavor-evidence" / "audit.json",
         ],
+        cwd=ROOT,
         text=True,
         capture_output=True,
         check=False,
@@ -642,9 +662,7 @@ def test_source_upload_metadata_may_record_distinct_build_time(
     changes = source_root / str(source_report["changes"])
     changes.write_text(
         "\n".join(
-            _source_checksum(buildinfo)
-            if line.endswith(f" {buildinfo.name}")
-            else line
+            _source_checksum(buildinfo) if line.endswith(f" {buildinfo.name}") else line
             for line in changes.read_text(encoding="utf-8").splitlines()
         )
         + "\n",
@@ -686,8 +704,7 @@ def test_source_upload_metadata_may_record_distinct_build_time(
         for name in metadata_names
     }
     assert {
-        details["sha256"]
-        for details in matrix["source_upload_metadata"]["v3"].values()
+        details["sha256"] for details in matrix["source_upload_metadata"]["v3"].values()
     } == expected_hashes
 
 
@@ -807,7 +824,9 @@ def test_nonidentical_common_package_copy_is_rejected(tmp_path: pathlib.Path) ->
     assert "common package copy differs from canonical v2 bytes" in result.stderr
 
 
-def test_malformed_kernel_release_identity_fails_cleanly(tmp_path: pathlib.Path) -> None:
+def test_malformed_kernel_release_identity_fails_cleanly(
+    tmp_path: pathlib.Path,
+) -> None:
     roots = _build_synthetic_matrix(tmp_path)
     identity = _identity()
     identity["kernel_releases"] = ["not", "an", "object"]
@@ -912,8 +931,7 @@ def test_internal_dependency_alternative_is_rejected() -> None:
     graph = audit.expected_internal_dependencies(abi, release_map)
     version = str(identity["package_version"])
     rows = {
-        package: {field: "" for field in audit.RELATION_FIELDS}
-        for package in graph
+        package: {field: "" for field in audit.RELATION_FIELDS} for package in graph
     }
     for package, dependencies in graph.items():
         rows[package]["depends"] = ", ".join(
@@ -937,8 +955,7 @@ def test_unrelated_dependency_alternative_is_accepted() -> None:
     graph = audit.expected_internal_dependencies(abi, release_map)
     version = str(identity["package_version"])
     rows = {
-        package: {field: "" for field in audit.RELATION_FIELDS}
-        for package in graph
+        package: {field: "" for field in audit.RELATION_FIELDS} for package in graph
     }
     for package, dependencies in graph.items():
         internal = [
@@ -965,12 +982,19 @@ def test_missing_lifecycle_command_is_rejected() -> None:
             package,
             {str(key): str(value) for key, value in releases.items()},
             {
-                "preinst": (0o755, f"version={releases['v2']}\nlinux-run-hooks image preinst"),
+                "preinst": (
+                    0o755,
+                    f"version={releases['v2']}\nlinux-run-hooks image preinst",
+                ),
                 "postinst": (0o755, f"version={releases['v2']}\n"),
-                "prerm": (0o755, f"version={releases['v2']}\nlinux-check-removal\nlinux-run-hooks image prerm"),
+                "prerm": (
+                    0o755,
+                    f"version={releases['v2']}\nlinux-check-removal\n"
+                    "linux-run-hooks image prerm",
+                ),
                 "postrm": (
                     0o755,
-                    f'version={releases["v2"]}\nlinux-update-symlinks remove\n'
+                    f"version={releases['v2']}\nlinux-update-symlinks remove\n"
                     'case "$1" in\nremove|purge)\n  ;;\n*)\n'
                     "  linux-run-hooks image postrm\n  ;;\nesac",
                 ),
@@ -992,7 +1016,8 @@ def test_removal_hook_handoff_is_enforced() -> None:
                 "preinst": (0o755, f"version={krel}\nlinux-run-hooks image preinst"),
                 "postinst": (
                     0o755,
-                    f"version={krel}\nlinux-update-symlinks\nlinux-run-hooks image postinst",
+                    f"version={krel}\nlinux-update-symlinks\nlinux-run-hooks image "
+                    f"postinst",
                 ),
                 "prerm": (
                     0o755,
@@ -1045,9 +1070,11 @@ def test_metapackage_documentation_transition_is_exact() -> None:
         "#!/bin/sh\nset -e\n"
         "dpkg-maintscript-helper dir_to_symlink "
         f"/usr/share/doc/{package} dkc-linux-headers-{releases['v2']} "
-        f"5.7~rc5-1~exp1 {package} -- \"$@\"\n"
+        f'5.7~rc5-1~exp1 {package} -- "$@"\n'
     )
-    scripts = {name: (0o755, correct) for name in ("preinst", "postinst", "prerm", "postrm")}
+    scripts = {
+        name: (0o755, correct) for name in ("preinst", "postinst", "prerm", "postrm")
+    }
     templates = {
         "headers": "dir_to_symlink /usr/share/doc/@package@ "
         "dkc-linux-headers-@abiname@@localversion@ 5.7~rc5-1~exp1 @package@\n"
@@ -1071,8 +1098,7 @@ def test_unreviewed_internal_relation_is_rejected(relation: str, message: str) -
     graph = audit.expected_internal_dependencies(abi, release_map)
     version = str(identity["package_version"])
     rows = {
-        package: {field: "" for field in audit.RELATION_FIELDS}
-        for package in graph
+        package: {field: "" for field in audit.RELATION_FIELDS} for package in graph
     }
     for package, dependencies in graph.items():
         rows[package]["depends"] = ", ".join(
@@ -1128,9 +1154,7 @@ def test_copyright_documentation_rejects_missing_target_and_cycles() -> None:
 
 def test_copyright_documentation_rejects_missing_regular_file() -> None:
     payloads = {
-        "one": {
-            "usr/share/doc/one": ("usr/share/doc/one", "directory", 0o755, 0, "")
-        }
+        "one": {"usr/share/doc/one": ("usr/share/doc/one", "directory", 0o755, 0, "")}
     }
     with pytest.raises(SystemExit, match="regular copyright file"):
         audit.validate_copyright_documentation(payloads)

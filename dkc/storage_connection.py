@@ -86,9 +86,7 @@ def load_connection(path: Path) -> StorageConnection:
         if not isinstance(value, str):
             raise ValueError(f"connection field {key} must be a string")
         values[key] = value
-    missing_values = sorted(
-        key for key in required if not values.get(key)
-    )
+    missing_values = sorted(key for key in required if not values.get(key))
     if missing_values:
         raise MissingStorageConnection(
             f"required connection fields are empty: {missing_values}"
@@ -151,12 +149,11 @@ def materialize_connection(
         value = {
             field: source_environment.get(variable, "")
             for field, variable in _ENVIRONMENT_FIELDS.items()
-            if field != "s3_session_token"
-            or source_environment.get(variable, "")
+            if field != "s3_session_token" or source_environment.get(variable, "")
         }
-        body = (
-            json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
-        ).encode("utf-8")
+        body = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode(
+            "utf-8"
+        )
     created = False
     try:
         descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

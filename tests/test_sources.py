@@ -103,28 +103,37 @@ def test_minimal_valid_stanza() -> None:
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        (lambda s: s.replace("Directory: pool/main/d/demo", "Directory: /etc"),
-         "absolute Directory"),
-        (lambda s: s.replace("Directory: pool/main/d/demo", "Directory: pool/../../etc"),
-         "path traversal in Directory"),
-        (lambda s: s.replace("Directory: pool/main/d/demo", "Directory: pool//demo"),
-         "non-normalized Directory"),
-        (lambda s: s.replace("demo_1.0-1.dsc", "../../etc/passwd"),
-         "path traversal in a member name"),
-        (lambda s: s.replace("a" * 64, "a" * 63),
-         "truncated SHA-256"),
-        (lambda s: s.replace(" 100 ", " 0 "),
-         "zero size"),
-        (lambda s: s.replace(" 100 ", " notanumber "),
-         "non-integer size"),
-        (lambda s: s.replace("Checksums-Sha256:\n", "Checksums-Sha256:\n \n"),
-         "malformed checksum line"),
-        (lambda s: s.replace("Version: 1.0-1\n", ""),
-         "missing Version"),
-        (lambda s: s.replace("Directory: pool/main/d/demo\n", ""),
-         "missing Directory"),
-        (lambda s: s.replace("Version: 1.0-1\n", "Version: 1.0-1\nVersion: 2.0-1\n"),
-         "duplicate field"),
+        (
+            lambda s: s.replace("Directory: pool/main/d/demo", "Directory: /etc"),
+            "absolute Directory",
+        ),
+        (
+            lambda s: s.replace(
+                "Directory: pool/main/d/demo", "Directory: pool/../../etc"
+            ),
+            "path traversal in Directory",
+        ),
+        (
+            lambda s: s.replace("Directory: pool/main/d/demo", "Directory: pool//demo"),
+            "non-normalized Directory",
+        ),
+        (
+            lambda s: s.replace("demo_1.0-1.dsc", "../../etc/passwd"),
+            "path traversal in a member name",
+        ),
+        (lambda s: s.replace("a" * 64, "a" * 63), "truncated SHA-256"),
+        (lambda s: s.replace(" 100 ", " 0 "), "zero size"),
+        (lambda s: s.replace(" 100 ", " notanumber "), "non-integer size"),
+        (
+            lambda s: s.replace("Checksums-Sha256:\n", "Checksums-Sha256:\n \n"),
+            "malformed checksum line",
+        ),
+        (lambda s: s.replace("Version: 1.0-1\n", ""), "missing Version"),
+        (lambda s: s.replace("Directory: pool/main/d/demo\n", ""), "missing Directory"),
+        (
+            lambda s: s.replace("Version: 1.0-1\n", "Version: 1.0-1\nVersion: 2.0-1\n"),
+            "duplicate field",
+        ),
     ],
 )
 def test_rejects_malformed_index(mutation, reason: str) -> None:

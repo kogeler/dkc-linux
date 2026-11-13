@@ -23,6 +23,7 @@ Selection is exact: a source version must match exactly one profile.
 from __future__ import annotations
 
 import argparse
+import itertools
 import pathlib
 import re
 import shlex
@@ -62,7 +63,9 @@ _PATCH_RE = re.compile(r"^[0-9]{4}-[a-z0-9][a-z0-9.-]*\.patch$")
 _BUILD_PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9.+-]*$")
 _ARCHITECTURE_RE = re.compile(r"^[a-z][a-z0-9]*$")
 _OBJECT_RE = re.compile(r"^[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*\.o$")
-_ARTIFACT_RE = re.compile(r"^(?:vmlinux|kernel/[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*\.ko)$")
+_ARTIFACT_RE = re.compile(
+    r"^(?:vmlinux|kernel/[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*\.ko)$"
+)
 _KSELFTEST_TARGET_RE = re.compile(r"^[A-Za-z0-9_.+-]+(?:/[A-Za-z0-9_.+-]+)*$")
 _KSELFTEST_TEST_RE = re.compile(
     r"^[A-Za-z0-9_.+-]+(?:/[A-Za-z0-9_.+-]+)*:[A-Za-z0-9_.+/-]+$"
@@ -120,8 +123,14 @@ def _strings(
 
 
 def _integer(value: object, context: str, minimum: int, maximum: int) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
-        raise SourceProfileError(f"{context} must be an integer in [{minimum}, {maximum}]")
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not minimum <= value <= maximum
+    ):
+        raise SourceProfileError(
+            f"{context} must be an integer in [{minimum}, {maximum}]"
+        )
     return value
 
 
@@ -230,13 +239,15 @@ class SourceProfile:
         version = DebianVersion.parse(source_version)
         if version.series != self.kernel_series:
             return False
-        if self.first_source_version is not None and compare(
-            version, self.first_source_version
-        ) < 0:
+        if (
+            self.first_source_version is not None
+            and compare(version, self.first_source_version) < 0
+        ):
             return False
-        return self.before_source_version is None or compare(
-            version, self.before_source_version
-        ) < 0
+        return (
+            self.before_source_version is None
+            or compare(version, self.before_source_version) < 0
+        )
 
     def build_policy_paths(self) -> tuple[pathlib.Path, ...]:
         """Profile files that are part of the kernel publication identity."""
@@ -260,8 +271,10 @@ class SourceProfile:
         """Render the Debian `config.local` that restricts the source to amd64."""
 
         lines = [
-            "# The published source package intentionally supports only amd64.  Keep every",
-            "# excluded Debian architecture explicit so an upstream inventory change fails",
+            "# The published source package intentionally supports only amd64.  "
+            "Keep every",
+            "# excluded Debian architecture explicit so an upstream inventory "
+            "change fails",
             "# the preparation gate instead of silently expanding the package graph.",
         ]
         for kernel_architecture, debian_architectures in self.kernel_architectures:
@@ -300,7 +313,9 @@ def _load_build(path: pathlib.Path, profile_id: str) -> dict[str, Any]:
         raise SourceProfileError(f"{path} has an unsupported schema")
     match = _ID_RE.fullmatch(profile_id)
     if match is None or raw["kernel_series"] != match.group("series"):
-        raise SourceProfileError(f"{path} kernel_series does not match profile {profile_id}")
+        raise SourceProfileError(
+            f"{path} kernel_series does not match profile {profile_id}"
+        )
     return raw
 
 
@@ -315,13 +330,17 @@ def _load_validation(path: pathlib.Path, series: str) -> dict[str, Any]:
     return raw
 
 
-def _architectures(value: object, context: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def _architectures(
+    value: object, context: str
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
     if not isinstance(value, dict) or not value:
         raise SourceProfileError(f"{context} must be a non-empty table")
     result: list[tuple[str, tuple[str, ...]]] = []
     for name, debian in value.items():
         if not _ARCHITECTURE_RE.fullmatch(name):
-            raise SourceProfileError(f"{context} has an unsafe kernel architecture {name!r}")
+            raise SourceProfileError(
+                f"{context} has an unsafe kernel architecture {name!r}"
+            )
         result.append((name, _strings(debian, f"{context}.{name}", _ARCHITECTURE_RE)))
     amd64 = [name for name, debian in result if "amd64" in debian]
     if amd64 != ["x86"]:
@@ -335,7 +354,9 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
     profile_id = directory.name
     match = _ID_RE.fullmatch(profile_id)
     if match is None:
-        raise SourceProfileError(f"invalid source profile directory name {profile_id!r}")
+        raise SourceProfileError(
+            f"invalid source profile directory name {profile_id!r}"
+        )
     if len(directory.parents) < 3 or directory.parent.as_posix().split("/")[-2:] != [
         *PROFILE_ROOT.split("/")
     ]:
@@ -346,20 +367,27 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
     names = {path.name for path in directory.iterdir()}
     if names != {BUILD_FILE, VALIDATION_FILE}:
         raise SourceProfileError(
-            f"profile {profile_id} must contain exactly {BUILD_FILE} and {VALIDATION_FILE}"
+            f"profile {profile_id} must contain exactly {BUILD_FILE} and "
+            f"{VALIDATION_FILE}"
         )
 
     build = _load_build(directory / BUILD_FILE, profile_id)
     validation = _load_validation(directory / VALIDATION_FILE, build["kernel_series"])
     major, minor = (int(part) for part in match.group("series").split("."))
 
-    debian = _fields(build["debian"], "debian", {"build_profiles", "kernel_architectures"})
+    debian = _fields(
+        build["debian"], "debian", {"build_profiles", "kernel_architectures"}
+    )
     fpu_raw = _fields(build["fpu"], "fpu", {"final_artifact", "objects"})
     final_artifact = fpu_raw["final_artifact"]
-    if not isinstance(final_artifact, str) or not _ARTIFACT_RE.fullmatch(final_artifact):
+    if not isinstance(final_artifact, str) or not _ARTIFACT_RE.fullmatch(
+        final_artifact
+    ):
         raise SourceProfileError("fpu.final_artifact must be one exact module path")
     objects = _strings(fpu_raw["objects"], "fpu.objects", _OBJECT_RE)
-    if list(objects) != sorted(objects) or any(".." in item.split("/") for item in objects):
+    if list(objects) != sorted(objects) or any(
+        ".." in item.split("/") for item in objects
+    ):
         raise SourceProfileError("fpu.objects must be sorted safe relative objects")
     simd_allowlist = build["simd_allowlist"]
     if (
@@ -381,9 +409,13 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
             "lto_excluded_c_targets",
         },
     )
-    host_c = _fields(kbuild["minimum_host_c"], "kbuild_audit.minimum_host_c", set(LTO_MODES))
+    host_c = _fields(
+        kbuild["minimum_host_c"], "kbuild_audit.minimum_host_c", set(LTO_MODES)
+    )
     exclusions = _strings(
-        kbuild["lto_excluded_c_targets"], "kbuild_audit.lto_excluded_c_targets", _OBJECT_RE
+        kbuild["lto_excluded_c_targets"],
+        "kbuild_audit.lto_excluded_c_targets",
+        _OBJECT_RE,
     )
     if list(exclusions) != sorted(exclusions):
         raise SourceProfileError("kbuild_audit.lto_excluded_c_targets must be sorted")
@@ -411,7 +443,9 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
         selftest["v3_tests"], "kselftest.v3_tests", _KSELFTEST_TEST_RE, allow_empty=True
     )
     if {test.split(":", 1)[0] for test in tests} != set(targets):
-        raise SourceProfileError("every kselftest target must run at least one selected test")
+        raise SourceProfileError(
+            "every kselftest target must run at least one selected test"
+        )
     if not set(v3_tests) <= set(tests):
         raise SourceProfileError("kselftest.v3_tests must be selected tests")
     required_builtin = _strings(
@@ -435,8 +469,12 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
         reviewed_source_version=_version(
             build["reviewed_source_version"], "reviewed_source_version"
         ),
-        first_source_version=None if first is None else _version(first, "first_source_version"),
-        before_source_version=None if before is None else _version(before, "before_source_version"),
+        first_source_version=None
+        if first is None
+        else _version(first, "first_source_version"),
+        before_source_version=None
+        if before is None
+        else _version(before, "before_source_version"),
         build_profiles=_strings(
             debian["build_profiles"], "debian.build_profiles", _BUILD_PROFILE_RE
         ),
@@ -447,9 +485,15 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
         simd_allowlist=tuple(simd_allowlist),
         kbuild_audit=KbuildAuditPolicy(
             minimum_counts={
-                "records": _integer(kbuild["minimum_records"], "minimum_records", 1, 10**7),
-                "normal_c": _integer(kbuild["minimum_normal_c"], "minimum_normal_c", 1, 10**7),
-                "special_c": _integer(kbuild["minimum_special_c"], "minimum_special_c", 1, 10**7),
+                "records": _integer(
+                    kbuild["minimum_records"], "minimum_records", 1, 10**7
+                ),
+                "normal_c": _integer(
+                    kbuild["minimum_normal_c"], "minimum_normal_c", 1, 10**7
+                ),
+                "special_c": _integer(
+                    kbuild["minimum_special_c"], "minimum_special_c", 1, 10**7
+                ),
                 "kernel_rust": _integer(
                     kbuild["minimum_kernel_rust"], "minimum_kernel_rust", 1, 10**7
                 ),
@@ -465,7 +509,9 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
             targets=targets,
             tests=tests,
             v3_tests=v3_tests,
-            per_test_timeout=_integer(selftest["per_test_timeout"], "per_test_timeout", 1, 600),
+            per_test_timeout=_integer(
+                selftest["per_test_timeout"], "per_test_timeout", 1, 600
+            ),
             aggregate_timeout=_integer(
                 selftest["aggregate_timeout"], "aggregate_timeout", 1, 3600
             ),
@@ -478,7 +524,9 @@ def load_profile(directory: pathlib.Path) -> SourceProfile:
         and profile.before_source_version is not None
         and compare(profile.first_source_version, profile.before_source_version) >= 0
     ):
-        raise SourceProfileError(f"profile {profile_id} has an empty source version range")
+        raise SourceProfileError(
+            f"profile {profile_id} has an empty source version range"
+        )
     if not profile.covers(profile.reviewed_source_version):
         raise SourceProfileError(
             f"profile {profile_id} does not cover its reviewed source version"
@@ -500,7 +548,9 @@ def _require_series_directories(
             raise SourceProfileError(f"{entry} does not belong to a source profile")
         patches = sorted(entry.iterdir())
         if any(
-            not path.is_file() or path.is_symlink() or not _PATCH_RE.fullmatch(path.name)
+            not path.is_file()
+            or path.is_symlink()
+            or not _PATCH_RE.fullmatch(path.name)
             for path in patches
         ):
             raise SourceProfileError(f"{entry} contains a non-patch entry")
@@ -525,13 +575,17 @@ def load_profiles(root: pathlib.Path) -> tuple[SourceProfile, ...]:
         if entry.name == "README.md" and entry.is_file():
             continue
         if not entry.is_dir() or entry.is_symlink():
-            raise SourceProfileError(f"unexpected entry in {PROFILE_ROOT}: {entry.name}")
+            raise SourceProfileError(
+                f"unexpected entry in {PROFILE_ROOT}: {entry.name}"
+            )
         profiles.append(load_profile(entry))
     if not profiles:
         raise SourceProfileError("no source profiles are defined")
     profile_ids = {profile.profile_id for profile in profiles}
     _require_series_directories(root / OVERLAY_ROOT, profile_ids, required=True)
-    _require_series_directories(root / KSELFTEST_PATCH_ROOT, profile_ids, required=False)
+    _require_series_directories(
+        root / KSELFTEST_PATCH_ROOT, profile_ids, required=False
+    )
 
     by_series: dict[tuple[int, int], list[SourceProfile]] = {}
     for profile in profiles:
@@ -542,11 +596,12 @@ def load_profiles(root: pathlib.Path) -> tuple[SourceProfile, ...]:
         members.sort(
             key=lambda item: DebianVersion.parse(item.first_source_version or "0~")
         )
-        for earlier, later in zip(members, members[1:]):
+        for earlier, later in itertools.pairwise(members):
             if (
                 earlier.before_source_version is None
                 or later.first_source_version is None
-                or compare(earlier.before_source_version, later.first_source_version) > 0
+                or compare(earlier.before_source_version, later.first_source_version)
+                > 0
             ):
                 raise SourceProfileError(
                     f"source profiles for {series[0]}.{series[1]} overlap: "
@@ -562,14 +617,18 @@ def select_profile(root: pathlib.Path, source_version: str) -> SourceProfile:
         DebianVersion.parse(source_version)
     except InvalidVersion as exc:
         raise SourceProfileError(f"invalid Debian source version: {exc}") from exc
-    matches = [profile for profile in load_profiles(root) if profile.covers(source_version)]
+    matches = [
+        profile for profile in load_profiles(root) if profile.covers(source_version)
+    ]
     if not matches:
         raise SourceProfileError(
             f"no source profile covers linux {source_version}; review the new "
             f"Debian source and add a profile under {PROFILE_ROOT}"
         )
     if len(matches) != 1:
-        raise SourceProfileError(f"linux {source_version} matches several source profiles")
+        raise SourceProfileError(
+            f"linux {source_version} matches several source profiles"
+        )
     return matches[0]
 
 

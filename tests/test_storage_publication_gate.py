@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
+import functools
 import hashlib
 import io
 import json
@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from dkc.cli import storage_publish
 from dkc.records import StatePointer
 from dkc.s3 import ListedObject, RemoteObject
 from dkc.serialize import canonical_bytes
@@ -18,13 +19,8 @@ from dkc.storage_progress import StorageProgress
 from tests.fake_storage import ConditionalObjectStore
 from tests.test_publication_plan import inventory
 
-
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts/in-container/storage-publish.py"
-SPEC = importlib.util.spec_from_file_location("storage_publish", SCRIPT)
-assert SPEC and SPEC.loader
-storage_publish = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(storage_publish)
+SCRIPT = ROOT / "dkc/cli/storage_publish.py"
 
 
 def test_publication_cas_binds_the_exact_predecessor(
@@ -120,41 +116,70 @@ def test_publisher_wires_reuse_progress_lease_and_verifiable_evidence(
     repository_result = tmp_path / "repository-result"
     state = repository_result / "repository/state/current.asc"
     state.parent.mkdir(parents=True)
-    state.write_bytes(next(item.read() for item in items if item.relative_key == "state/current.asc"))
+    state.write_bytes(
+        next(item.read() for item in items if item.relative_key == "state/current.asc")
+    )
     token = tmp_path / "token"
     token.write_text("fake-token")
     subkeys = tmp_path / "subkeys"
     subkeys.write_text("A" * 40 + "\n")
     manifest = SimpleNamespace(
-        generation=0, gc_queue=[], live_objects=[], retention_mode="series",
+        generation=0,
+        gc_queue=[],
+        live_objects=[],
+        retention_mode="series",
         retention_max_bytes=None,
     )
     monkeypatch.setattr(storage_publish, "S3Client", lambda *_: None)
     monkeypatch.setattr(storage_publish, "S3ObjectStore", lambda _: store)
     monkeypatch.setattr(storage_publish, "load_verified_repository", lambda _: items)
-    monkeypatch.setattr(storage_publish, "desired_pointer", lambda *_, **__: (
-        SimpleNamespace(generation=0, previous_generation=None, publication_id="test"), manifest
-    ))
-    monkeypatch.setattr(storage_publish, "load_connection", lambda _: SimpleNamespace(
-        endpoint=None, credentials=None
-    ))
+    monkeypatch.setattr(
+        storage_publish,
+        "desired_pointer",
+        lambda *_, **__: (
+            SimpleNamespace(
+                generation=0, previous_generation=None, publication_id="test"
+            ),
+            manifest,
+        ),
+    )
+    monkeypatch.setattr(
+        storage_publish,
+        "load_connection",
+        lambda _: SimpleNamespace(endpoint=None, credentials=None),
+    )
     args = SimpleNamespace(
-        output=tmp_path / "first", connection=tmp_path / "connection",
-        github_token_file=token, repository_result=repository_result,
-        signing_subkeys=subkeys, keyring=tmp_path / "keyring",
-        canonical_repository="owner/repo", workflow_run_id="1", run_attempt="1",
-        lease_ttl_seconds=900, takeover_grace_seconds=300,
-        max_object_bytes=1_000_000, gc_max_objects=100, gc_max_bytes=1_000_000,
+        output=tmp_path / "first",
+        connection=tmp_path / "connection",
+        github_token_file=token,
+        repository_result=repository_result,
+        signing_subkeys=subkeys,
+        keyring=tmp_path / "keyring",
+        canonical_repository="owner/repo",
+        workflow_run_id="1",
+        run_attempt="1",
+        lease_ttl_seconds=900,
+        takeover_grace_seconds=300,
+        max_object_bytes=1_000_000,
+        gc_max_objects=100,
+        gc_max_bytes=1_000_000,
     )
     redactor = StorageRedactor(())
     for output in (tmp_path / "first", tmp_path / "retry"):
         args.output = output
         stream = io.StringIO()
         progress = StorageProgress(redactor, stream)
-        assert run_with_sanitized_output(redactor, lambda: storage_publish.main(args, progress)) == 0
+        assert (
+            run_with_sanitized_output(
+                redactor, functools.partial(storage_publish.main, args, progress)
+            )
+            == 0
+        )
         summary = json.loads((output / "summary.json").read_text())
         assert summary["status"] == "PASS"
-        assert summary["storage_size"] == sum(item.size for item in store.list_objects(""))
+        assert summary["storage_size"] == sum(
+            item.size for item in store.list_objects("")
+        )
         assert "phase=verify-storage-size" in stream.getvalue()
         timings = json.loads((output / "progress.json").read_text())
         assert any(phase["phase"] == "verify-repository" for phase in timings["phases"])

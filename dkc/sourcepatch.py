@@ -137,9 +137,15 @@ def _parse_hunk(lines: list[str], index: int, path: str) -> tuple[Hunk, int]:
             raise SourcePatchError(f"truncated hunk in {path}")
         # As in patch(1), an empty line is blank context whose leading space
         # an editor or mail client removed.
-        tag, text = (" ", "\n") if lines[index] == "\n" else (lines[index][:1], lines[index][1:])
+        tag, text = (
+            (" ", "\n")
+            if lines[index] == "\n"
+            else (lines[index][:1], lines[index][1:])
+        )
         if tag not in (" ", "-", "+") or not text.endswith("\n"):
-            raise SourcePatchError(f"patch line {index + 1} is not a complete hunk line")
+            raise SourcePatchError(
+                f"patch line {index + 1} is not a complete hunk line"
+            )
         old += tag != "+"
         new += tag != "-"
         body.append((tag, text))
@@ -198,7 +204,8 @@ def _find(lines: list[str], needle: tuple[str, ...], start: int) -> list[int]:
     return [
         position
         for position in range(start, len(lines) - width + 1)
-        if lines[position] == first and tuple(lines[position : position + width]) == needle
+        if lines[position] == first
+        and tuple(lines[position : position + width]) == needle
     ]
 
 
@@ -232,7 +239,9 @@ def _place(lines: list[str], hunk: Hunk, start: int, label: str) -> _Placement:
     if trail:
         positions.update(_find(lines, old[lead:], start))
     if len(positions) != 1:
-        problem = "is not present" if not positions else f"matches in {len(positions)} places"
+        problem = (
+            "is not present" if not positions else f"matches in {len(positions)} places"
+        )
         raise SourcePatchError(f"{label} {problem}")
     return _Placement(positions.pop(), len(core_old), core_new, False)
 
@@ -245,7 +254,9 @@ def _apply_file(lines: list[str], patch: FilePatch) -> tuple[list[str], bool]:
         changed = next(text for tag, text in hunk.lines if tag != " ").strip()
         label = f"{patch.path} hunk {number} ({changed[:60]!r})"
         placement = _place(result, hunk, cursor, label)
-        result[placement.start : placement.start + placement.length] = placement.replacement
+        result[placement.start : placement.start + placement.length] = (
+            placement.replacement
+        )
         cursor = placement.start + len(placement.replacement)
         exact = exact and placement.exact
     return result, exact
@@ -301,7 +312,8 @@ def apply_patch(root: pathlib.Path, text: str) -> str:
         return ALREADY_PRESENT
     if forward.files is not None:
         raise SourcePatchError(
-            "the patch both applies and appears to be present already; review the source"
+            "the patch both applies and appears to be present already; review the "
+            "source"
         )
     raise SourcePatchError(f"{forward.error}, and the fix is not already present")
 

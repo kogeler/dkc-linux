@@ -18,45 +18,8 @@ test ! -e "$bundle" -a ! -e "$reconstructed"
 mkdir -p "$bundle" "$evidence"
 
 identity_output="$(
-	PYTHONPATH="$repo" python3 - \
-		"$inputs/publication-identity.json" "$inputs/source-inventory.json" <<'PY'
-import json
-import pathlib
-import re
-import sys
-
-from dkc.debver import DebianVersion
-
-value = json.load(open(sys.argv[1], encoding="utf-8"))
-for field in ("package_version", "publication_source_date_epoch"):
-    item = value.get(field)
-    if not isinstance(item, (str, int)):
-        raise SystemExit(f"publication identity lacks {field}")
-    print(item)
-debian = value.get("debian_source_version")
-if not isinstance(debian, str):
-    raise SystemExit("publication identity lacks debian_source_version")
-print(DebianVersion.parse(debian).upstream_release)
-inventory = json.load(open(sys.argv[2], encoding="utf-8"))
-if (
-    inventory.get("schema_version") != 2
-    or inventory.get("version") != debian
-    or not isinstance(inventory.get("files"), list)
-):
-    raise SystemExit("source inventory differs from the publication identity")
-orig_names = [
-    item.get("name")
-    for item in inventory["files"]
-    if isinstance(item, dict)
-    and isinstance(item.get("name"), str)
-    and item["name"].endswith(".orig.tar.xz")
-]
-if len(orig_names) != 1 or not re.fullmatch(
-    r"[A-Za-z0-9][A-Za-z0-9._+~-]*\.orig\.tar\.xz", orig_names[0]
-):
-    raise SystemExit("source inventory does not identify one safe orig member")
-print(pathlib.PurePosixPath(orig_names[0]).name)
-PY
+	PYTHONPATH="$repo" python3 -m dkc.cli.build_source_package \
+		"$inputs/publication-identity.json" "$inputs/source-inventory.json"
 )"
 readarray -t identity_fields <<<"$identity_output"
 [ "${#identity_fields[@]}" -eq 4 ]
@@ -69,7 +32,7 @@ orig_name="${identity_fields[3]}"
 [[ "$upstream_version" =~ ^[0-9A-Za-z.+~_-]+$ ]]
 [[ "$orig_name" =~ ^[A-Za-z0-9][A-Za-z0-9._+~-]*\.orig\.tar\.xz$ ]]
 
-python3 "$repo/scripts/in-container/prepare-source-tree.py" "$prepared" "$repo" "$inputs"
+PYTHONPATH="$repo" python3 -m dkc.cli.prepare_source_tree "$prepared" "$repo" "$inputs"
 
 # The authenticated Debian source carries its previously generated control
 # file. Identity injection changes the changelog source name, so regenerate
@@ -96,8 +59,8 @@ ln "$orig_input" "$orig_for_source"
 
 (
 	cd "$parent"
-	EDITOR="$repo/scripts/in-container/normalize-quilt-patch.py" \
-		VISUAL="$repo/scripts/in-container/normalize-quilt-patch.py" \
+	EDITOR="$repo/dkc/cli/normalize_quilt_patch.py" \
+		VISUAL="$repo/dkc/cli/normalize_quilt_patch.py" \
 		dpkg-source --commit "$source_name" \
 		dkc-x86-64-baselines.patch </dev/null >/dev/null
 )
@@ -108,14 +71,14 @@ touch --date="@${publication_epoch}" \
 (
 	cd "$prepared"
 	make -f debian/rules debian/control-real >/dev/null
-	python3 "$repo/scripts/in-container/prepare-source-tree.py" \
+	PYTHONPATH="$repo" python3 -m dkc.cli.prepare_source_tree \
 		--normalize-public-metadata "$prepared" "$publication_epoch"
 	dpkg-checkbuilddeps debian/control
 	dpkg-buildpackage --build=source --no-sign -sa
 	# Compare clean source trees, not dpkg-buildpackage's transient bookkeeping.
 	debian/rules clean >/dev/null
 )
-python3 "$repo/scripts/in-container/prepare-source-tree.py" \
+PYTHONPATH="$repo" python3 -m dkc.cli.prepare_source_tree \
 	--normalize-public-modes "$prepared"
 
 version_filename="${package_version#*:}"
@@ -140,7 +103,7 @@ done
 	umask 022
 	dpkg-source -x "$bundle/dkc-linux_${version_filename}.dsc" "$reconstructed" >/dev/null
 )
-python3 "$repo/scripts/in-container/audit-source-package.py" \
+PYTHONPATH="$repo" python3 -m dkc.cli.audit_source_package \
 	"$repo" "$bundle" "$inputs/publication-identity.json" \
 	"$prepared" "$reconstructed" "$evidence"
 (

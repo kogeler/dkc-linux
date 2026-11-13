@@ -52,8 +52,6 @@ def test_exact_evidence_handoff_rejects_unsafe_paths(
 ) -> None:
     root = tmp_path / "handoff"
     root.mkdir()
-    (root / "evidence.sha256").write_text(
-        f"{'0' * 64}  {unsafe}\n", encoding="utf-8"
-    )
+    (root / "evidence.sha256").write_text(f"{'0' * 64}  {unsafe}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="unsafe path"):
         verify_evidence_directory(root)
