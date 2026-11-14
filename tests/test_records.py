@@ -198,7 +198,7 @@ def test_decision_matches_schema() -> None:
     schema.validate("discovery-decision", decision.to_dict())
 
 
-def test_qualification_requires_build_without_state_or_publication_authority() -> None:
+def test_qualification_has_no_state_or_publication_authority() -> None:
     decision = DiscoveryDecision(
         decision="qualification",
         source_version="7.1.7-1",
@@ -212,6 +212,17 @@ def test_qualification_requires_build_without_state_or_publication_authority() -
     schema.validate("discovery-decision", decision.to_dict())
     assert not decision.authoritative_state_read
     assert not decision.publish_allowed
+    documentation_only = DiscoveryDecision(
+        decision="qualification",
+        source_version="7.1.7-1",
+        source_dsc_sha256=SHA,
+        utc=NOW,
+        dkc_revision=1,
+        build_policy_sha256="c" * 64,
+        lto_mode="thin",
+        build_required=False,
+    )
+    schema.validate("discovery-decision", documentation_only.to_dict())
     with pytest.raises(ValueError, match="contradictory"):
         DiscoveryDecision(
             decision="qualification",
@@ -222,6 +233,7 @@ def test_qualification_requires_build_without_state_or_publication_authority() -
             build_policy_sha256="c" * 64,
             lto_mode="thin",
             build_required=False,
+            maintenance_required=True,
         )
     with pytest.raises(ValueError, match="cannot carry authoritative state"):
         DiscoveryDecision(

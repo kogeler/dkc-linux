@@ -195,6 +195,13 @@ class DiscoveryDecision(_Record):
             self.maintenance_required,
             self.publish_allowed,
         )
+        if self.decision == "qualification" and observed_flags == (
+            False,
+            False,
+            False,
+        ):
+            # A documentation-only pull request qualifies without a build.
+            expected_flags = observed_flags
         if observed_flags != expected_flags:
             raise ValueError(
                 f"{self.decision} decision has a contradictory work/permission state"

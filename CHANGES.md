@@ -15,9 +15,16 @@ cutting a version are in [Maintaining this file](#maintaining-this-file).
   and query-bearing site requests, and `/index.html`, redirect to the canonical
   HTTPS URL. Operators add them after the new site build is published. See
   [docs/CLOUDFLARE_CACHE.md](docs/CLOUDFLARE_CACHE.md#8-redirect-site-aliases).
+- The documentation site measures visits with Google Analytics, which loads
+  only after a visitor accepts the new cookie consent dialog. See
+  [docs/SITE.md](docs/SITE.md#analytics-and-consent).
 
 ### Changed
 
+- Pull requests that change only Markdown documentation or the documentation
+  site skip the kernel builds and package matrix; the fast tier and the site
+  check still run. See
+  [.github/workflows/README.md](.github/workflows/README.md).
 - The documentation site is easier for search engines to index. The home page
   is addressed as `/` everywhere, each page has its own meta description from
   its lead paragraph, the sitemap dates each page by its source's last commit,

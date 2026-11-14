@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,7 +13,10 @@ from dkc.github import (
     export_image_bundle,
     export_lifecycle_outputs,
     export_source_environment,
+    kernel_build_required,
     prepare_pull_request_qualification,
+    pull_request_changed_paths,
+    require_pull_request_result,
     require_terminal_result,
     write_run_identity,
     write_workflow_assignments,
@@ -190,6 +194,23 @@ def test_source_environment_is_reconstructed_from_the_typed_handoff(
     assert not decision.publish_allowed
     assert not decision.authoritative_state_read
 
+    documentation_root = tmp_path / "documentation-only"
+    prepare_pull_request_qualification(
+        root,
+        documentation_root,
+        repository_root=repository_root,
+        epoch=1_787_875_200,
+        dkc_revision=1,
+        lto_mode="thin",
+        retention_mode="series-size",
+        retention_max_bytes=9_500_000_000,
+        build_required=False,
+    )
+    documentation = load_discovery_decision(documentation_root)
+    assert documentation.decision == "qualification"
+    assert not documentation.build_required
+    assert not documentation.publish_allowed
+
     pull_request_output = tmp_path / "pull-request-output"
     export_lifecycle_outputs(
         decision_root,
@@ -250,3 +271,100 @@ def test_terminal_result_accepts_only_the_selected_path(
             decision_result="success",
             final_result="failure",
         )
+
+
+@pytest.mark.parametrize(
+    ("paths", "required"),
+    [
+        (("docs/SITE.md", "site/mkdocs.yml", "dkc/site.py"), False),
+        (("README.md", "tests/test_site.py", ".github/workflows/site.yml"), False),
+        (("docs/SITE.md", "dkc/github.py"), True),
+        (("site/mkdocs.yml", ".github/workflows/ci.yml"), True),
+        (("dkc/site_new.py",), True),
+        (("docs/notes.txt",), True),
+        ((), True),
+        (None, True),
+    ],
+)
+def test_only_documentation_changes_skip_kernel_builds(
+    paths: tuple[str, ...] | None, required: bool
+) -> None:
+    assert kernel_build_required(paths) is required
+
+
+def _git(root: Path, *arguments: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(root), *arguments],
+        check=True,
+        capture_output=True,
+        env={
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@example.invalid",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@example.invalid",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "HOME": str(root),
+        },
+    )
+
+
+def test_the_change_set_is_read_from_a_pull_request_merge_commit(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    assert pull_request_changed_paths(tmp_path) is None
+
+    _git(tmp_path, "switch", "-q", "-c", "topic")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/A.md").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "mv", "base.txt", "moved.txt")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "topic")
+    _git(tmp_path, "switch", "-q", "main")
+    _git(tmp_path, "merge", "-q", "--no-ff", "-m", "merge", "topic")
+
+    # A rename lists both names, so moving a build input out of the way counts.
+    assert pull_request_changed_paths(tmp_path) == (
+        "base.txt",
+        "docs/A.md",
+        "moved.txt",
+    )
+    assert pull_request_changed_paths(tmp_path / "missing") is None
+
+
+@pytest.mark.parametrize(
+    ("build_required", "build_result", "accepted"),
+    [
+        ("true", "success", True),
+        ("false", "skipped", True),
+        ("true", "skipped", False),
+        ("true", "failure", False),
+        ("false", "success", False),
+        ("", "skipped", False),
+    ],
+)
+def test_the_pull_request_result_follows_the_build_decision(
+    build_required: str, build_result: str, accepted: bool
+) -> None:
+    def check(**overrides: str) -> None:
+        values = {
+            "fast_result": "success",
+            "decision_result": "success",
+            "build_required": build_required,
+            "build_result": build_result,
+        }
+        values.update(overrides)
+        require_pull_request_result(**values)
+
+    if accepted:
+        check()
+        for name in ("fast_result", "decision_result"):
+            with pytest.raises(ValueError, match="did not succeed"):
+                check(**{name: "failure"})
+    else:
+        with pytest.raises(ValueError):
+            check()

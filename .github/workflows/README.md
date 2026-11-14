@@ -191,8 +191,14 @@ storage path after all build, VM, signing, and clean-client gates. No workflow
 contains a separate disposable qualification job.
 
 Pull requests discover authenticated Debian source, run the fast and release
-preflight tiers, always build and VM-test v2/v3 through isolated cache transport,
-run the package matrix, and exercise a disposable signed repository. Their typed
+preflight tiers, build and VM-test v2/v3 through isolated cache transport, run
+the package matrix, and exercise a disposable signed repository. The one
+exception is a documentation-only pull request: when its merge commit changes
+only Markdown files and the documentation-site paths listed in `dkc/github.py`,
+the qualification sets `build_required=false` and the release preflight, kernel,
+and package jobs are skipped. The site workflow's required `documentation site`
+check still builds and audits the site. Any other path, an unreadable change
+set, or a checkout that is not a two-parent merge commit keeps the full build. Their typed
 qualification has no publication authority; authoritative-state reads,
 production signing, publication, and final state verification remain skipped.
 Jobs that cross those deliberately skipped production-only branches use
@@ -201,9 +207,11 @@ producer. This prevents GitHub's skipped-ancestor propagation from suppressing
 the pull-request build while keeping genuine dependency failures fail-closed.
 The `pull request result` job is the workflow's single required check. GitHub
 reports a job skipped after a failed dependency as a passed check, so that job
-runs under `!cancelled()` and `make github-pull-request-result` fails unless
-every direct dependency succeeded. Its only dependency is the package matrix,
-whose condition already requires every earlier pull-request job to succeed.
+runs under `!cancelled()`, and `make github-pull-request-result` checks each
+result itself. The fast tier and the decision must succeed. The package matrix,
+whose condition already requires every earlier kernel job to succeed, must
+succeed as well, unless the successful decision did not require kernel builds;
+then it must be skipped.
 Unlike `always()`, `!cancelled()` turns false when GitHub re-evaluates running
 jobs on cancellation, so a newer push really cancels a superseded pull-request
 run instead of leaving it to hold the concurrency group. A manually cancelled
